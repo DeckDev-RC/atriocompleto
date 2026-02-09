@@ -1,4 +1,5 @@
-import { Search, Menu, Moon, Sun, Bell, Palette } from 'lucide-react';
+import { useState } from 'react';
+import { Search, Menu, Moon, Sun, Bell, Palette, X } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
 
 interface HeaderProps {
@@ -13,6 +14,7 @@ export function Header({
   children,
 }: HeaderProps) {
   const { toggleSidebar, theme, toggleTheme, themeColor, setThemeColor } = useApp();
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   return (
     <header className="flex h-[56px] items-center justify-between mb-8">
@@ -44,17 +46,41 @@ export function Header({
       {/* Right */}
       <div className="flex items-center gap-2">
         {/* Search */}
-        <div className="relative max-sm:hidden">
-          <Search
-            size={15}
-            strokeWidth={2.2}
-            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
-          />
-          <input
-            type="text"
-            placeholder="Pesquisar..."
-            className="w-52 rounded-full border border-border bg-body/60 backdrop-blur-sm py-2 pl-10 pr-4 text-[13px] text-primary tracking-[-0.01em] transition-all duration-300 outline-none placeholder:text-muted focus:w-64 focus:border-accent/30 focus:bg-card focus:ring-4 focus:ring-accent/8 focus:shadow-[0_0_20px_rgba(56,182,255,0.06)]"
-          />
+        <div className="relative">
+          {/* Mobile Search Toggle */}
+          <button
+            onClick={() => setIsSearchOpen(!isSearchOpen)}
+            className="hidden max-sm:flex h-9 w-9 items-center justify-center rounded-full text-secondary transition-all duration-200 hover:bg-card hover:text-primary active:scale-95"
+            aria-label={isSearchOpen ? "Fechar pesquisa" : "Abrir pesquisa"}
+            aria-expanded={isSearchOpen}
+          >
+            {isSearchOpen ? <X size={18} /> : <Search size={18} />}
+          </button>
+
+          {/* Search Input Container */}
+          <div
+            className={`
+            relative
+            max-sm:absolute max-sm:right-0 max-sm:top-12 max-sm:w-[calc(100vw-40px)] max-sm:origin-top-right
+            transition-all duration-300 ease-in-out
+            ${isSearchOpen
+                ? 'max-sm:opacity-100 max-sm:scale-100 max-sm:visible'
+                : 'max-sm:opacity-0 max-sm:scale-95 max-sm:invisible max-sm:pointer-events-none'
+              }
+            max-sm:shadow-lg max-sm:rounded-2xl max-sm:bg-card/95 max-sm:backdrop-blur-md max-sm:border max-sm:border-border max-sm:p-1
+          `}
+          >
+            <Search
+              size={15}
+              strokeWidth={2.2}
+              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
+            />
+            <input
+              type="text"
+              placeholder="Pesquisar..."
+              className="w-52 max-sm:w-full rounded-full border border-border bg-body/60 backdrop-blur-sm py-2 pl-10 pr-4 text-[13px] text-primary tracking-[-0.01em] transition-all duration-300 outline-none placeholder:text-muted focus:w-64 max-sm:focus:w-full focus:border-accent/30 focus:bg-card focus:ring-4 focus:ring-accent/8 focus:shadow-[0_0_20px_rgba(56,182,255,0.06)]"
+            />
+          </div>
         </div>
 
         {/* Notification bell */}

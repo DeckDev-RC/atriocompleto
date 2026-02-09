@@ -151,11 +151,11 @@ export function Sidebar() {
           )}
 
           {/* Navigation */}
-          <nav className="mt-8 flex flex-col gap-6">
+          <nav className="mt-8 flex flex-col gap-6" aria-label="Menu principal">
             {menuSections.map((section) => (
-              <div key={section.section} className="flex flex-col gap-1">
+              <div key={section.section} className="flex flex-col gap-1" role="group" aria-label={section.section}>
                 {!collapsed && (
-                  <span className="mb-2 px-4 text-[10.5px] font-semibold tracking-widest uppercase text-muted/60">
+                  <span className="mb-2 px-4 text-[10.5px] font-semibold tracking-widest uppercase text-muted/60" aria-hidden="true">
                     {section.section}
                   </span>
                 )}
@@ -169,6 +169,7 @@ export function Sidebar() {
                         closeSidebar();
                       }}
                       title={collapsed ? item.label : undefined}
+                      aria-current={active ? 'page' : undefined}
                       className={`
                         group relative flex w-full items-center gap-3 rounded-xl
                         text-[13.5px] font-medium text-left
@@ -179,6 +180,7 @@ export function Sidebar() {
                         ${active
                           ? 'bg-primary/5 text-primary'
                           : 'text-secondary/80 hover:bg-border/40 hover:text-primary'}
+                        active:scale-[0.98]
                       `}
                     >
                       <item.icon
