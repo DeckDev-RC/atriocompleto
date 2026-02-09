@@ -121,19 +121,19 @@ BEGIN
     RAISE EXCEPTION 'Apenas queries SELECT são permitidas';
   END IF;
 
-  IF query_text ~* '\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|EXEC)\b' THEN
+  IF query_text ~* '\y(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|EXEC)\y' THEN
     RAISE EXCEPTION 'Operação não permitida';
   END IF;
 
   -- Injetar filtro de tenant se fornecido
   IF p_tenant_id IS NOT NULL THEN
     -- Se a query já tem WHERE, adiciona AND; senão, adiciona WHERE
-    IF query_text ~* '\bWHERE\b' THEN
-      safe_query := regexp_replace(query_text, '(?i)\bWHERE\b', 'WHERE tenant_id = ''' || p_tenant_id || '''::uuid AND ', 'i');
+    IF query_text ~* '\yWHERE\y' THEN
+      safe_query := regexp_replace(query_text, '(?i)\yWHERE\y', 'WHERE tenant_id = ''' || p_tenant_id || '''::uuid AND ', 'i');
     ELSE
       -- Adiciona WHERE antes de GROUP BY, ORDER BY, LIMIT, ou no final
-      IF query_text ~* '\b(GROUP BY|ORDER BY|LIMIT|HAVING)\b' THEN
-        safe_query := regexp_replace(query_text, '(?i)\b(GROUP BY|ORDER BY|LIMIT|HAVING)\b', 'WHERE tenant_id = ''' || p_tenant_id || '''::uuid \1', 'i');
+      IF query_text ~* '\y(GROUP BY|ORDER BY|LIMIT|HAVING)\y' THEN
+        safe_query := regexp_replace(query_text, '(?i)\y(GROUP BY|ORDER BY|LIMIT|HAVING)\y', 'WHERE tenant_id = ''' || p_tenant_id || '''::uuid \1', 'i');
       ELSE
         safe_query := query_text || ' WHERE tenant_id = ''' || p_tenant_id || '''::uuid';
       END IF;
