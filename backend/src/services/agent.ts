@@ -47,7 +47,7 @@ const functionDeclarations: FunctionDeclaration[] = [
   },
   {
     name: "totalSales",
-    description: "Calcula faturamento total. IMPORTANTE: para faturamento real, use status='paid'. Retorna breakdown por status (by_status) quando nao filtrado.",
+    description: "Calcula faturamento total. IMPORTANTE: para faturamento real, use status='paid'. SE FILTRAR POR STATUS, NAO INVENTE DADOS DE OUTROS STATUS.",
     parameters: {
       type: "object" as Type, properties: {
         status: { type: "string" as Type, description: "Filtrar por status" },
@@ -79,7 +79,7 @@ const functionDeclarations: FunctionDeclaration[] = [
   },
   {
     name: "ordersByMarketplace",
-    description: "Vendas agrupadas por marketplace com valor, quantidade e BREAKDOWN POR STATUS (by_status). IMPORTANTE: para faturamento por canal, use status='paid'.",
+    description: "Vendas agrupadas por marketplace com valor, quantidade e BREAKDOWN POR STATUS (by_status). IMPORTANTE: para faturamento por canal, use status='paid'. SE FILTRAR, NAO INVENTE DADOS DE OUTROS STATUS.",
     parameters: {
       type: "object" as Type, properties: {
         status: { type: "string" as Type, description: "Filtrar por status" },
@@ -89,7 +89,7 @@ const functionDeclarations: FunctionDeclaration[] = [
   },
   {
     name: "salesByMonth",
-    description: "Evolucao MENSAL de vendas com faturamento, quantidade, ticket medio, variacao percentual e BREAKDOWN POR STATUS (by_status). IMPORTANTE: para faturamento, use status='paid'. Use para: 'mes a mes', 'por mes', 'evolucao', 'historico', 'faturamento de cada mes', 'tendencia', 'sazonalidade'.",
+    description: "Evolucao MENSAL de vendas com faturamento, quantidade, ticket medio, variacao percentual e BREAKDOWN POR STATUS (by_status). IMPORTANTE: para faturamento, use status='paid'. SE FILTRAR, NAO INVENTE DADOS DE OUTROS STATUS. Use para: 'mes a mes', 'por mes', 'evolucao', 'historico', 'faturamento de cada mes', 'tendencia', 'sazonalidade'.",
     parameters: {
       type: "object" as Type, properties: {
         status: { type: "string" as Type, description: "Filtrar por status" },
@@ -248,6 +248,12 @@ FATURAMENTO, VENDAS, RECEITA, REVENUE = **SOMENTE pedidos com status "paid"**.
   "faturamento por marketplace" → ordersByMarketplace({status: "paid"})
   "evolucao de vendas" → salesByMonth({status: "paid"})
   "quanto faturou cada canal?" → marketplaceGrowth({status: "paid"})
+- AVISO CRITICO: Se voce filtrar por status="paid", a resposta contera APENAS dados de pedidos pagos.
+- NAO INVENTE dados de "cancelados" ou "pendentes" se voce nao os consultou.
+- Se o usuario pedir "vendas" (que exige status="paid") MAS voce achar relevante mostrar tambem os cancelados:
+  1. Faca UMA chamada para faturamento (status="paid")
+  2. Faca OUTRA chamada para ordersByStatus (sem filtro) OU use executeSQLQuery
+  3. OU use executiveSummary que ja traz tudo
 - Para mostrar a visao COMPLETA (todos os status), use executiveSummary ou ordersByStatus separadamente
 - Quando o usuario pedir "relatorio" ou "resumo", mostre faturamento (paid) como metrica principal e depois o breakdown de todos os status como informacao complementar
 
@@ -335,12 +341,12 @@ C) Para pedidos amplos ("relatorio", "resumo", "como estao os numeros", "me da o
 ## Regras Gerais
 1. Responda em portugues brasileiro
 2. Valores em R$ com separadores brasileiros (R$ 1.234,56)
-3. SEMPRE use funcoes - NUNCA invente dados
+3. SEMPRE use funcoes - NUNCA invente dados. Se a funcao retornou vazio ou parcial, diga que nao tem os dados.
 4. Sem periodo especificado = all_time=true (consulta tudo)
 5. Inclua percentuais e insights de negocio
 6. Formate numeros com pontos: 39.943
 7. NUNCA exponha valores do banco (paid, cancelled, ml, bagy, total_amount, orders, etc.) — use SEMPRE os nomes traduzidos em portugues
-8. Para multiplos status, use executeSQLQuery
+8. Para multiplos status, use executeSQLQuery ou multiplas chamadas
 9. Apos dados, ofereca um insight breve e acionavel
 10. Data de hoje: ${(() => { const d = new Date(); d.setHours(d.getHours() - 3); return d.toISOString().split("T")[0]; })()}
 11. IMPORTANTE - Perguntas com MULTIPLOS MESES (ex: "faturamento de janeiro, marco e abril"):
