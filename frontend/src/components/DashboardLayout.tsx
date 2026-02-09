@@ -7,7 +7,7 @@ export function DashboardLayout() {
   const marginLeft = sidebarCollapsed ? SIDEBAR_COLLAPSED_W : SIDEBAR_W;
 
   return (
-    <div className="flex min-h-screen bg-body">
+    <div className="flex min-h-screen">
       <Sidebar />
 
       <main

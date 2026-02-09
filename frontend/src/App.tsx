@@ -6,6 +6,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { AgentPage } from './pages/AgentPage';
 import { LoginPage } from './pages/LoginPage';
 import { AdminPage } from './pages/AdminPage';
+import { StarryBackground } from './components/StarryBackground';
 
 function AppRoutes() {
   const { isAuthenticated, isLoading, isMaster } = useAuth();
@@ -46,6 +47,7 @@ function App() {
     <BrowserRouter>
       <AppProvider>
         <AuthProvider>
+          <StarryBackground />
           <AppRoutes />
         </AuthProvider>
       </AppProvider>
