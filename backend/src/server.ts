@@ -6,6 +6,8 @@ import rateLimit from "express-rate-limit";
 import { env } from "./config/env";
 import { errorHandler } from "./middleware/error";
 
+import authRoutes from "./routes/auth";
+import adminRoutes from "./routes/admin";
 import chatRoutes from "./routes/chat";
 import dashboardRoutes from "./routes/dashboard";
 import healthRoutes from "./routes/health";
@@ -36,7 +38,7 @@ const corsOptions: cors.CorsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 };
 app.use(cors(corsOptions));
 
@@ -64,6 +66,8 @@ app.use((req, _res, next) => {
 
 // ── Routes ──────────────────────────────────────────────
 app.use("/api/health", healthRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/admin", adminRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/chat", chatRoutes);
 
@@ -71,7 +75,7 @@ app.use("/api/chat", chatRoutes);
 app.use(errorHandler);
 
 // ── Start Server ────────────────────────────────────────
-app.listen(env.PORT, () => {
+const server = app.listen(env.PORT, () => {
   console.log(`
   ╔══════════════════════════════════════════╗
   ║   🤖 Agente IA Ambro — Backend API      ║
@@ -79,8 +83,49 @@ app.listen(env.PORT, () => {
   ║   Port: ${env.PORT}                           ║
   ║   Env:  ${env.NODE_ENV.padEnd(30)}║
   ║   CORS: ${env.FRONTEND_URL.padEnd(30)}║
+  ║   PID:  ${String(process.pid).padEnd(30)}║
   ╚══════════════════════════════════════════╝
   `);
+});
+
+// ── Graceful Shutdown + Self-Healing ────────────────────
+
+// Track connection health
+let isShuttingDown = false;
+
+// Graceful shutdown handler
+function shutdown(signal: string) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log(`\n[${new Date().toISOString()}] ${signal} received — graceful shutdown...`);
+
+  // Stop accepting new connections
+  server.close(() => {
+    console.log("[Shutdown] HTTP server closed");
+    process.exit(0);
+  });
+
+  // Force exit after 10s if connections don't close
+  setTimeout(() => {
+    console.error("[Shutdown] Forcing exit after timeout");
+    process.exit(1);
+  }, 10_000);
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+
+// Catch unhandled errors — log and let Docker restart
+process.on("uncaughtException", (err) => {
+  console.error(`[${new Date().toISOString()}] UNCAUGHT EXCEPTION:`, err);
+  // Exit with error code so Docker/Easypanel restarts the container
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error(`[${new Date().toISOString()}] UNHANDLED REJECTION:`, reason);
+  // Don't crash on unhandled promise rejections — log and continue
+  // Docker health check will catch if the server is unhealthy
 });
 
 export default app;

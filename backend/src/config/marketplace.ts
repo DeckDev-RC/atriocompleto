@@ -9,13 +9,14 @@ export interface MarketplaceInfo {
 }
 
 const config: Record<string, MarketplaceInfo> = {
-  bagy:           { label: "Bagy",          color: "#38b6ff", iconType: "bagy" },
-  shopee:         { label: "Shopee",        color: "#EE4D2D", iconType: "shopee" },
-  shein:          { label: "Shein",         color: "#363636", iconType: "shein" },
-  mercado_livre:  { label: "Mercado Livre", color: "#FFD60A", iconType: "ml" },
-  mercadolivre:   { label: "Mercado Livre", color: "#FFD60A", iconType: "ml" },
-  loja_fisica:    { label: "Loja Física",   color: "#34C759", iconType: "store" },
-  physical_store: { label: "Loja Física",   color: "#34C759", iconType: "store" },
+  bagy: { label: "Bagy", color: "#38b6ff", iconType: "bagy" },
+  shopee: { label: "Shopee", color: "#EE4D2D", iconType: "shopee" },
+  shein: { label: "Shein", color: "#363636", iconType: "shein" },
+  ml: { label: "Mercado Livre", color: "#FFD60A", iconType: "ml" },
+  mercado_livre: { label: "Mercado Livre", color: "#FFD60A", iconType: "ml" },
+  mercadolivre: { label: "Mercado Livre", color: "#FFD60A", iconType: "ml" },
+  loja_fisica: { label: "Loja Física", color: "#E6007E", iconType: "ambro" },
+  physical_store: { label: "Loja Física", color: "#E6007E", iconType: "ambro" },
 };
 
 const FALLBACK_COLORS = ["#8B5CF6", "#F59E0B", "#10B981", "#EC4899", "#6366F1"];

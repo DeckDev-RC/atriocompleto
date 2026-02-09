@@ -114,12 +114,14 @@ function getCached(key: string): DashboardAggregated | null {
 
 export async function fetchDashboardAggregated(
   params: DashboardParams,
+  tenantId?: string,
 ): Promise<DashboardAggregated> {
-  const cacheKey = JSON.stringify(params);
+  const cacheKey = JSON.stringify({ ...params, tenantId });
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
   const dw = buildDateWhere(params);
+  const tw = tenantId ? `AND tenant_id = '${tenantId}'` : "";
 
   // 3 queries agregadas em paralelo (~100 rows total)
   const [overviewRows, mktRows, monthlyRows] = await Promise.all([
@@ -134,7 +136,7 @@ export async function fetchDashboardAggregated(
         COUNT(*)      FILTER (WHERE LOWER(status) = 'cancelled')::int   AS cancelled_orders,
         COALESCE(SUM(total_amount) FILTER (WHERE LOWER(status) = 'cancelled'), 0)::float AS cancelled_revenue
       FROM orders
-      WHERE 1=1 ${dw}
+      WHERE 1=1 ${dw} ${tw}
     `),
 
     // 2. Marketplace × Status (~20 rows)
@@ -145,7 +147,7 @@ export async function fetchDashboardAggregated(
         COUNT(*)::int AS order_count,
         COALESCE(SUM(total_amount), 0)::float AS revenue
       FROM orders
-      WHERE 1=1 ${dw}
+      WHERE 1=1 ${dw} ${tw}
       GROUP BY marketplace, LOWER(status)
       ORDER BY revenue DESC
     `),
@@ -159,7 +161,7 @@ export async function fetchDashboardAggregated(
         COALESCE(SUM(total_amount), 0)::float AS revenue,
         COALESCE(AVG(total_amount), 0)::float AS avg_ticket
       FROM orders
-      WHERE 1=1 ${dw}
+      WHERE 1=1 ${dw} ${tw}
       GROUP BY month, LOWER(status)
       ORDER BY month, LOWER(status)
     `),

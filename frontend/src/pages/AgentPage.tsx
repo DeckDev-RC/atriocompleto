@@ -5,11 +5,13 @@ import {
   Sparkles,
   MoreHorizontal,
   Activity,
+  AlertCircle,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../contexts/AppContext';
 import { agentApi } from '../services/agentApi';
 import { AgentMessage, AgentInput, AgentHistory } from '../components/Agent';
+import { useAuth } from '../contexts/AuthContext';
 
 /* ===== Types ===== */
 
@@ -44,8 +46,10 @@ const SUGGESTIONS = [
 
 export function AgentPage() {
   const navigate = useNavigate();
-  const { theme, sidebarCollapsed, setSidebarCollapsed } = useApp();
+  const { sidebarCollapsed, setSidebarCollapsed } = useApp();
+  const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
+  const hasTenant = !!user?.tenant_id;
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -214,7 +218,7 @@ export function AgentPage() {
           </button>
 
           <div className="flex items-center gap-2.5 flex-1 min-w-0">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-accent-deep shadow-sm">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-linear-to-br from-accent to-accent-deep shadow-sm">
               <Sparkles size={15} className="text-white" strokeWidth={2} />
             </div>
             <div className="min-w-0">
@@ -248,6 +252,7 @@ export function AgentPage() {
               onPromptClick={(prompt) => handleSend(prompt)}
               onHealthCheck={handleHealthCheck}
               isConnected={isConnected}
+              hasTenant={hasTenant}
             />
           ) : (
             <div className="mx-auto max-w-[960px] px-4 lg:px-8">
@@ -283,7 +288,7 @@ export function AgentPage() {
         </div>
 
         {/* Input */}
-        <AgentInput onSend={handleSend} disabled={loading} />
+        <AgentInput onSend={handleSend} disabled={loading || !hasTenant} />
       </div>
     </div>
   );
@@ -295,16 +300,18 @@ function EmptyState({
   onPromptClick,
   onHealthCheck,
   isConnected,
+  hasTenant,
 }: {
   onPromptClick: (text: string) => void;
   onHealthCheck: () => void;
   isConnected: boolean | null;
+  hasTenant: boolean;
 }) {
   return (
     <div className="flex h-full flex-col items-center justify-center px-6 py-12">
       {/* Icon */}
       <div
-        className="mb-6 flex h-[72px] w-[72px] items-center justify-center rounded-[22px] bg-gradient-to-br from-accent/15 to-accent-deep/8 shadow-[0_8px_32px_rgba(56,182,255,0.12)]"
+        className="mb-6 flex h-[72px] w-[72px] items-center justify-center rounded-[22px] bg-linear-to-br from-accent/15 to-accent-deep/8 shadow-[0_8px_32px_rgba(56,182,255,0.12)]"
         style={{ animation: 'scale-in 0.5s cubic-bezier(0.16,1,0.3,1) both' }}
       >
         <Brain size={34} className="text-accent" strokeWidth={1.5} />
@@ -323,10 +330,19 @@ function EmptyState({
         Seu assistente de análise de dados e-commerce. Pergunte sobre pedidos, vendas, faturamento e marketplaces.
       </p>
 
+      {!hasTenant && (
+        <div className="mb-8 flex items-center gap-3 rounded-2xl bg-warning/10 px-6 py-4 text-[13px] text-warning border border-warning/20 max-w-[420px]" style={{ animation: 'slide-up 0.5s cubic-bezier(0.16,1,0.3,1) 0.18s both' }}>
+          <AlertCircle size={20} className="shrink-0" />
+          <p className="font-medium text-left">
+            Vincule uma empresa ao seu perfil para começar a usar o Optimus.
+          </p>
+        </div>
+      )}
+
       {/* Health Check CTA */}
       <button
         onClick={onHealthCheck}
-        disabled={!isConnected}
+        disabled={!isConnected || !hasTenant}
         className="mb-6 flex items-center gap-2 rounded-full border border-accent/30 bg-accent/5 px-5 py-2.5 text-[13px] font-semibold text-accent transition-all duration-300 hover:bg-accent hover:text-white hover:shadow-[0_4px_20px_rgba(56,182,255,0.2)] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
         style={{ animation: 'slide-up 0.5s cubic-bezier(0.16,1,0.3,1) 0.2s both' }}
       >

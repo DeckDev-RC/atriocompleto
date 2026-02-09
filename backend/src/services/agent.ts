@@ -10,11 +10,11 @@ let cachedMetadata: { statuses: string[]; marketplaces: string[] } | null = null
 let metadataCachedAt = 0;
 const METADATA_TTL = 5 * 60 * 1000;
 
-async function getMetadata() {
+async function getMetadata(tenantId?: string) {
   const now = Date.now();
   if (cachedMetadata && now - metadataCachedAt < METADATA_TTL) return cachedMetadata;
   try {
-    cachedMetadata = await getDistinctValues();
+    cachedMetadata = await getDistinctValues(tenantId);
     metadataCachedAt = now;
     console.log("[Agent] Metadata:", JSON.stringify(cachedMetadata));
   } catch (err) {
@@ -229,8 +229,8 @@ const functionDeclarations: FunctionDeclaration[] = [
 ];
 
 // ── System Prompt ───────────────────────────────────────
-async function buildSystemPrompt(): Promise<string> {
-  const meta = await getMetadata();
+async function buildSystemPrompt(tenantId?: string): Promise<string> {
+  const meta = await getMetadata(tenantId);
   const sList = meta.statuses.map((s) => '"' + s + '"').join(", ") || "N/A";
   const mList = meta.marketplaces.map((m) => '"' + m + '"').join(", ") || "N/A";
 
@@ -425,10 +425,12 @@ function buildHistory(messages: ChatMessage[]): Content[] {
   }));
 }
 
-async function executeAdHocSQL(sql: string): Promise<unknown> {
+async function executeAdHocSQL(sql: string, tenantId?: string): Promise<unknown> {
   const result = sanitizeSQL(sql);
   if (!result.valid) return { error: result.error };
-  const { data, error } = await supabase.rpc("execute_readonly_query", { query_text: result.query });
+  const rpcParams: Record<string, unknown> = { query_text: result.query };
+  if (tenantId) rpcParams.p_tenant_id = tenantId;
+  const { data, error } = await supabase.rpc("execute_readonly_query", rpcParams);
   if (error) return { error: "Erro: " + error.message };
   return { data, row_count: Array.isArray(data) ? data.length : 0 };
 }
@@ -895,14 +897,15 @@ function calculateCost(inputTokens: number, outputTokens: number): number {
 // ── Main Agent ──────────────────────────────────────────
 export async function processMessage(
   userMessage: string,
-  conversationHistory: ChatMessage[]
+  conversationHistory: ChatMessage[],
+  tenantId?: string
 ): Promise<ProcessMessageResult> {
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
 
   try {
     const history = buildHistory(conversationHistory);
-    const systemPrompt = await buildSystemPrompt();
+    const systemPrompt = await buildSystemPrompt(tenantId);
 
     const response = await genai.models.generateContent({
       model: GEMINI_MODEL,
@@ -933,9 +936,9 @@ export async function processMessage(
       let fnResult: unknown;
       try {
         if (name === "executeSQLQuery" && args?.sql) {
-          fnResult = await executeAdHocSQL(args.sql as string);
+          fnResult = await executeAdHocSQL(args.sql as string, tenantId);
         } else if (name && queryFunctions[name]) {
-          fnResult = await queryFunctions[name](args as QueryParams);
+          fnResult = await queryFunctions[name]({ ...args, _tenant_id: tenantId } as QueryParams);
         } else {
           fnResult = { error: "Funcao nao encontrada: " + name };
         }

@@ -23,6 +23,8 @@ interface AppContextValue {
   /* Theme */
   theme: Theme;
   toggleTheme: () => void;
+  themeColor: 'blue' | 'pink';
+  setThemeColor: (color: 'blue' | 'pink') => void;
 
   /* Loading */
   loading: boolean;
@@ -58,6 +60,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
+
+  /* Theme Color */
+  const [themeColor, setThemeColor] = useState<'blue' | 'pink'>(() => {
+    if (typeof window === 'undefined') return 'blue';
+    return (localStorage.getItem('agregar-theme-color') as 'blue' | 'pink') || 'blue';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme-color', themeColor);
+    localStorage.setItem('agregar-theme-color', themeColor);
+  }, [themeColor]);
 
   /* Persiste collapsed */
   useEffect(() => {
@@ -102,6 +115,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSidebarCollapsed,
         theme,
         toggleTheme,
+        themeColor,
+        setThemeColor,
         loading,
       }}
     >

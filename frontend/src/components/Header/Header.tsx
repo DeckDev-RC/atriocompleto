@@ -1,12 +1,18 @@
-import { Search, Menu, Moon, Sun, Bell } from 'lucide-react';
+import { Search, Menu, Moon, Sun, Bell, Palette } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
 
 interface HeaderProps {
+  title?: string;
+  subtitle?: string;
   children?: React.ReactNode;
 }
 
-export function Header({ children }: HeaderProps) {
-  const { toggleSidebar, theme, toggleTheme } = useApp();
+export function Header({
+  title = 'Dashboard',
+  subtitle = 'Visão geral da sua operação',
+  children,
+}: HeaderProps) {
+  const { toggleSidebar, theme, toggleTheme, themeColor, setThemeColor } = useApp();
 
   return (
     <header className="flex h-[56px] items-center justify-between mb-8">
@@ -22,19 +28,21 @@ export function Header({ children }: HeaderProps) {
 
         <div>
           <h1 className="text-[26px] font-bold tracking-[-0.03em] text-primary leading-tight">
-            Dashboard
+            {title}
           </h1>
           <p className="text-[13px] text-muted font-normal tracking-[-0.01em]">
-            Visão geral da sua operação
+            {subtitle}
           </p>
         </div>
       </div>
 
+      {/* Middle — Children (e.g. Filters) */}
+      <div className="flex-1 flex justify-center px-4">
+        {children}
+      </div>
+
       {/* Right */}
       <div className="flex items-center gap-2">
-        {/* Slot for extra controls (e.g. PeriodFilter) */}
-        {children}
-
         {/* Search */}
         <div className="relative max-sm:hidden">
           <Search
@@ -53,6 +61,20 @@ export function Header({ children }: HeaderProps) {
         <button className="relative flex h-9 w-9 items-center justify-center rounded-full text-secondary transition-all duration-200 hover:bg-card hover:text-primary hover:shadow-soft active:scale-95">
           <Bell size={18} strokeWidth={2} />
           <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-accent ring-2 ring-body" />
+        </button>
+
+        {/* Palette toggle */}
+        <button
+          onClick={() => setThemeColor(themeColor === 'blue' ? 'pink' : 'blue')}
+          aria-label="Alternar paleta de cores"
+          className="flex h-9 w-9 items-center justify-center rounded-full text-secondary transition-all duration-300 hover:bg-card hover:text-primary hover:shadow-soft active:scale-95"
+          title={themeColor === 'blue' ? 'Usar tema Rosa' : 'Usar tema Azul'}
+        >
+          <Palette
+            size={18}
+            strokeWidth={2}
+            className={themeColor === 'pink' ? 'text-accent' : ''}
+          />
         </button>
 
         {/* Theme toggle */}

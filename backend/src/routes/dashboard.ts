@@ -1,8 +1,12 @@
 import { Router, Request, Response } from "express";
 import { fetchDashboardAggregated, DashboardParams } from "../services/dashboard";
 import { getMarketplaceInfo } from "../config/marketplace";
+import { requireAuth } from "../middleware/auth";
 
 const router = Router();
+
+// All dashboard routes require authentication
+router.use(requireAuth);
 
 // ── Helpers ────────────────────────────────────────────
 
@@ -48,7 +52,27 @@ function buildParams(query: Record<string, unknown>): DashboardParams {
 router.get("/summary", async (req: Request, res: Response) => {
   try {
     const params = buildParams(req.query as Record<string, unknown>);
-    const agg = await fetchDashboardAggregated(params);
+    const tenantId = req.user!.tenant_id;
+
+    if (!tenantId) {
+      return res.json({
+        success: true,
+        data: {
+          banner: { totalRevenue: 0, trendPct: 0, channels: [] },
+          orderDistribution: [],
+          monthlyRevenue: [],
+          stats: {
+            totalOrders: { value: 0, change: 0 },
+            avgTicket: { value: 0, change: 0 },
+            cancellationRate: { value: 0, change: 0 },
+          },
+          insights: { avgTicket: 0, cancellationRate: 0, paidPct: 0, momTrend: 0 },
+          period: params.all_time ? "all" : { start: params.start_date || "", end: params.end_date || "" },
+        },
+      });
+    }
+
+    const agg = await fetchDashboardAggregated(params, tenantId);
 
     // ── Banner (somente pagos) ────────────────────────
     const paidTotal = Object.values(agg.paidByMkt).reduce((s, v) => s + v, 0);

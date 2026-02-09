@@ -10,17 +10,22 @@ import {
   startNewConversation,
 } from "../services/conversation";
 import { ChatMessage } from "../types";
+import { requireAuth } from "../middleware/auth";
 
 const router = Router();
 
-// Usuário padrão enquanto não há sistema de autenticação
-const DEFAULT_USER_ID = "default-user";
+// All chat routes require authentication
+router.use(requireAuth);
 
 // ── GET /api/chat/health-check ──────────────────────────
 // Executa healthCheck diretamente sem Gemini — rápido e sem custo de tokens
-router.get("/health-check", async (_req: Request, res: Response) => {
+router.get("/health-check", async (req: Request, res: Response) => {
   try {
-    const result = await queryFunctions.healthCheck({});
+    const tenantId = req.user!.tenant_id;
+    if (!tenantId) {
+      return res.status(403).json({ success: false, error: "Vincule uma empresa para usar o diagnóstico rápido." });
+    }
+    const result = await queryFunctions.healthCheck({ _tenant_id: tenantId } as unknown as Record<string, unknown>);
     const r = result as {
       alerts: Array<{ type: string; message: string }>;
       summary: Record<string, unknown> | null;
@@ -62,13 +67,18 @@ router.post("/message", async (req: Request, res: Response) => {
       return;
     }
 
-    const userId = DEFAULT_USER_ID;
+    const userId = req.user!.id;
+    const tenantId = req.user!.tenant_id;
     const { message } = parsed.data;
+
+    if (!tenantId) {
+      return res.status(403).json({ success: false, error: "Vincule uma empresa para usar o chat." });
+    }
 
     // Get or create conversation
     const conversation = parsed.data.conversation_id
       ? { id: parsed.data.conversation_id, messages: [] as ChatMessage[], user_id: userId, created_at: "", updated_at: "" }
-      : await getOrCreateConversation(userId);
+      : await getOrCreateConversation(userId, tenantId || undefined);
 
     // Fetch full conversation if ID was provided
     let history: ChatMessage[] = conversation.messages || [];
@@ -87,7 +97,7 @@ router.post("/message", async (req: Request, res: Response) => {
     await addMessage(conversation.id, userMsg);
 
     // Process with AI agent
-    const aiResult = await processMessage(message, history);
+    const aiResult = await processMessage(message, history, tenantId || undefined);
 
     // Save assistant message
     const assistantMsg: ChatMessage = {
@@ -118,7 +128,13 @@ router.post("/message", async (req: Request, res: Response) => {
 // ── GET /api/chat/history ───────────────────────────────
 router.get("/history", async (req: Request, res: Response) => {
   try {
-    const userId = DEFAULT_USER_ID;
+    const userId = req.user!.id;
+    const tenantId = req.user!.tenant_id;
+
+    if (!tenantId) {
+      return res.json({ success: true, data: [] });
+    }
+
     const conversations = await getConversationHistory(userId);
 
     res.json({
@@ -134,8 +150,14 @@ router.get("/history", async (req: Request, res: Response) => {
 // ── POST /api/chat/new ──────────────────────────────────
 router.post("/new", async (req: Request, res: Response) => {
   try {
-    const userId = DEFAULT_USER_ID;
-    const conversation = await startNewConversation(userId);
+    const userId = req.user!.id;
+    const tenantId = req.user!.tenant_id;
+
+    if (!tenantId) {
+      return res.status(403).json({ success: false, error: "Vincule uma empresa para iniciar novas conversas." });
+    }
+
+    const conversation = await startNewConversation(userId, tenantId);
 
     res.json({
       success: true,
@@ -150,7 +172,8 @@ router.post("/new", async (req: Request, res: Response) => {
 // ── DELETE /api/chat/:id ────────────────────────────────
 router.delete("/:id", async (req: Request, res: Response) => {
   try {
-    const userId = DEFAULT_USER_ID;
+    const userId = req.user!.id;
+    const tenantId = req.user!.tenant_id;
     const conversationId = req.params.id as string;
 
     await clearConversation(conversationId, userId);

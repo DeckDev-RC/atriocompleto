@@ -13,6 +13,7 @@ import { PeriodFilter } from '../components/PeriodFilter';
 import { OrderDistributionChart, MonthlyRevenueChart } from '../components/Charts';
 import { SkeletonBanner, SkeletonCard } from '../components/Skeleton';
 import { useDashboard } from '../hooks/useDashboard';
+import { useAuth } from '../contexts/AuthContext';
 
 // ── Formatação ─────────────────────────────────────
 
@@ -38,6 +39,8 @@ function fmtPct(value: number): string {
 export function DashboardPage() {
   const { data, loading, error, period, setPeriod, customStart, customEnd, setDateRange } =
     useDashboard();
+  const { user } = useAuth();
+  const hasTenant = !!user?.tenant_id;
 
   return (
     <div className="p-7 max-md:p-5 max-sm:p-4">
@@ -77,6 +80,17 @@ export function DashboardPage() {
               <SkeletonCard />
             </section>
           </>
+        ) : !hasTenant ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/10 text-accent">
+              <AlertCircle size={32} />
+            </div>
+            <h2 className="text-xl font-bold text-primary mb-2">Configure sua Empresa</h2>
+            <p className="text-muted max-w-md mx-auto">
+              Seu perfil ainda não está vinculado a nenhuma empresa.
+              Vincule uma empresa na seção de Administração para visualizar seus dados de venda aqui.
+            </p>
+          </div>
         ) : data ? (
           <>
             <Banner
@@ -158,9 +172,8 @@ function MiniStatCard({ title, value, change, icon: Icon, invertTrend, subtitle 
         </div>
         {hasChange && (
           <div
-            className={`flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-              isGood ? 'bg-success/10 text-success' : 'bg-shopee/10 text-shopee'
-            }`}
+            className={`flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold ${isGood ? 'bg-success/10 text-success' : 'bg-shopee/10 text-shopee'
+              }`}
           >
             {isPositiveChange ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
             {change > 0 ? '+' : ''}
@@ -237,7 +250,7 @@ function QuickInsights({ avgTicket, cancellationRate, paidPct, momTrend }: Quick
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-border">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-accent to-accent-deep transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                className="h-full rounded-full bg-linear-to-r from-accent to-accent-deep transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]"
                 style={{ width: `${item.bar}%` }}
               />
             </div>
