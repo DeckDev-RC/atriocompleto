@@ -278,7 +278,7 @@ router.put("/users/:id", async (req: Request, res: Response) => {
     }
 
     // Update auth metadata too to keep it in sync
-    await supabase.auth.admin.updateUserById(req.params.id, {
+    await supabase.auth.admin.updateUserById(req.params.id as string, {
       user_metadata: {
         full_name: parsed.data.full_name,
         role: parsed.data.role,
@@ -305,7 +305,7 @@ router.delete("/users/:id", async (req: Request, res: Response) => {
     }
 
     // Delete from Supabase Auth (cascade deletes profile via FK)
-    const { error } = await supabase.auth.admin.deleteUser(userId);
+    const { error } = await supabase.auth.admin.deleteUser(userId as string);
 
     if (error) {
       res.status(400).json({ success: false, error: error.message });
@@ -332,7 +332,7 @@ router.post("/users/:id/reset-password", async (req: Request, res: Response) => 
       return;
     }
 
-    const { error } = await supabase.auth.admin.updateUserById(req.params.id, {
+    const { error } = await supabase.auth.admin.updateUserById(req.params.id as string, {
       password: parsed.data.password,
     });
 
