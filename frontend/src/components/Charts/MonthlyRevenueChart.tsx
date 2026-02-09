@@ -24,10 +24,12 @@ interface MonthlyRevenueChartProps {
 
 // ── Helpers ────────────────────────────────────────
 
+// ── Helpers ────────────────────────────────────────
+
 function formatValue(val: number): string {
   if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`;
   if (val >= 1_000) return `${(val / 1_000).toFixed(1)}k`;
-  return String(Math.round(val));
+  return val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 interface CustomLabelProps {
@@ -66,7 +68,7 @@ function CustomTooltip({ active, payload, label }: {
       <p className="font-semibold text-primary capitalize">{label}</p>
       {payload.map((p) => (
         <p key={p.dataKey} className="text-secondary mt-0.5">
-          {p.dataKey === 'paid' ? 'Pagos' : 'Cancelados'}: {formatValue(p.value)}
+          {p.dataKey === 'paid' ? 'Pagos' : 'Cancelados'}: {p.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
         </p>
       ))}
     </div>

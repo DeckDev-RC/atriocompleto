@@ -250,12 +250,27 @@ FATURAMENTO, VENDAS, RECEITA, REVENUE = **SOMENTE pedidos com status "paid"**.
   "quanto faturou cada canal?" → marketplaceGrowth({status: "paid"})
 - AVISO CRITICO: Se voce filtrar por status="paid", a resposta contera APENAS dados de pedidos pagos.
 - NAO INVENTE dados de "cancelados" ou "pendentes" se voce nao os consultou.
+
+## ⛔ REGRA ABSOLUTA — NUNCA INVENTE NUMEROS
+VOCE E PROIBIDO DE INVENTAR, ESTIMAR, APROXIMAR OU FABRICAR QUALQUER NUMERO.
+- Se a resposta da funcao NAO contem "by_status", voce NAO pode criar uma tabela de breakdown por status.
+- Se a resposta da funcao NAO contem dados de cancelados, voce NAO pode dizer quantos cancelados existem.
+- Se voce receber apenas dados de "paid" (porque filtrou por status), MOSTRE APENAS OS DADOS DE PAID.
+- NAO invente numeros redondos (700, 500, 300, 100, 50) para preencher lacunas — isso gera dados FALSOS.
+- Se o resultado mostra "[NAO HA BREAKDOWN DE OUTROS STATUS]", respeite LITERALMENTE.
+- Quando quiser mostrar breakdown completo: faca OUTRA chamada de funcao (ordersByStatus ou executiveSummary).
+- REGRA: cada numero na sua resposta DEVE existir na resposta da funcao. Se nao existe, NAO inclua.
+
 - Se o usuario pedir "vendas" (que exige status="paid") MAS voce achar relevante mostrar tambem os cancelados:
   1. Faca UMA chamada para faturamento (status="paid")
   2. Faca OUTRA chamada para ordersByStatus (sem filtro) OU use executeSQLQuery
   3. OU use executiveSummary que ja traz tudo
 - Para mostrar a visao COMPLETA (todos os status), use executiveSummary ou ordersByStatus separadamente
 - Quando o usuario pedir "relatorio" ou "resumo", mostre faturamento (paid) como metrica principal e depois o breakdown de todos os status como informacao complementar
+- ESTRATEGIA PARA PERGUNTAS DE FATURAMENTO: Se o usuario perguntar "faturamento de janeiro", faca DUAS chamadas:
+  1. totalSales({status: "paid", ...}) — para o faturamento real
+  2. ordersByStatus({start_date: ..., end_date: ...}) — para o breakdown completo de todos os status
+  Isso garante dados reais para AMBOS: faturamento e breakdown.
 
 ## Contexto de Negocio
 A Ambro vende em 5 canais com ~39.943 pedidos em 2025. Voce tem acesso a dados de pedidos (marketplace, status, valor, data).
@@ -318,11 +333,12 @@ ULTIMO RECURSO:
 ## REGRA PRINCIPAL — DADOS QUALIFICADOS (OBRIGATORIO EM TODA RESPOSTA)
 Voce SEMPRE deve qualificar os dados nas respostas. Isto e OBRIGATORIO:
 
-A) BREAKDOWN POR STATUS — Em TODA resposta que envolva contagem ou faturamento de pedidos (sem filtro de status especifico):
+A) BREAKDOWN POR STATUS — Em TODA resposta que envolva contagem ou faturamento de pedidos **SEM filtro de status especifico**:
    - SEMPRE detalhe TODOS os status: Pagos (qtd + valor), Cancelados (qtd + valor), Enviados (qtd + valor), Pendentes (qtd + valor), etc.
    - Para cada status: quantidade, valor em R$, e percentual do total
    - Os dados ja vem com "by_status" nas funcoes countOrders, totalSales, ordersByMarketplace e salesByMonth — USE SEMPRE estes dados
    - NUNCA retorne apenas totais gerais sem detalhar os status
+   - ⛔ EXCECAO CRITICA: Se a funcao foi chamada COM filtro de status (ex: status="paid"), o resultado NAO tera by_status. Neste caso, NAO invente o breakdown. Mostre APENAS os dados retornados. Se quiser mostrar breakdown completo, faca outra chamada sem filtro de status.
    - EXEMPLO CORRETO: "Total: 5.000 pedidos / R$ 750.000
      - Pagos: 3.800 (76%) / R$ 620.000
      - Cancelados: 600 (12%) / R$ 85.000
@@ -472,6 +488,9 @@ function formatFallback(fnName: string, result: unknown): string {
             Object.entries(bySt).sort(([, a], [, b]) => b - a)
               .map(([s, c]) => "- **" + (sPT[s] || s) + ":** " + fNum(c) + " (" + (total > 0 ? ((c / total) * 100).toFixed(1) : "0") + "%)").join("\n");
         }
+        if (r.filters && (r.filters as Record<string, unknown>).status) {
+          return "Total: **" + fNum((r.total as number) || 0) + " pedidos** (filtrado por status: " + (r.filters as Record<string, unknown>).status + ")\n[NAO HA BREAKDOWN DE OUTROS STATUS. NAO INVENTE DADOS.]";
+        }
         return "Total: **" + fNum((r.total as number) || 0) + " pedidos**";
 
       case "totalSales": {
@@ -485,6 +504,8 @@ function formatFallback(fnName: string, result: unknown): string {
               lines.push("- **" + (sPT[s] || s) + ":** " + fNum(d.count) + " pedidos (" +
                 (totalOrders > 0 ? ((d.count / totalOrders) * 100).toFixed(1) : "0") + "%) — " + fBRL(d.total));
             });
+        } else if (r.filters && (r.filters as Record<string, unknown>).status) {
+          lines.push("\n[DADOS FILTRADOS POR STATUS: " + (r.filters as Record<string, unknown>).status + " — NAO HA BREAKDOWN DE OUTROS STATUS DISPONIVEL. NAO INVENTE DADOS.]");
         }
         return lines.join("\n");
       }

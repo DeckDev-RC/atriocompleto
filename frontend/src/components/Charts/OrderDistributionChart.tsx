@@ -48,7 +48,7 @@ export function OrderDistributionChart({ data }: OrderDistributionChartProps) {
   // Compute dynamic Y-axis ticks
   const maxVal = Math.max(...data.map((d) => d.value), 0);
   const ceiling = Math.ceil(maxVal / 100) * 100 + 100;
-  const step = Math.max(Math.round(ceiling / 5 / 100) * 100, 100);
+  const step = Math.ceil(ceiling / 5 / 10) * 10;
   const ticks = Array.from({ length: 6 }, (_, i) => i * step).filter((t) => t <= ceiling);
 
   return (
