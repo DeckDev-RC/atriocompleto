@@ -60,7 +60,7 @@ export function OrderDistributionChart({ data }: OrderDistributionChartProps) {
         <span className="text-[11px] font-medium text-muted">Por canal</span>
       </div>
       <div className="flex items-start gap-6 max-sm:flex-col">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 w-full">
           <ResponsiveContainer width="100%" height={200}>
             <BarChart
               data={data}

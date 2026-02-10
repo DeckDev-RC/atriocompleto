@@ -59,7 +59,7 @@ export function StarryBackground() {
         }
 
         const init = () => {
-            canvas.width = window.innerWidth;
+            canvas.width = document.documentElement.clientWidth;
             canvas.height = window.innerHeight;
 
             // Responsive particle count

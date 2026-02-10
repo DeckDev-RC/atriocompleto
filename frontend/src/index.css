@@ -196,32 +196,32 @@
     line-height: 1.5;
     letter-spacing: -0.011em;
     background:
-      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(56, 182, 255, 0.03), transparent),
-      radial-gradient(ellipse 50% 40% at 0% 0%, rgba(62, 93, 111, 0.02), transparent),
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(56, 182, 255, 0.03), rgba(56, 182, 255, 0)),
+      radial-gradient(ellipse 50% 40% at 0% 0%, rgba(62, 93, 111, 0.02), rgba(62, 93, 111, 0)),
       var(--color-body);
     background-attachment: fixed;
   }
 
   [data-theme='dark'] body {
     background:
-      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(56, 182, 255, 0.04), transparent),
-      radial-gradient(ellipse 60% 40% at 100% 0%, rgba(62, 93, 111, 0.06), transparent),
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(56, 182, 255, 0.04), rgba(56, 182, 255, 0)),
+      radial-gradient(ellipse 60% 40% at 100% 0%, rgba(62, 93, 111, 0.06), rgba(62, 93, 111, 0)),
       var(--color-body);
     background-attachment: fixed;
   }
 
   [data-theme-color='pink'] body {
     background:
-      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(208, 46, 149, 0.03), transparent),
-      radial-gradient(ellipse 50% 40% at 0% 0%, rgba(228, 133, 193, 0.02), transparent),
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(208, 46, 149, 0.03), rgba(208, 46, 149, 0)),
+      radial-gradient(ellipse 50% 40% at 0% 0%, rgba(228, 133, 193, 0.02), rgba(228, 133, 193, 0)),
       var(--color-body);
     background-attachment: fixed;
   }
 
   [data-theme='dark'][data-theme-color='pink'] body {
     background:
-      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(208, 46, 149, 0.04), transparent),
-      radial-gradient(ellipse 60% 40% at 100% 0%, rgba(228, 133, 193, 0.06), transparent),
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(208, 46, 149, 0.04), rgba(208, 46, 149, 0)),
+      radial-gradient(ellipse 60% 40% at 100% 0%, rgba(228, 133, 193, 0.06), rgba(228, 133, 193, 0)),
       var(--color-body);
     background-attachment: fixed;
   }
