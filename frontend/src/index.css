@@ -10,8 +10,9 @@
   --color-card: #ffffff;
   --color-card-hover: #f8f9fb;
   --color-primary: #1a1c24;
-  --color-secondary: #545869;
-  --color-muted: #9498a8;
+  /* textos cinza mais escuros no light mode */
+  --color-secondary: #3b3f52;
+  --color-muted: #6f7383;
   --color-accent: #38b6ff;
   --color-accent-deep: #3a81aa;
   --color-accent-muted: #3e5d6f;
@@ -42,8 +43,9 @@
   --color-card: #111318;
   --color-card-hover: #181a22;
   --color-primary: #eaebf0;
-  --color-secondary: #b4b6c3;
-  --color-muted: #9ca3af;
+  /* textos cinza mais claros no dark mode */
+  --color-secondary: #c7cad8;
+  --color-muted: #adb3c4;
   --color-accent: #4bbdff;
   --color-accent-deep: #3a81aa;
   --color-accent-muted: #3e5d6f;

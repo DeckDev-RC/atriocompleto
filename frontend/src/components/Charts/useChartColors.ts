@@ -15,8 +15,9 @@ export function useChartColors() {
       mutedColor: isDark ? '#4a4c5e' : '#9498a8',
       secondaryColor: isDark ? '#8b8d9e' : '#545869',
       primaryColor: isDark ? '#e8e9ed' : '#1a1c24',
-      darkBarColor: isDark ? '#4a4c5e' : '#3e5d6f',
+      darkBarColor: isDark ? '#8b8d9e' : '#3e5d6f', // Mais claro no dark mode para ser visível
       accentColor: isDark ? '#4bbdff' : '#38b6ff',
+      labelColor: isDark ? '#ffffff' : '#1a1c24', // Branco no dark mode, escuro no light mode
     };
   }, [theme]);
 }

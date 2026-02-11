@@ -1,5 +1,7 @@
 import { MarketplaceIcon } from './MarketplaceIcon';
 import type { DashboardChannel } from '../../hooks/useDashboard';
+import { useApp } from '../../contexts/AppContext';
+import aguaImg from '../../assets/img-agua.jpg';
 
 // ── Formatação ─────────────────────────────────────
 
@@ -24,15 +26,29 @@ interface BannerProps {
 }
 
 export function Banner({ totalRevenue, channels }: BannerProps) {
+  const { theme } = useApp();
+  const isDark = theme === 'dark';
+
   return (
     <div className="relative mb-16 w-full overflow-visible rounded-2xl max-md:mb-20 max-sm:mb-4">
-      {/* Gradient background */}
+      {/* Image background - usando parte superior (0-40% da altura da imagem) */}
       <div
-        className="absolute inset-0 rounded-2xl"
+        className="absolute inset-0 rounded-[22px]"
         style={{
-          background: 'linear-gradient(135deg, #1c2a33 0%, #3e5d6f 35%, #3a81aa 70%, #38b6ff 100%)',
+          backgroundImage: `url(${aguaImg})`,
+          backgroundSize: 'cover',
+          backgroundPosition: '100% 5%', // Centralizado horizontalmente, alinhado ao topo verticalmente
+          backgroundRepeat: 'no-repeat',
+          backgroundColor: isDark ? 'transparent' : 'lightgray',
+          mixBlendMode: isDark ? 'normal' : 'plus-darker',
+          imageRendering: 'auto',
+          WebkitBackfaceVisibility: 'hidden',
+          backfaceVisibility: 'hidden',
+          transform: 'translateZ(0)',
         }}
       />
+      {/* Dark overlay */}
+      <div className="absolute inset-0 rounded-[22px] bg-black/30 dark:bg-black/20" />
       {/* Glow accents */}
       <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-accent/20 dark:bg-accent/30 blur-[70px]" />
       <div className="pointer-events-none absolute -bottom-8 -left-8 h-36 w-36 rounded-full bg-accent-muted/20 dark:bg-accent/15 blur-[50px]" />
@@ -43,9 +59,6 @@ export function Banner({ totalRevenue, channels }: BannerProps) {
           <h2 className="text-[22px] font-bold tracking-[-0.02em] text-white leading-tight">
             Distribuição de Vendas
           </h2>
-          <p className="mt-1 text-[13px] font-normal text-white/50">
-            Visão consolidada de todas as plataformas
-          </p>
         </div>
 
         {/* Metric cards */}
@@ -77,7 +90,9 @@ export function Banner({ totalRevenue, channels }: BannerProps) {
                     {ch.percentage.toFixed(1)}% do total
                   </span>
                 </div>
-                <MarketplaceIcon type={ch.iconType} />
+                <div className="-mt-3 -mr-3">
+                  <MarketplaceIcon type={ch.iconType} />
+                </div>
               </div>
             </div>
           ))}

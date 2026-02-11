@@ -40,21 +40,23 @@ interface CustomLabelProps {
   fill?: string;
 }
 
-function TopLabel({ x = 0, y = 0, width = 0, value = 0, fill = '#181818' }: CustomLabelProps) {
-  if (!value) return null;
-  return (
-    <text
-      x={x + width / 2}
-      y={y - 8}
-      textAnchor="middle"
-      fontSize={10}
-      fontWeight={600}
-      fill={fill}
-      letterSpacing="-0.02em"
-    >
-      {formatValue(value)}
-    </text>
-  );
+function createTopLabel(labelColor: string) {
+  return function TopLabel({ x = 0, y = 0, width = 0, value = 0 }: CustomLabelProps) {
+    if (!value) return null;
+    return (
+      <text
+        x={x + width / 2}
+        y={y - 8}
+        textAnchor="middle"
+        fontSize={10}
+        fontWeight={600}
+        fill={labelColor}
+        letterSpacing="-0.02em"
+      >
+        {formatValue(value)}
+      </text>
+    );
+  };
 }
 
 function CustomTooltip({ active, payload, label }: {
@@ -78,7 +80,8 @@ function CustomTooltip({ active, payload, label }: {
 // ── Component ──────────────────────────────────────
 
 export function MonthlyRevenueChart({ data }: MonthlyRevenueChartProps) {
-  const { gridColor, secondaryColor, primaryColor, darkBarColor, accentColor } = useChartColors();
+  const { gridColor, secondaryColor, labelColor, darkBarColor, accentColor } = useChartColors();
+  const TopLabelComponent = createTopLabel(labelColor);
 
   return (
     <div className="rounded-2xl bg-card p-6 border border-border shadow-soft dark:shadow-dark-card transition-all duration-300 hover:shadow-soft-hover dark:hover:shadow-dark-hover min-h-[220px]">
@@ -108,9 +111,11 @@ export function MonthlyRevenueChart({ data }: MonthlyRevenueChartProps) {
               content={<CustomTooltip />}
               cursor={{ fill: 'rgba(0,0,0,0.02)', radius: 4 }}
             />
-            <Bar dataKey="cancelled" fill={darkBarColor} radius={[6, 6, 2, 2]} barSize={18} />
+            <Bar dataKey="cancelled" fill={darkBarColor} radius={[6, 6, 2, 2]} barSize={18}>
+              <LabelList dataKey="cancelled" content={<TopLabelComponent />} />
+            </Bar>
             <Bar dataKey="paid" fill={accentColor} radius={[6, 6, 2, 2]} barSize={18}>
-              <LabelList dataKey="paid" content={<TopLabel fill={primaryColor} />} />
+              <LabelList dataKey="paid" content={<TopLabelComponent />} />
             </Bar>
           </BarChart>
         </ResponsiveContainer>

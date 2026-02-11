@@ -83,14 +83,16 @@ export function PeriodFilter({
       {/* Trigger */}
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 rounded-full border border-border bg-body/60 backdrop-blur-sm py-2 pl-3.5 pr-3 text-[13px] text-primary tracking-[-0.01em] outline-none transition-all duration-200 cursor-pointer hover:border-accent/30 focus:border-accent/30 focus:ring-4 focus:ring-accent/8 focus:shadow-[0_0_20px_rgba(56,182,255,0.06)]"
+        className="flex items-center gap-2 rounded-full border border-accent/60 bg-card/95 dark:bg-[#151823] backdrop-blur-md py-2.5 pl-3.5 pr-3.5 text-[13px] font-medium text-primary tracking-[-0.01em] outline-none transition-all duration-200 cursor-pointer shadow-soft hover:bg-accent/5 hover:border-accent focus:border-accent focus:ring-4 focus:ring-accent/18 focus:shadow-[0_0_24px_rgba(75,189,255,0.25)]"
       >
-        <Calendar size={14} strokeWidth={2.2} className="text-muted shrink-0" />
-        <span className="max-w-[200px] truncate">{displayLabel}</span>
+        <Calendar size={14} strokeWidth={2.2} className="text-accent shrink-0" />
+        <span className="max-w-[200px] truncate text-secondary dark:text-[#e5e7f0]">
+          {displayLabel}
+        </span>
         <ChevronDown
           size={14}
           strokeWidth={2.2}
-          className={`text-muted shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          className={`text-accent shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
         />
       </button>
 

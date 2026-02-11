@@ -7,6 +7,7 @@ import {
   ResponsiveContainer,
   Cell,
   Tooltip,
+  LabelList,
 } from 'recharts';
 import { useChartColors } from './useChartColors';
 
@@ -43,13 +44,7 @@ function CustomTooltip({ active, payload }: {
 // ── Component ──────────────────────────────────────
 
 export function OrderDistributionChart({ data }: OrderDistributionChartProps) {
-  const { gridColor, mutedColor } = useChartColors();
-
-  // Compute dynamic Y-axis ticks
-  const maxVal = Math.max(...data.map((d) => d.value), 0);
-  const ceiling = Math.ceil(maxVal / 100) * 100 + 100;
-  const step = Math.ceil(ceiling / 5 / 10) * 10;
-  const ticks = Array.from({ length: 6 }, (_, i) => i * step).filter((t) => t <= ceiling);
+  const { gridColor, labelColor } = useChartColors();
 
   return (
     <div className="rounded-2xl bg-card p-6 border border-border shadow-soft dark:shadow-dark-card transition-all duration-300 hover:shadow-soft-hover dark:hover:shadow-dark-hover min-h-[220px]">
@@ -67,19 +62,19 @@ export function OrderDistributionChart({ data }: OrderDistributionChartProps) {
               margin={{ top: 8, right: 8, bottom: 0, left: -16 }}
             >
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
-              <YAxis
-                tick={{ fontSize: 11, fill: mutedColor }}
-                axisLine={false}
-                tickLine={false}
-                ticks={ticks}
-                domain={[0, ceiling]}
-              />
+              <YAxis hide />
               <XAxis hide />
               <Tooltip
                 content={<CustomTooltip />}
                 cursor={{ fill: 'rgba(0,0,0,0.02)', radius: 6 }}
               />
               <Bar dataKey="value" radius={[8, 8, 4, 4]} barSize={32}>
+                <LabelList
+                  dataKey="value"
+                  position="top"
+                  formatter={(v: number) => v.toLocaleString('pt-BR')}
+                  style={{ fontSize: 10, fontWeight: 600, fill: labelColor }}
+                />
                 {data.map((entry) => (
                   <Cell key={entry.name} fill={entry.color} />
                 ))}

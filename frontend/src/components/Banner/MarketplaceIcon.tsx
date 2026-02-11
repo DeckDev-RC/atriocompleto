@@ -7,7 +7,8 @@ import ambroImg from '../../assets/channels/ambro.png';
 
 export type IconType = 'bagy' | 'globe' | 'shopee' | 'shein' | 'ml' | 'store' | 'ambro' | 'default';
 
-const iconBase = 'flex h-10 w-10 shrink-0 items-center justify-center transition-transform duration-200 overflow-hidden rounded-xl';
+const iconBase = 'flex h-8 w-8 shrink-0 items-center justify-center transition-transform duration-200 overflow-hidden rounded-xl';
+const iconBaseLarge = 'flex h-10 w-10 shrink-0 items-center justify-center transition-transform duration-200 overflow-hidden rounded-xl';
 
 export function MarketplaceIcon({ type }: { type: string }) {
   switch (type as IconType) {
@@ -31,8 +32,10 @@ export function MarketplaceIcon({ type }: { type: string }) {
       );
     case 'ml':
       return (
-        <div className={`${iconBase} bg-white`}>
-          <img src={mlImg} alt="Mercado Livre" className="h-[80%] w-[80%] object-contain" />
+        <div className={iconBaseLarge}>
+          <div className="bg-white rounded-lg h-[85%] w-[85%] flex items-center justify-center">
+            <img src={mlImg} alt="Mercado Livre" className="h-[90%] w-[90%] object-contain" />
+          </div>
         </div>
       );
     case 'ambro':
