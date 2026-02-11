@@ -929,3 +929,107 @@
     opacity: 0;
   }
 }
+
+/* ===== LOGIN CARD MERGE ANIMATION (duas cartas empilhando = uma só) ===== */
+
+.login-card {
+  width: 100%;
+  transition: width 2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Durante a fusão: tamanho do card travado para não “esticar” */
+.login-card-inner {
+  display: flex;
+  flex-direction: column;
+  min-height: 600px;
+  width: 100%;
+  overflow: hidden;
+}
+
+.login-panel-left {
+  flex: 0 0 auto;
+  min-width: 0;
+  transition: flex 2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.login-panel-right {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  transition: flex 2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Fusão: duas cartas empilhando — direita por baixo, esquerda por cima, card vira tamanho de UMA caixa */
+.login-card--merging.login-card {
+  height: 600px;
+  min-height: 600px;
+  max-height: 600px;
+}
+
+.login-card--merging .login-card-inner {
+  position: relative;
+}
+
+.login-card--merging .login-panel-left {
+  flex: 1 1 100%;
+  z-index: 2;
+  position: relative;
+}
+
+.login-card--merging .login-panel-right {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: 0;
+  flex: none;
+  width: 100%;
+  z-index: 1;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (min-width: 768px) {
+  .login-card-inner {
+    flex-direction: row;
+    height: 600px;
+    min-height: 600px;
+    position: relative;
+  }
+
+  .login-panel-left {
+    flex: 0 0 45%;
+  }
+
+  .login-panel-right {
+    flex: 0 0 55%;
+  }
+
+  /* Desktop: card encolhe até tamanho de UMA caixa; direita por baixo (z-index 1), esquerda por cima (z-index 2) */
+  .login-card--merging.login-card {
+    width: 45%;
+    height: 600px;
+    min-height: 600px;
+    max-height: 600px;
+  }
+
+  .login-card--merging .login-panel-left {
+    flex: 1 1 100%;
+    min-width: 0;
+    z-index: 2;
+    position: relative;
+  }
+
+  .login-card--merging .login-panel-right {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 55%;
+    height: 100%;
+    flex: none;
+    z-index: 1;
+    left: auto;
+    opacity: 1;
+  }
+}

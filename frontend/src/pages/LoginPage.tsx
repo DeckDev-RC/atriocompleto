@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import logoLight from '../assets/logo-whitemode.png';
 // import logoDark from '../assets/logo-darkmode.png';
 import logotipoAtrio from '../assets/logotipo-atrio.png';
 import loginBackground from '../assets/loginpage-background.jpg';
+
+const MERGE_ANIMATION_MS = 2000;
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -12,18 +14,22 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [isMerging, setIsMerging] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
+    setIsMerging(true);
 
-    const result = await login(email, password);
+    const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const result = await Promise.all([login(email, password), delay(MERGE_ANIMATION_MS)]).then(
+      ([loginResult]) => loginResult as { success: boolean; error?: string }
+    );
+
+    setIsMerging(false);
     if (!result.success) {
       setError(result.error || 'Erro ao fazer login');
     }
-    setLoading(false);
   };
 
   return (
@@ -38,13 +44,20 @@ export function LoginPage() {
       }}
     >
 
-      <div className="w-full max-w-4xl mx-auto" style={{ animation: 'fade-in 0.5s cubic-bezier(0.16,1,0.3,1) both' }}>
+      <div
+        className="w-full max-w-4xl mx-auto flex justify-center"
+        style={{ animation: 'fade-in 0.5s cubic-bezier(0.16,1,0.3,1) both' }}
+      >
         {/* Main Card - Divided Layout */}
-        <div className="rounded-3xl bg-white shadow-2xl overflow-hidden border-3 border-white">
-          <div className="grid md:grid-cols-[45%_55%] min-h-[600px]">
-            {/* Left Section - Promotional */}
-            <div 
-              className="relative px-12 pt-12 pb-4 flex flex-col justify-between rounded-l-3xl md:rounded-r-3xl"
+        <div
+          className={`login-card rounded-3xl bg-white shadow-2xl overflow-hidden border-3 border-white ${isMerging ? 'login-card--merging' : ''}`}
+        >
+          <div
+            className={`login-card-inner min-h-[600px] ${isMerging ? 'login-card--merging' : ''}`}
+          >
+            {/* Left Section - Promotional (caixa azul) */}
+            <div
+              className="login-panel-left relative px-12 pt-12 pb-4 flex flex-col justify-between rounded-l-3xl md:rounded-r-3xl shrink-0"
               style={{ overflow: 'hidden' }}
             >
               {/* Fundo gradiente + bolhas animadas */}
@@ -74,7 +87,7 @@ export function LoginPage() {
               </div>
               
               {/* Overlay escuro para melhor legibilidade */}
-              <div className="absolute inset-0 bg-black/5 z-[10]" />
+              <div className="absolute inset-0 bg-black/5 z-10" />
               
               {/* Ícone Átrio no canto superior esquerdo — responsivo: mais próximo da borda no celular, mais folga no desktop */}
               <div className="absolute top-4 left-4 md:top-6 md:left-8 z-20">
@@ -107,8 +120,8 @@ export function LoginPage() {
               </div>
             </div>
 
-            {/* Right Section - Login Form */}
-            <div className="px-12 pt-16 pb-12 flex flex-col bg-white">
+            {/* Right Section - Login Form (caixa branca) */}
+            <div className="login-panel-right px-12 pt-16 pb-12 flex flex-col bg-white shrink-0 min-w-0">
               <form onSubmit={handleSubmit} className="w-full max-w-md mx-auto">
                 <div className="mb-8">
                   <h2 className="text-4xl font-bold text-[#0a0b0f] mb-2">
@@ -172,14 +185,13 @@ export function LoginPage() {
                 {/* Submit */}
                 <button
                   type="submit"
-                  disabled={loading}
-                  className={`flex w-full items-center justify-center gap-2.5 rounded-xl py-3.5 text-sm font-semibold text-white transition-all duration-300 ${loading
-                    ? 'bg-gray-400 cursor-not-allowed'
+                  disabled={isMerging}
+                  className={`flex w-full items-center justify-center gap-2.5 rounded-xl py-3.5 text-sm font-semibold text-white transition-all duration-300 ${isMerging
+                    ? 'bg-[#0404a6] cursor-wait'
                     : 'bg-[#0404a6] shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:scale-[0.98]'
                     }`}
                 >
-                  {loading && <Loader2 size={17} style={{ animation: 'spin 1s linear infinite' }} />}
-                  {loading ? 'Entrando...' : 'Entrar'}
+                  {isMerging ? 'Entrando...' : 'Entrar'}
                 </button>
               </form>
 
