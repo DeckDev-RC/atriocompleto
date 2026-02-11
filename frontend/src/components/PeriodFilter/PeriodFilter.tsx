@@ -8,14 +8,14 @@ import { useBrandPrimaryColor, getBrandPrimaryWithOpacity } from '../../hooks/us
 
 // ── Custom dropdown (lista com bordas inferiores arredondadas e alinhamento correto) ───
 function RdpOption(
-  props: React.ComponentPropsWithoutRef<'option'> & { onClick?: () => void; children?: React.ReactNode }
+  props: React.ComponentPropsWithoutRef<'option'>
 ) {
   const { onClick, value, disabled, children } = props;
   return (
     <div
       role="option"
       data-value={value}
-      onClick={disabled ? undefined : onClick}
+      onClick={disabled ? undefined : onClick as any}
       className="rdp-custom-option px-3 py-2 text-[13px] font-medium cursor-pointer transition-colors"
       style={{
         color: 'var(--color-primary)',
@@ -30,7 +30,7 @@ function RdpOption(
 function RdpSelect(
   props: React.ComponentPropsWithoutRef<'select'> & { children?: React.ReactNode }
 ) {
-  const { value, onChange, disabled, className, children, ...rest } = props;
+  const { value, onChange, disabled, className, children } = props;
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -113,7 +113,7 @@ function RdpSelect(
             if (!React.isValidElement(child)) return child;
             const val = (child.props as { value?: unknown }).value;
             const dis = (child.props as { disabled?: boolean }).disabled;
-            return React.cloneElement(child as React.ReactElement<{ onClick?: () => void }>, {
+            return React.cloneElement(child as React.ReactElement<{ onClick?: () => void; style?: React.CSSProperties }>, {
               onClick: () => !dis && handleSelect(val as string | number),
               style: {
                 ...(typeof (child.props as { style?: React.CSSProperties }).style === 'object'
