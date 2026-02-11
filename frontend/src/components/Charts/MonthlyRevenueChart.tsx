@@ -8,6 +8,7 @@ import {
   LabelList,
   Tooltip,
 } from 'recharts';
+import { useState, useEffect } from 'react';
 import { useChartColors } from './useChartColors';
 
 // ── Types ──────────────────────────────────────────
@@ -80,8 +81,45 @@ function CustomTooltip({ active, payload, label }: {
 // ── Component ──────────────────────────────────────
 
 export function MonthlyRevenueChart({ data }: MonthlyRevenueChartProps) {
-  const { gridColor, secondaryColor, labelColor, darkBarColor, accentColor } = useChartColors();
+  const { gridColor, secondaryColor, labelColor, darkBarColor } = useChartColors();
   const TopLabelComponent = createTopLabel(labelColor);
+  const [brandPrimaryColor, setBrandPrimaryColor] = useState('#0404A6');
+
+  // Atualizar a cor quando a variável CSS mudar
+  useEffect(() => {
+    const updateColor = () => {
+      if (typeof window !== 'undefined') {
+        const color = getComputedStyle(document.documentElement)
+          .getPropertyValue('--color-brand-primary')
+          .trim() || '#0404A6';
+        setBrandPrimaryColor(color);
+      }
+    };
+
+    // Atualizar imediatamente
+    updateColor();
+
+    // Observar mudanças no documento (incluindo mudanças de tema)
+    const observer = new MutationObserver(() => {
+      updateColor();
+    });
+
+    if (typeof window !== 'undefined') {
+      observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['style', 'class', 'data-theme'],
+        subtree: false,
+      });
+
+      // Também verificar periodicamente durante desenvolvimento (quando CSS é recarregado)
+      const interval = setInterval(updateColor, 500);
+
+      return () => {
+        observer.disconnect();
+        clearInterval(interval);
+      };
+    }
+  }, []);
 
   return (
     <div className="rounded-2xl bg-card p-6 border border-border shadow-soft dark:shadow-dark-card transition-all duration-300 hover:shadow-soft-hover dark:hover:shadow-dark-hover min-h-[220px]">
@@ -114,7 +152,7 @@ export function MonthlyRevenueChart({ data }: MonthlyRevenueChartProps) {
             <Bar dataKey="cancelled" fill={darkBarColor} radius={[6, 6, 2, 2]} barSize={18}>
               <LabelList dataKey="cancelled" content={<TopLabelComponent />} />
             </Bar>
-            <Bar dataKey="paid" fill={accentColor} radius={[6, 6, 2, 2]} barSize={18}>
+            <Bar dataKey="paid" fill={brandPrimaryColor} radius={[6, 6, 2, 2]} barSize={18}>
               <LabelList dataKey="paid" content={<TopLabelComponent />} />
             </Bar>
           </BarChart>
@@ -127,7 +165,7 @@ export function MonthlyRevenueChart({ data }: MonthlyRevenueChartProps) {
           <span className="text-[11px] font-medium text-secondary">Cancelados</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-[4px] bg-accent" />
+          <span className="h-2.5 w-2.5 rounded-[4px]" style={{ background: brandPrimaryColor }} />
           <span className="text-[11px] font-medium text-secondary">Pagos</span>
         </div>
       </div>

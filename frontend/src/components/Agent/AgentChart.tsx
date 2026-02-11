@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useMemo } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -18,6 +18,7 @@ import {
   type ChartConfiguration,
 } from 'chart.js';
 import { useApp } from '../../contexts/AppContext';
+import { useBrandPrimaryColor } from '../../hooks/useBrandPrimaryColor';
 
 ChartJS.register(
   CategoryScale,
@@ -36,8 +37,8 @@ ChartJS.register(
   Filler,
 );
 
-const COLORS = [
-  '#38b6ff', // accent
+// Cores fixas para gráficos (exceto a primeira que será substituída pela variável global)
+const FIXED_COLORS = [
   '#34C759', // success
   '#FF9F0A', // warning
   '#FF453A', // danger
@@ -48,8 +49,6 @@ const COLORS = [
   '#3e5d6f', // accent-muted
   '#F472B6', // pink
 ];
-
-const COLORS_ALPHA = COLORS.map((c) => c + '40');
 
 export interface ChartData {
   type: 'bar' | 'line' | 'pie' | 'doughnut' | 'horizontalBar';
@@ -91,6 +90,45 @@ export function AgentChart({ data }: { data: ChartData }) {
   const chartRef = useRef<ChartJS | null>(null);
   const { theme } = useApp();
   const isDark = theme === 'dark';
+  const brandPrimaryColor = useBrandPrimaryColor();
+
+  // Array de cores dinâmico: primeira cor vem da variável global, resto são fixas
+  const COLORS = useMemo(() => {
+    const primary = brandPrimaryColor || '#38b6ff'; // Fallback para a cor original
+    return [primary, ...FIXED_COLORS];
+  }, [brandPrimaryColor]);
+
+  const COLORS_ALPHA = useMemo(() => {
+    return COLORS.map((c) => {
+      // Se a cor já tem formato rgba, ajustar alpha
+      if (c.startsWith('rgba')) {
+        return c.replace(/,\s*[\d.]+\)$/, ', 0.25)');
+      }
+      // Para variáveis CSS, usar color-mix (Chart.js não suporta diretamente, então vamos ler o valor)
+      if (c.startsWith('var(')) {
+        // Ler o valor computado da variável CSS
+        if (typeof window !== 'undefined') {
+          const computed = getComputedStyle(document.documentElement)
+            .getPropertyValue(c.replace('var(', '').replace(')', '').trim())
+            .trim();
+          if (computed) {
+            // Se for hex, adicionar alpha
+            if (computed.startsWith('#')) {
+              return computed + '40';
+            }
+            // Se for rgba, ajustar alpha
+            if (computed.startsWith('rgba')) {
+              return computed.replace(/,\s*[\d.]+\)$/, ', 0.25)');
+            }
+          }
+        }
+        // Fallback: usar color-mix (pode não funcionar em todos os browsers)
+        return `color-mix(in srgb, ${c} 25%, transparent)`;
+      }
+      // Para hex, adicionar alpha
+      return c + '40';
+    });
+  }, [COLORS]);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -238,7 +276,7 @@ export function AgentChart({ data }: { data: ChartData }) {
         chartRef.current = null;
       }
     };
-  }, [data, isDark]);
+  }, [data, isDark, COLORS, COLORS_ALPHA]);
 
   const height = (data.type === 'pie' || data.type === 'doughnut') ? 260 : 280;
 

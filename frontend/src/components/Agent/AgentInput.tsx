@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type FormEvent, type KeyboardEvent } from 'react';
 import { SendHorizontal, Loader2, Mic, MicOff } from 'lucide-react';
+import { useBrandPrimaryColor } from '../../hooks/useBrandPrimaryColor';
 
 // ── Web Speech API types ────────────────────────────────
 interface SpeechRecognitionEvent extends Event {
@@ -57,6 +58,7 @@ export function AgentInput({ onSend, disabled }: AgentInputProps) {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number>(0);
   const streamRef = useRef<MediaStream | null>(null);
+  const brandPrimaryColor = useBrandPrimaryColor();
 
   const speechSupported =
     typeof window !== 'undefined' &&
@@ -220,14 +222,51 @@ export function AgentInput({ onSend, disabled }: AgentInputProps) {
           const halfBar = barHeight / 2;
           const x = i * (barWidth + gap);
 
-          // Gradient accent → accent-deep
+          // Gradient usando a cor primária da marca
           const t = i / barCount;
-          const r = Math.round(56 + (58 - 56) * t);
-          const g = Math.round(182 + (129 - 182) * t);
-          const b = Math.round(255 + (170 - 255) * t);
+          let r = 56, g = 182, b = 255; // Fallback
+          
+          if (brandPrimaryColor) {
+            const rgb = brandPrimaryColor.match(/\d+/g);
+            if (rgb && rgb.length >= 3) {
+              r = parseInt(rgb[0]);
+              g = parseInt(rgb[1]);
+              b = parseInt(rgb[2]);
+            } else if (brandPrimaryColor.startsWith('#')) {
+              const hex = brandPrimaryColor.replace('#', '');
+              r = parseInt(hex.substring(0, 2), 16);
+              g = parseInt(hex.substring(2, 4), 16);
+              b = parseInt(hex.substring(4, 6), 16);
+            }
+          } else {
+            // Ler da variável CSS se não tiver no estado
+            const cssColor = getComputedStyle(document.documentElement).getPropertyValue('--color-brand-primary').trim();
+            if (cssColor) {
+              const rgb = cssColor.match(/\d+/g);
+              if (rgb && rgb.length >= 3) {
+                r = parseInt(rgb[0]);
+                g = parseInt(rgb[1]);
+                b = parseInt(rgb[2]);
+              } else if (cssColor.startsWith('#')) {
+                const hex = cssColor.replace('#', '');
+                r = parseInt(hex.substring(0, 2), 16);
+                g = parseInt(hex.substring(2, 4), 16);
+                b = parseInt(hex.substring(4, 6), 16);
+              }
+            }
+          }
+          
+          // Criar gradiente mais escuro para o final
+          const rEnd = Math.max(0, r - 20);
+          const gEnd = Math.max(0, g - 30);
+          const bEnd = Math.max(0, b - 30);
+          
+          const rFinal = Math.round(r + (rEnd - r) * t);
+          const gFinal = Math.round(g + (gEnd - g) * t);
+          const bFinal = Math.round(b + (bEnd - b) * t);
           const alpha = 0.6 + value * 0.4;
 
-          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+          ctx.fillStyle = `rgba(${rFinal}, ${gFinal}, ${bFinal}, ${alpha})`;
           ctx.beginPath();
           ctx.roundRect(x, centerY - halfBar, barWidth, barHeight, barWidth / 2);
           ctx.fill();
@@ -263,8 +302,30 @@ export function AgentInput({ onSend, disabled }: AgentInputProps) {
         <div
           className={`flex items-end gap-2 rounded-2xl border p-3 transition-all duration-300 ${isListening
               ? 'border-danger/40 shadow-[0_0_20px_rgba(255,69,58,0.1)] bg-card'
-              : 'border-border bg-card shadow-soft hover:shadow-soft-hover dark:shadow-dark-card dark:hover:shadow-dark-hover focus-within:border-accent/30 focus-within:shadow-[0_0_20px_rgba(56,182,255,0.06)]'
+              : 'border-border bg-card shadow-soft hover:shadow-soft-hover dark:shadow-dark-card dark:hover:shadow-dark-hover'
             }`}
+          onFocus={(e) => {
+            if (!isListening && brandPrimaryColor) {
+              const rgb = brandPrimaryColor.match(/\d+/g);
+              if (rgb && rgb.length >= 3) {
+                e.currentTarget.style.borderColor = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.3)`;
+                e.currentTarget.style.boxShadow = `0 0 20px rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.06)`;
+              } else if (brandPrimaryColor.startsWith('#')) {
+                const hex = brandPrimaryColor.replace('#', '');
+                const r = parseInt(hex.substring(0, 2), 16);
+                const g = parseInt(hex.substring(2, 4), 16);
+                const b = parseInt(hex.substring(4, 6), 16);
+                e.currentTarget.style.borderColor = `rgba(${r}, ${g}, ${b}, 0.3)`;
+                e.currentTarget.style.boxShadow = `0 0 20px rgba(${r}, ${g}, ${b}, 0.06)`;
+              }
+            }
+          }}
+          onBlur={(e) => {
+            if (!isListening) {
+              e.currentTarget.style.borderColor = '';
+              e.currentTarget.style.boxShadow = '';
+            }
+          }}
         >
           {isListening ? (
             <div className="flex-1 flex items-center min-h-[40px] relative">
@@ -303,9 +364,28 @@ export function AgentInput({ onSend, disabled }: AgentInputProps) {
               title={isListening ? 'Parar gravação' : 'Falar'}
               className={`flex h-9 w-9 shrink-0 items-center justify-center transition-all duration-300 ${isListening
                   ? 'rounded-full bg-danger text-white'
-                  : 'rounded-xl bg-border/50 dark:bg-[rgba(255,255,255,0.06)] text-secondary hover:text-accent hover:bg-accent/10'
+                  : 'rounded-xl bg-border/50 dark:bg-[rgba(255,255,255,0.06)] text-secondary'
                 } ${disabled ? 'opacity-50 cursor-not-allowed' : 'active:scale-90'}`}
-              style={isListening ? { animation: 'glow-pulse 1.5s ease-in-out infinite' } : undefined}
+              style={isListening 
+                ? { animation: 'glow-pulse 1.5s ease-in-out infinite' } 
+                : {
+                    ['--hover-color' as any]: brandPrimaryColor || 'var(--color-brand-primary)',
+                    ['--hover-bg' as any]: brandPrimaryColor ? `color-mix(in srgb, ${brandPrimaryColor} 10%, transparent)` : 'color-mix(in srgb, var(--color-brand-primary) 10%, transparent)',
+                  }}
+              onMouseEnter={(e) => {
+                if (!isListening && !disabled) {
+                  e.currentTarget.style.color = brandPrimaryColor || 'var(--color-brand-primary)';
+                  e.currentTarget.style.backgroundColor = brandPrimaryColor 
+                    ? `color-mix(in srgb, ${brandPrimaryColor} 10%, transparent)` 
+                    : 'color-mix(in srgb, var(--color-brand-primary) 10%, transparent)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isListening) {
+                  e.currentTarget.style.color = '';
+                  e.currentTarget.style.backgroundColor = '';
+                }
+              }}
             >
               {isListening ? <MicOff size={16} strokeWidth={2.2} /> : <Mic size={16} strokeWidth={2} />}
             </button>
@@ -316,9 +396,12 @@ export function AgentInput({ onSend, disabled }: AgentInputProps) {
             type="submit"
             disabled={!message.trim() || disabled}
             className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-200 ${message.trim() && !disabled
-                ? 'bg-accent text-white shadow-sm hover:shadow-md active:scale-90'
+                ? 'text-white shadow-sm hover:shadow-md active:scale-90'
                 : 'bg-border/50 dark:bg-[rgba(255,255,255,0.05)] text-muted cursor-not-allowed'
               }`}
+            style={message.trim() && !disabled ? {
+              backgroundColor: brandPrimaryColor || 'var(--color-brand-primary)',
+            } : undefined}
           >
             {disabled ? (
               <Loader2 size={16} strokeWidth={2.2} style={{ animation: 'spin 1s linear infinite' }} />

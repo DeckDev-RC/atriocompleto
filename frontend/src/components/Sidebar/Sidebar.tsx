@@ -9,8 +9,11 @@ import {
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../../contexts/AppContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useBrandPrimaryColor, getBrandPrimaryWithOpacity } from '../../hooks/useBrandPrimaryColor';
 import logoLight from '../../assets/logo-whitemode.png';
 import logoDark from '../../assets/logo-darkmode.png';
+import logoAtrio from '../../assets/logo-atrio-azul.png';
+import logoAtrioBranca from '../../assets/logo-atrio-branca.png';
 
 /** Larguras em px */
 const SIDEBAR_W = 232;
@@ -46,7 +49,7 @@ export function Sidebar() {
           items: [{ icon: ShoppingCart, label: 'E-Commerce', path: '/' }],
         },
         {
-          section: 'IA',
+          section: "APPS",
           items: [{ icon: Brain, label: 'Optimus', path: '/agente' }],
         },
       ]
@@ -115,9 +118,11 @@ export function Sidebar() {
               </div>
             ) : (
               <div className="flex w-full flex-col items-center justify-center min-w-0 py-4">
-                <span className="text-[32px] font-bold leading-tight tracking-tight text-primary">
-                  Átrio
-                </span>
+                <img
+                  src={theme === 'dark' ? logoAtrioBranca : logoAtrio}
+                  alt="Átrio"
+                  className="h-20 w-auto object-contain"
+                />
                 {/* Logo da Agregar movida para a área inferior, abaixo do botão Sair */}
               </div>
             )}
@@ -160,26 +165,28 @@ export function Sidebar() {
                           ? 'justify-center px-0 py-3'
                           : 'px-4 py-2.5'}
                         ${active
-                          ? 'bg-gray-50 dark:bg-primary/5 text-[#4bbdff]'
+                          ? 'bg-gray-50 dark:bg-primary/5'
                           : 'text-secondary/80 hover:bg-border/40 hover:text-primary'}
                         active:scale-[0.98]
                       `}
+                      style={active ? { color: 'var(--color-brand-primary)' } : undefined}
                     >
                       <item.icon
                         size={19}
                         strokeWidth={active ? 2.2 : 1.8}
-                        className={`
-                          shrink-0 transition-all duration-300
-                          ${active ? 'text-[#4bbdff]' : 'text-secondary/60 group-hover:text-primary'}
-                        `}
+                        className="shrink-0 transition-all duration-300"
+                        style={active ? { color: 'var(--color-brand-primary)' } : undefined}
                       />
                       {!collapsed && (
-                        <span className={`truncate tracking-[-0.01em] ${active ? 'text-[#4bbdff]' : ''}`}>
+                        <span
+                          className="truncate tracking-[-0.01em]"
+                          style={active ? { color: 'var(--color-brand-primary)' } : undefined}
+                        >
                           {item.label}
                         </span>
                       )}
                       {active && !collapsed && (
-                        <div className="absolute left-0 h-5 w-1 rounded-r-full bg-[#4bbdff]" />
+                        <div className="absolute left-0 h-5 w-1 rounded-r-full" style={{ backgroundColor: 'var(--color-brand-primary)' }} />
                       )}
                     </button>
                   );
@@ -258,8 +265,15 @@ export function Sidebar() {
 }
 
 function BrandIcon() {
+  const brandPrimaryColor = useBrandPrimaryColor();
+
   return (
-    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10">
+    <div
+      className="flex h-10 w-10 items-center justify-center rounded-xl"
+      style={{
+        backgroundColor: brandPrimaryColor ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.1) : 'color-mix(in srgb, var(--color-brand-primary) 10%, transparent)',
+      }}
+    >
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
         <path
           d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"
@@ -271,7 +285,7 @@ function BrandIcon() {
         />
         <path
           d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
-          stroke="#38b6ff"
+          stroke={brandPrimaryColor || 'var(--color-brand-primary)'}
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"

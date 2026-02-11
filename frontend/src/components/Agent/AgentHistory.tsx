@@ -1,5 +1,6 @@
 import { MessageSquare, Trash2, Plus, Search } from 'lucide-react';
 import { useState } from 'react';
+import { useBrandPrimaryColor, getBrandPrimaryWithOpacity } from '../../hooks/useBrandPrimaryColor';
 
 interface Conversation {
   id: string;
@@ -24,6 +25,7 @@ export function AgentHistory({
   onNewChat,
 }: AgentHistoryProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const brandPrimaryColor = useBrandPrimaryColor();
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -57,7 +59,21 @@ export function AgentHistory({
         </h2>
         <button
           onClick={onNewChat}
-          className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent/10 text-accent transition-all duration-200 hover:bg-accent/20 active:scale-90"
+          className="flex h-7 w-7 items-center justify-center rounded-lg transition-all duration-200 active:scale-90"
+          style={{
+            backgroundColor: brandPrimaryColor ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.1) : 'color-mix(in srgb, var(--color-brand-primary) 10%, transparent)',
+            color: brandPrimaryColor || 'var(--color-brand-primary)',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = brandPrimaryColor 
+              ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.2)
+              : 'color-mix(in srgb, var(--color-brand-primary) 20%, transparent)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = brandPrimaryColor 
+              ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.1)
+              : 'color-mix(in srgb, var(--color-brand-primary) 10%, transparent)';
+          }}
           title="Nova conversa"
         >
           <Plus size={14} strokeWidth={2.5} />
@@ -73,7 +89,20 @@ export function AgentHistory({
             placeholder="Buscar..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded-xl border border-border bg-body/40 dark:bg-[rgba(255,255,255,0.03)] py-2 pl-8 pr-3 text-[12px] text-primary placeholder:text-muted outline-none transition-all duration-200 focus:border-accent/30 focus:ring-2 focus:ring-accent/8"
+            className="w-full rounded-xl border border-border bg-body/40 dark:bg-[rgba(255,255,255,0.03)] py-2 pl-8 pr-3 text-[12px] text-primary placeholder:text-muted outline-none transition-all duration-200"
+            onFocus={(e) => {
+              if (brandPrimaryColor) {
+                e.currentTarget.style.borderColor = getBrandPrimaryWithOpacity(brandPrimaryColor, 0.3);
+                e.currentTarget.style.boxShadow = `0 0 0 2px ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.08)}`;
+              } else {
+                e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)';
+                e.currentTarget.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--color-brand-primary) 8%, transparent)';
+              }
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = '';
+              e.currentTarget.style.boxShadow = '';
+            }}
           />
         </div>
       </div>
@@ -94,14 +123,19 @@ export function AgentHistory({
                   key={conv.id}
                   className={`group flex cursor-pointer items-start gap-2.5 rounded-xl px-3 py-2.5 transition-all duration-200 ${
                     isActive
-                      ? 'bg-accent/10 text-accent'
+                      ? ''
                       : 'hover:bg-border/40 dark:hover:bg-[rgba(255,255,255,0.03)] text-primary'
                   }`}
+                  style={isActive ? {
+                    backgroundColor: brandPrimaryColor ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.1) : 'color-mix(in srgb, var(--color-brand-primary) 10%, transparent)',
+                    color: brandPrimaryColor || 'var(--color-brand-primary)',
+                  } : undefined}
                   onClick={() => onSelect(conv)}
                 >
                   <MessageSquare
                     size={14}
-                    className={`mt-0.5 shrink-0 ${isActive ? 'text-accent' : 'text-muted'}`}
+                    className={`mt-0.5 shrink-0 ${isActive ? '' : 'text-muted'}`}
+                    style={isActive ? { color: brandPrimaryColor || 'var(--color-brand-primary)' } : undefined}
                     strokeWidth={1.8}
                   />
                   <div className="min-w-0 flex-1">

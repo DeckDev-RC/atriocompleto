@@ -1,5 +1,6 @@
 import { Menu, Moon, Sun, Bell, Palette } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
+import { useBrandPrimaryColor } from '../../hooks/useBrandPrimaryColor';
 
 interface HeaderProps {
   title?: string;
@@ -13,6 +14,7 @@ export function Header({
   children,
 }: HeaderProps) {
   const { toggleSidebar, theme, toggleTheme, themeColor, setThemeColor } = useApp();
+  const brandPrimaryColor = useBrandPrimaryColor();
 
   return (
     <header className="flex h-[56px] items-center justify-between mb-8">
@@ -48,7 +50,10 @@ export function Header({
         {/* Notification bell */}
         <button className="relative flex h-9 w-9 items-center justify-center rounded-full text-secondary transition-all duration-200 hover:bg-card hover:text-primary hover:shadow-soft active:scale-95">
           <Bell size={18} strokeWidth={2} />
-          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-accent ring-2 ring-body" />
+          <span 
+            className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full ring-2 ring-body" 
+            style={{ backgroundColor: brandPrimaryColor || 'var(--color-brand-primary)' }}
+          />
         </button>
 
         {/* Palette toggle */}
@@ -61,7 +66,7 @@ export function Header({
           <Palette
             size={18}
             strokeWidth={2}
-            className={themeColor === 'pink' ? 'text-accent' : ''}
+            style={themeColor === 'pink' ? { color: brandPrimaryColor || 'var(--color-brand-primary)' } : undefined}
           />
         </button>
 

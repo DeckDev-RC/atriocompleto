@@ -12,6 +12,7 @@ import { useApp } from '../contexts/AppContext';
 import { agentApi } from '../services/agentApi';
 import { AgentMessage, AgentInput, AgentHistory } from '../components/Agent';
 import { useAuth } from '../contexts/AuthContext';
+import { useBrandPrimaryColor, getBrandPrimaryWithOpacity } from '../hooks/useBrandPrimaryColor';
 
 /* ===== Types ===== */
 
@@ -48,6 +49,7 @@ export function AgentPage() {
   const navigate = useNavigate();
   const { sidebarCollapsed, setSidebarCollapsed } = useApp();
   const { user } = useAuth();
+  const brandPrimaryColor = useBrandPrimaryColor();
   const [messages, setMessages] = useState<Message[]>([]);
   const hasTenant = !!user?.tenant_id;
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -218,7 +220,14 @@ export function AgentPage() {
           </button>
 
           <div className="flex items-center gap-2.5 flex-1 min-w-0">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-linear-to-br from-accent to-accent-deep shadow-sm">
+            <div 
+              className="flex h-8 w-8 items-center justify-center rounded-xl shadow-sm"
+              style={{
+                background: brandPrimaryColor 
+                  ? `linear-gradient(to bottom right, ${brandPrimaryColor}, ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.7)})`
+                  : 'linear-gradient(to bottom right, var(--color-brand-primary), color-mix(in srgb, var(--color-brand-primary) 70%, transparent))',
+              }}
+            >
               <Sparkles size={15} className="text-white" strokeWidth={2} />
             </div>
             <div className="min-w-0">
@@ -272,7 +281,28 @@ export function AgentPage() {
                           <button
                             key={s}
                             onClick={() => handleSend(s)}
-                            className="rounded-full border border-border bg-card/60 px-3 py-1.5 text-[12px] text-secondary transition-all duration-200 hover:border-accent/30 hover:text-accent hover:bg-accent/5 active:scale-95"
+                            className="rounded-full border border-border bg-card/60 px-3 py-1.5 text-[12px] text-secondary transition-all duration-200 active:scale-95"
+                            style={{
+                              ['--hover-border-color' as any]: brandPrimaryColor ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.3) : 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)',
+                              ['--hover-color' as any]: brandPrimaryColor || 'var(--color-brand-primary)',
+                              ['--hover-bg' as any]: brandPrimaryColor ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.05) : 'color-mix(in srgb, var(--color-brand-primary) 5%, transparent)',
+                            }}
+                            onMouseEnter={(e) => {
+                              if (brandPrimaryColor) {
+                                e.currentTarget.style.borderColor = getBrandPrimaryWithOpacity(brandPrimaryColor, 0.3);
+                                e.currentTarget.style.color = brandPrimaryColor;
+                                e.currentTarget.style.backgroundColor = getBrandPrimaryWithOpacity(brandPrimaryColor, 0.05);
+                              } else {
+                                e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)';
+                                e.currentTarget.style.color = 'var(--color-brand-primary)';
+                                e.currentTarget.style.backgroundColor = 'color-mix(in srgb, var(--color-brand-primary) 5%, transparent)';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.borderColor = '';
+                              e.currentTarget.style.color = '';
+                              e.currentTarget.style.backgroundColor = '';
+                            }}
                           >
                             {s}
                           </button>
@@ -307,14 +337,25 @@ function EmptyState({
   isConnected: boolean | null;
   hasTenant: boolean;
 }) {
+  const brandPrimaryColor = useBrandPrimaryColor();
+  
   return (
     <div className="flex h-full flex-col items-center justify-center px-6 py-12">
       {/* Icon */}
       <div
-        className="mb-6 flex h-[72px] w-[72px] items-center justify-center rounded-[22px] bg-linear-to-br from-accent/15 to-accent-deep/8 shadow-[0_8px_32px_rgba(56,182,255,0.12)]"
-        style={{ animation: 'scale-in 0.5s cubic-bezier(0.16,1,0.3,1) both' }}
+        className="mb-6 flex h-[72px] w-[72px] items-center justify-center rounded-[22px] shadow-[0_8px_32px_rgba(56,182,255,0.12)]"
+        style={{ 
+          animation: 'scale-in 0.5s cubic-bezier(0.16,1,0.3,1) both',
+          background: brandPrimaryColor 
+            ? `linear-gradient(to bottom right, ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.15)}, ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.08)})`
+            : 'linear-gradient(to bottom right, color-mix(in srgb, var(--color-brand-primary) 15%, transparent), color-mix(in srgb, var(--color-brand-primary) 8%, transparent))',
+        }}
       >
-        <Brain size={34} className="text-accent" strokeWidth={1.5} />
+        <Brain 
+          size={34} 
+          style={{ color: brandPrimaryColor || 'var(--color-brand-primary)' }}
+          strokeWidth={1.5} 
+        />
       </div>
 
       <h2
@@ -343,8 +384,36 @@ function EmptyState({
       <button
         onClick={onHealthCheck}
         disabled={!isConnected || !hasTenant}
-        className="mb-6 flex items-center gap-2 rounded-full border border-accent/30 bg-accent/5 px-5 py-2.5 text-[13px] font-semibold text-accent transition-all duration-300 hover:bg-accent hover:text-white hover:shadow-[0_4px_20px_rgba(56,182,255,0.2)] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-        style={{ animation: 'slide-up 0.5s cubic-bezier(0.16,1,0.3,1) 0.2s both' }}
+        className="mb-6 flex items-center gap-2 rounded-full border px-5 py-2.5 text-[13px] font-semibold transition-all duration-300 hover:text-white active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+        style={{ 
+          animation: 'slide-up 0.5s cubic-bezier(0.16,1,0.3,1) 0.2s both',
+          borderColor: brandPrimaryColor ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.3) : 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)',
+          backgroundColor: brandPrimaryColor ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.05) : 'color-mix(in srgb, var(--color-brand-primary) 5%, transparent)',
+          color: brandPrimaryColor || 'var(--color-brand-primary)',
+        }}
+        onMouseEnter={(e) => {
+          if (!e.currentTarget.disabled && brandPrimaryColor) {
+            e.currentTarget.style.backgroundColor = brandPrimaryColor;
+            const rgb = brandPrimaryColor.match(/\d+/g);
+            if (rgb && rgb.length >= 3) {
+              e.currentTarget.style.boxShadow = `0 4px 20px rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.2)`;
+            } else if (brandPrimaryColor.startsWith('#')) {
+              const hex = brandPrimaryColor.replace('#', '');
+              const r = parseInt(hex.substring(0, 2), 16);
+              const g = parseInt(hex.substring(2, 4), 16);
+              const b = parseInt(hex.substring(4, 6), 16);
+              e.currentTarget.style.boxShadow = `0 4px 20px rgba(${r}, ${g}, ${b}, 0.2)`;
+            }
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!e.currentTarget.disabled) {
+            e.currentTarget.style.backgroundColor = brandPrimaryColor 
+              ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.05)
+              : 'color-mix(in srgb, var(--color-brand-primary) 5%, transparent)';
+            e.currentTarget.style.boxShadow = '';
+          }
+        }}
       >
         <Activity size={15} strokeWidth={2.2} />
         Como está meu negócio hoje?
@@ -359,7 +428,20 @@ function EmptyState({
           <button
             key={prompt.label}
             onClick={() => onPromptClick(`${prompt.label} ${prompt.desc}`)}
-            className="group flex items-start gap-3 rounded-2xl border border-border bg-card p-4 text-left transition-all duration-300 hover:border-accent/20 hover:shadow-soft-hover dark:hover:shadow-dark-hover hover:-translate-y-0.5 active:scale-[0.98]"
+            className="group flex items-start gap-3 rounded-2xl border border-border bg-card p-4 text-left transition-all duration-300 hover:shadow-soft-hover dark:hover:shadow-dark-hover hover:-translate-y-0.5 active:scale-[0.98]"
+            style={{
+              ['--hover-border-color' as any]: brandPrimaryColor ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.2) : 'color-mix(in srgb, var(--color-brand-primary) 20%, transparent)',
+            }}
+            onMouseEnter={(e) => {
+              if (brandPrimaryColor) {
+                e.currentTarget.style.borderColor = getBrandPrimaryWithOpacity(brandPrimaryColor, 0.2);
+              } else {
+                e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--color-brand-primary) 20%, transparent)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = '';
+            }}
           >
             <span className="text-[18px] shrink-0 mt-0.5">{prompt.icon}</span>
             <div className="min-w-0">

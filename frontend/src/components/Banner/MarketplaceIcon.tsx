@@ -26,15 +26,17 @@ export function MarketplaceIcon({ type }: { type: string }) {
       );
     case 'shein':
       return (
-        <div className={`${iconBase} bg-white`}>
-          <img src={sheinImg} alt="Shein" className="h-[80%] w-[80%] object-contain" />
+        <div className={iconBase}>
+          <div className="h-[80%] w-[80%] bg-white rounded-lg overflow-hidden flex items-center justify-center">
+            <img src={sheinImg} alt="Shein" className="h-full w-full object-contain" />
+          </div>
         </div>
       );
     case 'ml':
       return (
         <div className={iconBaseLarge}>
-          <div className="bg-white rounded-lg h-[85%] w-[85%] flex items-center justify-center">
-            <img src={mlImg} alt="Mercado Livre" className="h-[90%] w-[90%] object-contain" />
+          <div className="bg-white rounded-lg h-[80%] w-[80%] overflow-hidden flex items-center justify-center">
+            <img src={mlImg} alt="Mercado Livre" className="h-full w-full object-contain" />
           </div>
         </div>
       );

@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { useMemo } from 'react';
 import { extractCharts, AgentChart } from './AgentChart';
 import type { ChartData } from './AgentChart';
+import { useBrandPrimaryColor, getBrandPrimaryWithOpacity } from '../../hooks/useBrandPrimaryColor';
 
 interface TokenUsage {
   inputTokens: number;
@@ -22,6 +23,7 @@ interface AgentMessageProps {
 
 export function AgentMessage({ role, content, timestamp, isLoading, tokenUsage }: AgentMessageProps) {
   const isUser = role === 'user';
+  const brandPrimaryColor = useBrandPrimaryColor();
 
   const { text: textContent, charts } = useMemo(() => extractCharts(content), [content]);
 
@@ -60,8 +62,13 @@ export function AgentMessage({ role, content, timestamp, isLoading, tokenUsage }
       <div
         className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] ${isUser
           ? 'bg-border/80 dark:bg-[rgba(255,255,255,0.06)]'
-          : 'bg-gradient-to-br from-accent to-accent-deep shadow-sm'
+          : 'shadow-sm'
           }`}
+        style={!isUser ? {
+          background: brandPrimaryColor 
+            ? `linear-gradient(to bottom right, ${brandPrimaryColor}, ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.7)})`
+            : 'linear-gradient(to bottom right, var(--color-brand-primary), color-mix(in srgb, var(--color-brand-primary) 70%, transparent))',
+        } : undefined}
       >
         {isUser ? (
           <User size={15} className="text-secondary" strokeWidth={2} />
@@ -74,8 +81,8 @@ export function AgentMessage({ role, content, timestamp, isLoading, tokenUsage }
       <div className="flex-1 min-w-0 overflow-hidden">
         <div className="flex items-center gap-2 mb-1.5">
           <span
-            className={`text-[12px] font-semibold tracking-[-0.01em] ${isUser ? 'text-secondary' : 'text-accent'
-              }`}
+            className={`text-[12px] font-semibold tracking-[-0.01em] ${isUser ? 'text-secondary' : ''}`}
+            style={!isUser ? { color: brandPrimaryColor || 'var(--color-brand-primary)' } : undefined}
           >
             {isUser ? 'Você' : 'Optimus'}
           </span>
@@ -94,8 +101,11 @@ export function AgentMessage({ role, content, timestamp, isLoading, tokenUsage }
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className="h-2 w-2 rounded-full bg-accent"
-                style={{ animation: `bounce-dot 1.2s ease-in-out ${i * 0.15}s infinite` }}
+                className="h-2 w-2 rounded-full"
+                style={{ 
+                  backgroundColor: brandPrimaryColor || 'var(--color-brand-primary)',
+                  animation: `bounce-dot 1.2s ease-in-out ${i * 0.15}s infinite`,
+                }}
               />
             ))}
           </div>
@@ -123,13 +133,20 @@ export function AgentMessage({ role, content, timestamp, isLoading, tokenUsage }
 }
 
 function MarkdownBlock({ text }: { text: string }) {
+  const brandPrimaryColor = useBrandPrimaryColor();
+  
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       components={{
         p: ({ children }) => <p>{children}</p>,
         strong: ({ children }) => (
-          <strong className="text-accent font-semibold">{children}</strong>
+          <strong 
+            className="font-semibold"
+            style={{ color: brandPrimaryColor || 'var(--color-brand-primary)' }}
+          >
+            {children}
+          </strong>
         ),
         code: ({ children }) => (
           <code className="bg-border/40 dark:bg-[rgba(255,255,255,0.06)] px-1.5 py-0.5 rounded-[5px] text-[13px] font-mono text-success">

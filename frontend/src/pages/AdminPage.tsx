@@ -16,6 +16,7 @@ import {
 import { Header } from '../components/Header';
 import { agentApi } from '../services/agentApi';
 import { useAuth } from '../contexts/AuthContext';
+import { useBrandPrimaryColor, getBrandPrimaryWithOpacity } from '../hooks/useBrandPrimaryColor';
 
 /* ===== Types ===== */
 
@@ -78,6 +79,7 @@ function TenantsPanel() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
+  const brandPrimaryColor = useBrandPrimaryColor();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -103,7 +105,8 @@ function TenantsPanel() {
         </h2>
         <button
           onClick={() => { setEditingTenant(null); setShowForm(true); }}
-          className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-[13px] font-semibold text-white shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 active:scale-95"
+          className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold text-white shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 active:scale-95"
+          style={{ backgroundColor: brandPrimaryColor || 'var(--color-brand-primary)' }}
         >
           <Plus size={15} strokeWidth={2.5} />
           Nova Empresa
@@ -122,8 +125,17 @@ function TenantsPanel() {
               className="flex items-center justify-between rounded-2xl border border-border bg-card p-5 shadow-soft dark:shadow-dark-card transition-all duration-200 hover:shadow-soft-hover dark:hover:shadow-dark-hover"
             >
               <div className="flex items-center gap-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10">
-                  <Building2 size={18} className="text-accent" strokeWidth={1.8} />
+                <div 
+                  className="flex h-10 w-10 items-center justify-center rounded-xl"
+                  style={{ 
+                    backgroundColor: brandPrimaryColor ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.1) : 'color-mix(in srgb, var(--color-brand-primary) 10%, transparent)',
+                  }}
+                >
+                  <Building2 
+                    size={18} 
+                    style={{ color: brandPrimaryColor || 'var(--color-brand-primary)' }}
+                    strokeWidth={1.8} 
+                  />
                 </div>
                 <div>
                   <p className="text-[14px] font-semibold text-primary tracking-[-0.01em]">{t.name}</p>
@@ -175,6 +187,7 @@ function UsersPanel() {
   const [resetUserId, setResetUserId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const { refreshUser } = useAuth();
+  const brandPrimaryColor = useBrandPrimaryColor();
 
   const load = useCallback(async () => {
     console.log('[Admin] Loading users and tenants...');
@@ -224,12 +237,26 @@ function UsersPanel() {
               placeholder="Buscar..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-48 rounded-xl border border-border bg-body/60 py-2 pl-9 pr-3 text-[13px] text-primary placeholder:text-muted outline-none transition-all duration-200 focus:w-56 focus:border-accent/30 focus:ring-2 focus:ring-accent/8"
+              className="w-48 rounded-xl border border-border bg-body/60 py-2 pl-9 pr-3 text-[13px] text-primary placeholder:text-muted outline-none transition-all duration-200 focus:w-56"
+              onFocus={(e) => {
+                if (brandPrimaryColor) {
+                  e.currentTarget.style.borderColor = getBrandPrimaryWithOpacity(brandPrimaryColor, 0.3);
+                  e.currentTarget.style.boxShadow = `0 0 0 2px ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.08)}`;
+                } else {
+                  e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)';
+                  e.currentTarget.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--color-brand-primary) 8%, transparent)';
+                }
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.borderColor = '';
+                e.currentTarget.style.boxShadow = '';
+              }}
             />
           </div>
           <button
             onClick={() => { setEditingUser(null); setShowForm(true); }}
-            className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-[13px] font-semibold text-white shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 active:scale-95"
+            className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold text-white shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 active:scale-95"
+          style={{ backgroundColor: brandPrimaryColor || 'var(--color-brand-primary)' }}
           >
             <Plus size={15} strokeWidth={2.5} />
             Novo Usuário
@@ -250,12 +277,20 @@ function UsersPanel() {
                 }`}
             >
               <div className="flex items-center gap-4 min-w-0">
-                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${u.role === 'master' ? 'bg-warning/10' : 'bg-accent/10'
-                  }`}>
+                <div 
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${u.role === 'master' ? 'bg-warning/10' : ''}`}
+                  style={u.role !== 'master' ? {
+                    backgroundColor: brandPrimaryColor ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.1) : 'color-mix(in srgb, var(--color-brand-primary) 10%, transparent)',
+                  } : undefined}
+                >
                   {u.role === 'master' ? (
                     <Shield size={18} className="text-warning" strokeWidth={1.8} />
                   ) : (
-                    <User size={18} className="text-accent" strokeWidth={1.8} />
+                    <User 
+                      size={18} 
+                      style={{ color: brandPrimaryColor || 'var(--color-brand-primary)' }}
+                      strokeWidth={1.8} 
+                    />
                   )}
                 </div>
                 <div className="min-w-0">
@@ -263,8 +298,13 @@ function UsersPanel() {
                     <p className="text-[14px] font-semibold text-primary tracking-[-0.01em] truncate">
                       {u.full_name}
                     </p>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${u.role === 'master' ? 'bg-warning/10 text-warning' : 'bg-accent/10 text-accent'
-                      }`}>
+                    <span 
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${u.role === 'master' ? 'bg-warning/10 text-warning' : ''}`}
+                      style={u.role !== 'master' ? {
+                        backgroundColor: brandPrimaryColor ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.1) : 'color-mix(in srgb, var(--color-brand-primary) 10%, transparent)',
+                        color: brandPrimaryColor || 'var(--color-brand-primary)',
+                      } : undefined}
+                    >
                       {u.role}
                     </span>
                     {!u.is_active && (
@@ -353,6 +393,7 @@ function TenantFormModal({
 }) {
   const [name, setName] = useState(tenant?.name || '');
   const [loading, setLoading] = useState(false);
+  const brandPrimaryColor = useBrandPrimaryColor();
   const [error, setError] = useState('');
   const isEdit = !!tenant;
 
@@ -390,7 +431,20 @@ function TenantFormModal({
             placeholder="Ex: Ambro"
             required
             autoFocus
-            className="w-full rounded-xl border border-border bg-body/60 px-4 py-3 text-[14px] text-primary placeholder:text-muted outline-none transition-all focus:border-accent/30 focus:ring-2 focus:ring-accent/8"
+            className="w-full rounded-xl border border-border bg-body/60 px-4 py-3 text-[14px] text-primary placeholder:text-muted outline-none transition-all"
+            onFocus={(e) => {
+              if (brandPrimaryColor) {
+                e.currentTarget.style.borderColor = getBrandPrimaryWithOpacity(brandPrimaryColor, 0.3);
+                e.currentTarget.style.boxShadow = `0 0 0 2px ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.08)}`;
+              } else {
+                e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)';
+                e.currentTarget.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--color-brand-primary) 8%, transparent)';
+              }
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = '';
+              e.currentTarget.style.boxShadow = '';
+            }}
           />
         </div>
 
@@ -429,6 +483,7 @@ function UserFormModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+  const brandPrimaryColor = useBrandPrimaryColor();
 
   const set = (key: string, value: string) => setForm((p) => ({ ...p, [key]: value }));
 
@@ -476,7 +531,20 @@ function UserFormModal({
           <div>
             <label className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.05em] text-muted">Nome</label>
             <input type="text" value={form.full_name} onChange={(e) => set('full_name', e.target.value)} required autoFocus
-              className="w-full rounded-xl border border-border bg-body/60 px-4 py-3 text-[14px] text-primary placeholder:text-muted outline-none transition-all focus:border-accent/30 focus:ring-2 focus:ring-accent/8"
+              className="w-full rounded-xl border border-border bg-body/60 px-4 py-3 text-[14px] text-primary placeholder:text-muted outline-none transition-all"
+            onFocus={(e) => {
+              if (brandPrimaryColor) {
+                e.currentTarget.style.borderColor = getBrandPrimaryWithOpacity(brandPrimaryColor, 0.3);
+                e.currentTarget.style.boxShadow = `0 0 0 2px ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.08)}`;
+              } else {
+                e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)';
+                e.currentTarget.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--color-brand-primary) 8%, transparent)';
+              }
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = '';
+              e.currentTarget.style.boxShadow = '';
+            }}
               placeholder="Nome completo"
             />
             {fieldErrors.full_name && (
@@ -491,7 +559,20 @@ function UserFormModal({
               <div>
                 <label className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.05em] text-muted">Email</label>
                 <input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} required
-                  className="w-full rounded-xl border border-border bg-body/60 px-4 py-3 text-[14px] text-primary placeholder:text-muted outline-none transition-all focus:border-accent/30 focus:ring-2 focus:ring-accent/8"
+                  className="w-full rounded-xl border border-border bg-body/60 px-4 py-3 text-[14px] text-primary placeholder:text-muted outline-none transition-all"
+            onFocus={(e) => {
+              if (brandPrimaryColor) {
+                e.currentTarget.style.borderColor = getBrandPrimaryWithOpacity(brandPrimaryColor, 0.3);
+                e.currentTarget.style.boxShadow = `0 0 0 2px ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.08)}`;
+              } else {
+                e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)';
+                e.currentTarget.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--color-brand-primary) 8%, transparent)';
+              }
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = '';
+              e.currentTarget.style.boxShadow = '';
+            }}
                   placeholder="usuario@email.com"
                 />
                 {fieldErrors.email && (
@@ -503,7 +584,20 @@ function UserFormModal({
               <div>
                 <label className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.05em] text-muted">Senha</label>
                 <input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} required minLength={6}
-                  className="w-full rounded-xl border border-border bg-body/60 px-4 py-3 text-[14px] text-primary placeholder:text-muted outline-none transition-all focus:border-accent/30 focus:ring-2 focus:ring-accent/8"
+                  className="w-full rounded-xl border border-border bg-body/60 px-4 py-3 text-[14px] text-primary placeholder:text-muted outline-none transition-all"
+            onFocus={(e) => {
+              if (brandPrimaryColor) {
+                e.currentTarget.style.borderColor = getBrandPrimaryWithOpacity(brandPrimaryColor, 0.3);
+                e.currentTarget.style.boxShadow = `0 0 0 2px ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.08)}`;
+              } else {
+                e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)';
+                e.currentTarget.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--color-brand-primary) 8%, transparent)';
+              }
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = '';
+              e.currentTarget.style.boxShadow = '';
+            }}
                   placeholder="Mínimo 6 caracteres"
                 />
                 {fieldErrors.password && (
@@ -557,6 +651,7 @@ function ResetPasswordModal({ userId, onClose }: { userId: string; onClose: () =
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const brandPrimaryColor = useBrandPrimaryColor();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -588,7 +683,20 @@ function ResetPasswordModal({ userId, onClose }: { userId: string; onClose: () =
         <div className="mb-6">
           <label className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.05em] text-muted">Nova senha</label>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} autoFocus
-            className="w-full rounded-xl border border-border bg-body/60 px-4 py-3 text-[14px] text-primary placeholder:text-muted outline-none transition-all focus:border-accent/30 focus:ring-2 focus:ring-accent/8"
+            className="w-full rounded-xl border border-border bg-body/60 px-4 py-3 text-[14px] text-primary placeholder:text-muted outline-none transition-all"
+            onFocus={(e) => {
+              if (brandPrimaryColor) {
+                e.currentTarget.style.borderColor = getBrandPrimaryWithOpacity(brandPrimaryColor, 0.3);
+                e.currentTarget.style.boxShadow = `0 0 0 2px ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.08)}`;
+              } else {
+                e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)';
+                e.currentTarget.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--color-brand-primary) 8%, transparent)';
+              }
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = '';
+              e.currentTarget.style.boxShadow = '';
+            }}
             placeholder="Mínimo 6 caracteres"
           />
         </div>
@@ -623,12 +731,14 @@ function ModalOverlay({ children, onClose }: { children: React.ReactNode; onClos
 }
 
 function SubmitButton({ loading, text }: { loading: boolean; text: string }) {
+  const brandPrimaryColor = useBrandPrimaryColor();
+  
   return (
     <button
       type="submit"
       disabled={loading}
-      className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13px] font-semibold text-white transition-all duration-200 ${loading ? 'bg-muted cursor-not-allowed' : 'bg-accent hover:shadow-md active:scale-95'
-        }`}
+      className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13px] font-semibold text-white transition-all duration-200 ${loading ? 'bg-muted cursor-not-allowed' : 'hover:shadow-md active:scale-95'}`}
+      style={!loading ? { backgroundColor: brandPrimaryColor || 'var(--color-brand-primary)' } : undefined}
     >
       {loading && <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />}
       {text}

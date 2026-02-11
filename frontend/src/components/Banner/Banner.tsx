@@ -1,6 +1,7 @@
 import { MarketplaceIcon } from './MarketplaceIcon';
 import type { DashboardChannel } from '../../hooks/useDashboard';
 import { useApp } from '../../contexts/AppContext';
+import { useBrandPrimaryColor, getBrandPrimaryWithOpacity } from '../../hooks/useBrandPrimaryColor';
 import aguaImg from '../../assets/img-agua.jpg';
 
 // ── Formatação ─────────────────────────────────────
@@ -28,30 +29,44 @@ interface BannerProps {
 export function Banner({ totalRevenue, channels }: BannerProps) {
   const { theme } = useApp();
   const isDark = theme === 'dark';
+  const brandPrimaryColor = useBrandPrimaryColor();
 
   return (
-    <div className="relative mb-16 w-full overflow-visible rounded-2xl max-md:mb-20 max-sm:mb-4">
-      {/* Image background - usando parte superior (0-40% da altura da imagem) */}
+    <div className="group relative mb-16 w-full overflow-visible rounded-2xl max-md:mb-20 max-sm:mb-4 transition-all duration-300">
+      {/* Image background */}
       <div
-        className="absolute inset-0 rounded-[22px]"
+        className="absolute inset-0 rounded-[22px] transition-all duration-300"
         style={{
           backgroundImage: `url(${aguaImg})`,
           backgroundSize: 'cover',
-          backgroundPosition: '100% 5%', // Centralizado horizontalmente, alinhado ao topo verticalmente
+          backgroundPosition: '100% 10%',
           backgroundRepeat: 'no-repeat',
           backgroundColor: isDark ? 'transparent' : 'lightgray',
-          mixBlendMode: isDark ? 'normal' : 'plus-darker',
-          imageRendering: 'auto',
-          WebkitBackfaceVisibility: 'hidden',
-          backfaceVisibility: 'hidden',
-          transform: 'translateZ(0)',
         }}
       />
-      {/* Dark overlay */}
-      <div className="absolute inset-0 rounded-[22px] bg-black/30 dark:bg-black/20" />
+      {/* Dark overlay - mais escuro no hover */}
+      <div className="absolute inset-0 rounded-[22px] bg-black/30 dark:bg-black/20 group-hover:bg-black/50 dark:group-hover:bg-black/40 transition-all duration-300" />
       {/* Glow accents */}
-      <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-accent/20 dark:bg-accent/30 blur-[70px]" />
-      <div className="pointer-events-none absolute -bottom-8 -left-8 h-36 w-36 rounded-full bg-accent-muted/20 dark:bg-accent/15 blur-[50px]" />
+      <div 
+        className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full blur-[70px]" 
+        style={{ 
+          backgroundColor: brandPrimaryColor 
+            ? getBrandPrimaryWithOpacity(brandPrimaryColor, isDark ? 0.3 : 0.2)
+            : isDark 
+              ? 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)'
+              : 'color-mix(in srgb, var(--color-brand-primary) 20%, transparent)',
+        }}
+      />
+      <div 
+        className="pointer-events-none absolute -bottom-8 -left-8 h-36 w-36 rounded-full blur-[50px]" 
+        style={{ 
+          backgroundColor: brandPrimaryColor 
+            ? getBrandPrimaryWithOpacity(brandPrimaryColor, isDark ? 0.15 : 0.2)
+            : isDark 
+              ? 'color-mix(in srgb, var(--color-brand-primary) 15%, transparent)'
+              : 'color-mix(in srgb, var(--color-brand-primary) 20%, transparent)',
+        }}
+      />
 
       <div className="relative flex min-h-[190px] flex-col p-7 px-8 max-md:min-h-[160px] max-md:p-5">
         {/* Text */}
