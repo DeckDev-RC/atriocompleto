@@ -57,7 +57,7 @@ export function LoginPage() {
           >
             {/* Left Section - Promotional (caixa azul) */}
             <div
-              className="login-panel-left relative px-12 pt-12 pb-4 flex flex-col justify-between rounded-l-3xl md:rounded-r-3xl shrink-0"
+              className="login-panel-left relative px-6 pt-8 pb-4 md:px-12 md:pt-12 flex flex-col justify-between rounded-l-3xl md:rounded-r-3xl shrink-0"
               style={{ overflow: 'hidden' }}
             >
               {/* Fundo gradiente + bolhas animadas */}
@@ -121,10 +121,10 @@ export function LoginPage() {
             </div>
 
             {/* Right Section - Login Form (caixa branca) */}
-            <div className="login-panel-right px-12 pt-16 pb-12 flex flex-col bg-white shrink-0 min-w-0">
+            <div className="login-panel-right px-6 pt-10 pb-8 md:px-12 md:pt-16 md:pb-12 flex flex-col bg-white shrink-0 min-w-0">
               <form onSubmit={handleSubmit} className="w-full max-w-md mx-auto">
-                <div className="mb-8">
-                  <h2 className="text-4xl font-bold text-[#0a0b0f] mb-2">
+                <div className="mb-6 md:mb-8">
+                  <h2 className="text-2xl md:text-4xl font-bold text-[#0a0b0f] mb-2">
                     Entrar
                   </h2>
                   <p className="text-[#545869]">

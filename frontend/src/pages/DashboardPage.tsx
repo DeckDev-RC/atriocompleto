@@ -30,7 +30,7 @@ export function DashboardPage() {
   const brandPrimaryColor = useBrandPrimaryColor();
 
   return (
-    <div className="p-7 max-md:p-5 max-sm:p-4">
+    <div className="p-7 max-md:p-5 max-sm:p-4 min-w-0 overflow-x-hidden">
       <Header>
         <PeriodFilter
           value={period}

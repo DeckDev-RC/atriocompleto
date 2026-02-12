@@ -571,6 +571,7 @@
     margin: 0;
     line-height: 1.5;
     letter-spacing: -0.011em;
+    overflow-x: hidden;
     background:
       radial-gradient(ellipse 80% 50% at 50% -10%, rgba(56, 182, 255, 0.03), rgba(56, 182, 255, 0)),
       radial-gradient(ellipse 50% 40% at 0% 0%, rgba(62, 93, 111, 0.02), rgba(62, 93, 111, 0)),
@@ -1035,7 +1036,16 @@
     min-height: 600px;
     position: relative;
   }
+}
 
+/* Mobile: evitar min-height fixo alto demais */
+@media (max-width: 767px) {
+  .login-card-inner {
+    min-height: auto;
+  }
+}
+
+@media (min-width: 768px) {
   .login-panel-left {
     flex: 0 0 45%;
   }
