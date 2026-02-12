@@ -16,6 +16,7 @@ export interface DashboardParams {
   start_date?: string;
   end_date?: string;
   period_days?: number;
+  status?: string;
 }
 
 interface OverviewRow {
@@ -60,6 +61,7 @@ export interface DashboardAggregated {
     ordersChange: number | null;
     avgTicketChange: number | null;
     cancellationChange: number | null;
+    comparedMonths: { current: string; previous: string } | null;
   };
 }
 
@@ -122,6 +124,7 @@ export async function fetchDashboardAggregated(
 
   const dw = buildDateWhere(params);
   const tw = tenantId ? `AND tenant_id = '${tenantId}'` : "";
+  const sw = params.status ? `AND LOWER(status) = '${params.status.toLowerCase().replace(/'/g, "''")}'` : "";
 
   // 3 queries agregadas em paralelo (~100 rows total)
   const [overviewRows, mktRows, monthlyRows] = await Promise.all([
@@ -136,7 +139,7 @@ export async function fetchDashboardAggregated(
         COUNT(*)      FILTER (WHERE LOWER(status) = 'cancelled')::int   AS cancelled_orders,
         COALESCE(SUM(total_amount) FILTER (WHERE LOWER(status) = 'cancelled'), 0)::float AS cancelled_revenue
       FROM orders
-      WHERE 1=1 ${dw} ${tw}
+      WHERE 1=1 ${dw} ${tw} ${sw}
     `),
 
     // 2. Marketplace × Status (~20 rows)
@@ -147,7 +150,7 @@ export async function fetchDashboardAggregated(
         COUNT(*)::int AS order_count,
         COALESCE(SUM(total_amount), 0)::float AS revenue
       FROM orders
-      WHERE 1=1 ${dw} ${tw}
+      WHERE 1=1 ${dw} ${tw} ${sw}
       GROUP BY marketplace, LOWER(status)
       ORDER BY revenue DESC
     `),
@@ -161,7 +164,7 @@ export async function fetchDashboardAggregated(
         COALESCE(SUM(total_amount), 0)::float AS revenue,
         COALESCE(AVG(total_amount), 0)::float AS avg_ticket
       FROM orders
-      WHERE 1=1 ${dw} ${tw}
+      WHERE 1=1 ${dw} ${tw} ${sw}
       GROUP BY month, LOWER(status)
       ORDER BY month, LOWER(status)
     `),
@@ -229,10 +232,15 @@ function processResults(
   let ordersChange: number | null = null;
   let avgTicketChange: number | null = null;
   let cancellationChange: number | null = null;
+  let comparedMonths: { current: string; previous: string } | null = null;
 
   if (sortedMonths.length >= 2) {
-    const last = monthMap[sortedMonths[sortedMonths.length - 1]];
-    const prev = monthMap[sortedMonths[sortedMonths.length - 2]];
+    const lastKey = sortedMonths[sortedMonths.length - 1];
+    const prevKey = sortedMonths[sortedMonths.length - 2];
+    const last = monthMap[lastKey];
+    const prev = monthMap[prevKey];
+
+    comparedMonths = { current: lastKey, previous: prevKey };
 
     if (prev.paid > 0) {
       momTrend = Math.round(((last.paid - prev.paid) / prev.paid) * 10000) / 100;
@@ -254,6 +262,6 @@ function processResults(
     paidByMkt,
     allByMkt,
     months: sortedMonths.map((m) => ({ month: m, ...monthMap[m] })),
-    trends: { momTrend, ordersChange, avgTicketChange, cancellationChange },
+    trends: { momTrend, ordersChange, avgTicketChange, cancellationChange, comparedMonths },
   };
 }

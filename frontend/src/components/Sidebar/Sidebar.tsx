@@ -5,6 +5,7 @@ import {
   X,
   ChevronLeft,
   Shield,
+  Settings,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../../contexts/AppContext';
@@ -204,11 +205,27 @@ export function Sidebar() {
           {collapsed ? (
             <div className="px-2 pb-4">
               <div className="flex justify-center pb-2">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/5 text-[12px] font-bold text-primary border border-border/60">
-                  {initials}
+                <div className="flex h-10 w-10 items-center justify-center rounded-full overflow-hidden bg-primary/5 text-[12px] font-bold text-primary border border-border/60">
+                  {user?.avatar_url ? (
+                    <img src={user.avatar_url} alt={user.full_name} className="h-full w-full object-cover" />
+                  ) : (
+                    initials
+                  )}
                 </div>
               </div>
-              <div className="flex mt-1 justify-center">
+              <div className="flex flex-col items-center gap-1 mt-1">
+                <button
+                  onClick={() => { navigate('/configuracoes'); closeSidebar(); }}
+                  title="Configurações"
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium transition-all duration-300 active:scale-95 ${
+                    isActive('/configuracoes')
+                      ? 'bg-primary/5'
+                      : 'text-secondary/60 hover:bg-border/40 hover:text-primary'
+                  }`}
+                  style={isActive('/configuracoes') ? { color: 'var(--color-brand-primary)' } : undefined}
+                >
+                  <Settings size={14} strokeWidth={isActive('/configuracoes') ? 2.2 : 2} />
+                </button>
                 <button
                   onClick={logout}
                   className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium text-secondary/60 transition-all duration-300 hover:bg-danger/5 hover:text-danger active:scale-95"
@@ -228,8 +245,12 @@ export function Sidebar() {
           ) : (
             <div className="px-2 pb-4">
               <div className="flex items-center gap-3 px-2 py-2 rounded-2xl transition-colors duration-300">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/5 text-[11px] font-bold text-primary border border-border/60">
-                  {initials}
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden bg-primary/5 text-[11px] font-bold text-primary border border-border/60">
+                  {user?.avatar_url ? (
+                    <img src={user.avatar_url} alt={user.full_name} className="h-full w-full object-cover" />
+                  ) : (
+                    initials
+                  )}
                 </div>
                 <div className="min-w-0">
                   <p className="truncate text-[13.5px] font-semibold text-primary tracking-tight">
@@ -240,7 +261,20 @@ export function Sidebar() {
                   </p>
                 </div>
               </div>
-              <div className="flex mt-1 px-2">
+              <div className="flex items-center mt-1 px-2 gap-1">
+                <button
+                  onClick={() => { navigate('/configuracoes'); closeSidebar(); }}
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium transition-all duration-300 active:scale-95 ${
+                    isActive('/configuracoes')
+                      ? 'bg-primary/5'
+                      : 'text-secondary/60 hover:bg-border/40 hover:text-primary'
+                  }`}
+                  title="Configurações"
+                  style={isActive('/configuracoes') ? { color: 'var(--color-brand-primary)' } : undefined}
+                >
+                  <Settings size={14} strokeWidth={isActive('/configuracoes') ? 2.2 : 2} />
+                  <span>Configurações</span>
+                </button>
                 <button
                   onClick={logout}
                   className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium text-secondary/60 transition-all duration-300 hover:bg-danger/5 hover:text-danger active:scale-95"

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { fetchDashboardAggregated, DashboardParams } from "../services/dashboard";
 import { getMarketplaceInfo } from "../config/marketplace";
+import { supabase } from "../config/supabase";
 import { requireAuth } from "../middleware/auth";
 
 const router = Router();
@@ -18,33 +19,41 @@ const MONTH_NAMES: Record<string, string> = {
 
 function buildParams(query: Record<string, unknown>): DashboardParams {
   const period = (query.period as string) || "all";
+  const status = (query.status as string) || undefined;
 
-  switch (period) {
-    case "custom": {
-      const start = query.start_date as string;
-      const end = query.end_date as string;
-      if (start && end) return { start_date: start, end_date: end };
-      return { all_time: true };
+  const base = (() => {
+    switch (period) {
+      case "custom": {
+        const start = query.start_date as string;
+        const end = query.end_date as string;
+        if (start && end) return { start_date: start, end_date: end };
+        return { all_time: true };
+      }
+      case "current_month": {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth() + 1;
+        const lastDay = new Date(year, month, 0).getDate();
+        const mm = String(month).padStart(2, "0");
+        return {
+          start_date: `${year}-${mm}-01`,
+          end_date: `${year}-${mm}-${String(lastDay).padStart(2, "0")}`,
+        };
+      }
+      case "30d":
+        return { period_days: 30 };
+      case "90d":
+        return { period_days: 90 };
+      case "all":
+      default:
+        return { all_time: true };
     }
-    case "current_month": {
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth() + 1;
-      const lastDay = new Date(year, month, 0).getDate();
-      const mm = String(month).padStart(2, "0");
-      return {
-        start_date: `${year}-${mm}-01`,
-        end_date: `${year}-${mm}-${String(lastDay).padStart(2, "0")}`,
-      };
-    }
-    case "30d":
-      return { period_days: 30 };
-    case "90d":
-      return { period_days: 90 };
-    case "all":
-    default:
-      return { all_time: true };
+  })();
+
+  if (status && status !== "all") {
+    return { ...base, status };
   }
+  return base;
 }
 
 // ── GET /api/dashboard/summary ─────────────────────────
@@ -147,6 +156,7 @@ router.get("/summary", async (req: Request, res: Response) => {
           paidPct,
           momTrend: agg.trends.momTrend,
         },
+        comparedMonths: agg.trends.comparedMonths,
         period: params.all_time
           ? "all"
           : { start: params.start_date || "", end: params.end_date || "" },
@@ -157,6 +167,40 @@ router.get("/summary", async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : "Erro ao carregar dashboard",
+    });
+  }
+});
+
+// ── GET /api/dashboard/statuses ──────────────────────────
+
+router.get("/statuses", async (req: Request, res: Response) => {
+  try {
+    const tenantId = req.user!.tenant_id;
+
+    if (!tenantId) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const { data, error } = await supabase
+      .from("orders")
+      .select("status")
+      .eq("tenant_id", tenantId)
+      .not("status", "is", null);
+
+    if (error) {
+      console.error("[Dashboard] Statuses error:", error);
+      return res.status(500).json({ success: false, error: "Erro ao buscar status" });
+    }
+
+    // Extrair valores distintos e ordenar
+    const unique = [...new Set((data || []).map((r: { status: string }) => r.status))].sort();
+
+    res.json({ success: true, data: unique });
+  } catch (error) {
+    console.error("[Dashboard] Statuses error:", error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : "Erro ao buscar status",
     });
   }
 });

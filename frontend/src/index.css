@@ -502,6 +502,37 @@
   }
 }
 
+/* ===== TOAST ANIMATIONS ===== */
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes toast-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+}
+
+.animate-toast-enter {
+  animation: toast-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-toast-exit {
+  animation: toast-exit 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
 /* ===== BASE ===== */
 @layer base {
   html {

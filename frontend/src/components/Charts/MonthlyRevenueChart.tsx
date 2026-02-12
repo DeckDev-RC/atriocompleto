@@ -8,8 +8,10 @@ import {
   LabelList,
   Tooltip,
 } from 'recharts';
-import { useState, useEffect } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useChartColors } from './useChartColors';
+import { useFormatting } from '../../hooks/useFormatting';
+import { useBrandPrimaryColor } from '../../hooks/useBrandPrimaryColor';
 
 // ── Types ──────────────────────────────────────────
 
@@ -23,14 +25,12 @@ interface MonthlyRevenueChartProps {
   data: MonthlyItem[];
 }
 
-// ── Helpers ────────────────────────────────────────
+// ── Helpers (module-level, estáveis) ────────────────
 
-// ── Helpers ────────────────────────────────────────
-
-function formatValue(val: number): string {
+function formatCompactValue(val: number): string {
   if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`;
   if (val >= 1_000) return `${(val / 1_000).toFixed(1)}k`;
-  return val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return val.toFixed(2);
 }
 
 interface CustomLabelProps {
@@ -38,32 +38,30 @@ interface CustomLabelProps {
   y?: number;
   width?: number;
   value?: number;
-  fill?: string;
 }
 
-function createTopLabel(labelColor: string) {
-  return function TopLabel({ x = 0, y = 0, width = 0, value = 0 }: CustomLabelProps) {
-    if (!value) return null;
-    return (
-      <text
-        x={x + width / 2}
-        y={y - 8}
-        textAnchor="middle"
-        fontSize={10}
-        fontWeight={600}
-        fill={labelColor}
-        letterSpacing="-0.02em"
-      >
-        {formatValue(value)}
-      </text>
-    );
-  };
+function TopLabel({ x = 0, y = 0, width = 0, value = 0, labelColor }: CustomLabelProps & { labelColor: string }) {
+  if (!value) return null;
+  return (
+    <text
+      x={x + width / 2}
+      y={y - 8}
+      textAnchor="middle"
+      fontSize={10}
+      fontWeight={600}
+      fill={labelColor}
+      letterSpacing="-0.02em"
+    >
+      {formatCompactValue(value)}
+    </text>
+  );
 }
 
-function CustomTooltip({ active, payload, label }: {
+function RevenueTooltip({ active, payload, label, formatter }: {
   active?: boolean;
   payload?: Array<{ value: number; dataKey: string }>;
   label?: string;
+  formatter?: (v: number) => string;
 }) {
   if (!active || !payload?.length) return null;
   return (
@@ -71,7 +69,7 @@ function CustomTooltip({ active, payload, label }: {
       <p className="font-semibold text-primary capitalize">{label}</p>
       {payload.map((p) => (
         <p key={p.dataKey} className="text-secondary mt-0.5">
-          {p.dataKey === 'paid' ? 'Pagos' : 'Cancelados'}: {p.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+          {p.dataKey === 'paid' ? 'Pagos' : 'Cancelados'}: {formatter ? formatter(p.value) : p.value}
         </p>
       ))}
     </div>
@@ -81,45 +79,21 @@ function CustomTooltip({ active, payload, label }: {
 // ── Component ──────────────────────────────────────
 
 export function MonthlyRevenueChart({ data }: MonthlyRevenueChartProps) {
+  const { formatCurrency } = useFormatting();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const renderTooltip = useCallback((props: any) => (
+    <RevenueTooltip {...props} formatter={formatCurrency} />
+  ), [formatCurrency]);
+
   const { gridColor, secondaryColor, labelColor, darkBarColor } = useChartColors();
-  const TopLabelComponent = createTopLabel(labelColor);
-  const [brandPrimaryColor, setBrandPrimaryColor] = useState('#0404A6');
 
-  // Atualizar a cor quando a variável CSS mudar
-  useEffect(() => {
-    const updateColor = () => {
-      if (typeof window !== 'undefined') {
-        const color = getComputedStyle(document.documentElement)
-          .getPropertyValue('--color-brand-primary')
-          .trim() || '#0404A6';
-        setBrandPrimaryColor(color);
-      }
-    };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const renderTopLabel = useMemo(() => {
+    return (props: any) => <TopLabel {...props} labelColor={labelColor} />;
+  }, [labelColor]);
 
-    // Atualizar imediatamente
-    updateColor();
-
-    // Observar mudanças no documento (incluindo mudanças de tema)
-    const observer = new MutationObserver(() => {
-      updateColor();
-    });
-
-    if (typeof window !== 'undefined') {
-      observer.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['style', 'class', 'data-theme'],
-        subtree: false,
-      });
-
-      // Também verificar periodicamente durante desenvolvimento (quando CSS é recarregado)
-      const interval = setInterval(updateColor, 500);
-
-      return () => {
-        observer.disconnect();
-        clearInterval(interval);
-      };
-    }
-  }, []);
+  const brandPrimaryColor = useBrandPrimaryColor() || '#0404A6';
 
   return (
     <div className="rounded-2xl bg-card p-6 border border-border shadow-soft dark:shadow-dark-card transition-all duration-300 hover:shadow-soft-hover dark:hover:shadow-dark-hover min-h-[220px]">
@@ -146,14 +120,14 @@ export function MonthlyRevenueChart({ data }: MonthlyRevenueChartProps) {
             />
             <YAxis hide />
             <Tooltip
-              content={<CustomTooltip />}
+              content={renderTooltip}
               cursor={{ fill: 'rgba(0,0,0,0.02)', radius: 4 }}
             />
             <Bar dataKey="cancelled" fill={darkBarColor} radius={[6, 6, 2, 2]} barSize={18}>
-              <LabelList dataKey="cancelled" content={<TopLabelComponent />} />
+              <LabelList dataKey="cancelled" content={renderTopLabel} />
             </Bar>
             <Bar dataKey="paid" fill={brandPrimaryColor} radius={[6, 6, 2, 2]} barSize={18}>
-              <LabelList dataKey="paid" content={<TopLabelComponent />} />
+              <LabelList dataKey="paid" content={renderTopLabel} />
             </Bar>
           </BarChart>
         </ResponsiveContainer>

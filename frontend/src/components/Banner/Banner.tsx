@@ -2,22 +2,8 @@ import { MarketplaceIcon } from './MarketplaceIcon';
 import type { DashboardChannel } from '../../hooks/useDashboard';
 import { useApp } from '../../contexts/AppContext';
 import { useBrandPrimaryColor, getBrandPrimaryWithOpacity } from '../../hooks/useBrandPrimaryColor';
+import { useFormatting } from '../../hooks/useFormatting';
 import aguaImg from '../../assets/img-agua.jpg';
-
-// ── Formatação ─────────────────────────────────────
-
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-}
-
-function formatCompact(value: number): string {
-  return formatCurrency(value);
-}
 
 // ── Props ──────────────────────────────────────────
 
@@ -30,6 +16,7 @@ export function Banner({ totalRevenue, channels }: BannerProps) {
   const { theme } = useApp();
   const isDark = theme === 'dark';
   const brandPrimaryColor = useBrandPrimaryColor();
+  const { formatCurrency } = useFormatting();
 
   return (
     <div className="group relative mb-16 w-full overflow-visible rounded-2xl max-md:mb-20 max-sm:mb-4 transition-all duration-300">
@@ -85,6 +72,7 @@ export function Banner({ totalRevenue, channels }: BannerProps) {
             </p>
             <p className="text-[26px] font-bold tracking-[-0.03em] text-primary leading-none">
               {formatCurrency(totalRevenue)}
+
             </p>
           </div>
 
@@ -99,7 +87,7 @@ export function Banner({ totalRevenue, channels }: BannerProps) {
                     {ch.label}
                   </p>
                   <p className="text-[20px] font-bold tracking-[-0.03em] text-primary leading-none">
-                    {formatCompact(ch.value)}
+                    {formatCurrency(ch.value)}
                   </p>
                   <span className="mt-1 inline-block text-[11px] font-medium text-secondary">
                     {ch.percentage.toFixed(1)}% do total

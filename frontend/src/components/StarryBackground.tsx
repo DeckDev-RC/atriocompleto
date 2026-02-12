@@ -62,10 +62,13 @@ export function StarryBackground() {
             canvas.width = document.documentElement.clientWidth;
             canvas.height = window.innerHeight;
 
-            // Responsive particle count
-            // Mobile: 1 per 25000px², Desktop: 1 per 15000px²
+            // Responsive particle count — reduzi densidade para economizar GPU
+            // Low-end devices (≤4 cores): 1 per 40000px²
+            // Mobile: 1 per 30000px², Desktop: 1 per 20000px²
+            const cores = navigator.hardwareConcurrency || 4;
+            const isLowEnd = cores <= 4;
             const isMobile = window.innerWidth < 768;
-            const density = isMobile ? 25000 : 15000;
+            const density = isLowEnd ? 40000 : isMobile ? 30000 : 20000;
             const particleCount = Math.floor((canvas.width * canvas.height) / density);
             particles = [];
             for (let i = 0; i < particleCount; i++) {

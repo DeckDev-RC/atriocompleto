@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import compression from "compression";
 import rateLimit from "express-rate-limit";
 
 import { env } from "./config/env";
@@ -8,6 +9,7 @@ import { errorHandler } from "./middleware/error";
 
 import authRoutes from "./routes/auth";
 import adminRoutes from "./routes/admin";
+import userRoutes from "./routes/user";
 import chatRoutes from "./routes/chat";
 import dashboardRoutes from "./routes/dashboard";
 import healthRoutes from "./routes/health";
@@ -55,19 +57,25 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
+// ── Compression ─────────────────────────────────────────
+app.use(compression());
+
 // ── Body Parsing ────────────────────────────────────────
 app.use(express.json({ limit: "1mb" }));
 
-// ── Request Logging ─────────────────────────────────────
-app.use((req, _res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-  next();
-});
+// ── Request Logging (dev only) ──────────────────────────
+if (env.NODE_ENV !== "production") {
+  app.use((req, _res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+    next();
+  });
+}
 
 // ── Routes ──────────────────────────────────────────────
 app.use("/api/health", healthRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/user", userRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/chat", chatRoutes);
 

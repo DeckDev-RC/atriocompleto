@@ -5,6 +5,7 @@ import { useMemo } from 'react';
 import { extractCharts, AgentChart } from './AgentChart';
 import type { ChartData } from './AgentChart';
 import { useBrandPrimaryColor, getBrandPrimaryWithOpacity } from '../../hooks/useBrandPrimaryColor';
+import { useFormatting } from '../../hooks/useFormatting';
 
 interface TokenUsage {
   inputTokens: number;
@@ -24,6 +25,7 @@ interface AgentMessageProps {
 export function AgentMessage({ role, content, timestamp, isLoading, tokenUsage }: AgentMessageProps) {
   const isUser = role === 'user';
   const brandPrimaryColor = useBrandPrimaryColor();
+  const { formatInteger } = useFormatting();
 
   const { text: textContent, charts } = useMemo(() => extractCharts(content), [content]);
 
@@ -116,7 +118,7 @@ export function AgentMessage({ role, content, timestamp, isLoading, tokenUsage }
             {tokenUsage && !isUser && (
               <div className="flex items-center gap-1.5 mt-3 pt-2.5 border-t border-border text-[10px] text-muted opacity-60">
                 <Zap size={9} />
-                <span>{tokenUsage.totalTokens.toLocaleString('pt-BR')} tokens</span>
+                <span>{formatInteger(tokenUsage.totalTokens)} tokens</span>
                 <span className="opacity-40">·</span>
                 <span>
                   ~${tokenUsage.estimatedCostUSD < 0.01

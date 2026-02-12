@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { agentApi } from '../services/agentApi';
 
 // ── Types ──────────────────────────────────────────
@@ -33,6 +33,7 @@ export interface DashboardData {
     paidPct: number;
     momTrend: number | null;
   };
+  comparedMonths: { current: string; previous: string } | null;
 }
 
 // ── Hook ───────────────────────────────────────────
@@ -53,9 +54,17 @@ export function useDashboard() {
     setPeriod('custom');
   }, []);
 
+  // AbortController para cancelar request anterior quando filtros mudam
+  const abortRef = useRef<AbortController | null>(null);
+
   const fetchDashboard = useCallback(async () => {
     // Não buscar enquanto datas custom não estiverem completas
     if (period === 'custom' && (!customStart || !customEnd)) return;
+
+    // Cancela fetch anterior (se existir)
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     setLoading(true);
     setError(null);
@@ -64,22 +73,32 @@ export function useDashboard() {
         period,
         period === 'custom' ? customStart : undefined,
         period === 'custom' ? customEnd : undefined,
-        status
+        status,
+        controller.signal,
       );
+
+      // Ignora resposta se foi cancelada
+      if (controller.signal.aborted) return;
+
       if (response.success && response.data) {
         setData(response.data as DashboardData);
-      } else {
+      } else if (response.error !== 'Request cancelled') {
         setError(response.error || 'Erro ao carregar dashboard');
       }
     } catch {
-      setError('Erro de conexão com o servidor');
+      if (!controller.signal.aborted) {
+        setError('Erro de conexão com o servidor');
+      }
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
     }
   }, [period, customStart, customEnd, status]);
 
   useEffect(() => {
     fetchDashboard();
+    return () => { abortRef.current?.abort(); };
   }, [fetchDashboard]);
 
   return {

@@ -1,4 +1,4 @@
-import { Menu, Moon, Sun, Bell, Palette } from 'lucide-react';
+import { Menu, Moon, Sun, Bell } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
 import { useBrandPrimaryColor } from '../../hooks/useBrandPrimaryColor';
 
@@ -13,7 +13,7 @@ export function Header({
   subtitle = 'Visão geral da sua operação',
   children,
 }: HeaderProps) {
-  const { toggleSidebar, theme, toggleTheme, themeColor, setThemeColor } = useApp();
+  const { toggleSidebar, theme, toggleTheme } = useApp();
   const brandPrimaryColor = useBrandPrimaryColor();
 
   return (
@@ -53,20 +53,6 @@ export function Header({
           <span
             className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full ring-2 ring-body"
             style={{ backgroundColor: brandPrimaryColor || 'var(--color-brand-primary)' }}
-          />
-        </button>
-
-        {/* Palette toggle */}
-        <button
-          onClick={() => setThemeColor(themeColor === 'blue' ? 'pink' : 'blue')}
-          aria-label="Alternar paleta de cores"
-          className="flex h-9 w-9 items-center justify-center rounded-full text-secondary transition-all duration-300 hover:bg-card hover:text-primary hover:shadow-soft active:scale-95"
-          title={themeColor === 'blue' ? 'Usar tema Rosa' : 'Usar tema Azul'}
-        >
-          <Palette
-            size={18}
-            strokeWidth={2}
-            style={themeColor === 'pink' ? { color: brandPrimaryColor || 'var(--color-brand-primary)' } : undefined}
           />
         </button>
 

@@ -44,7 +44,7 @@ router.post("/login", async (req: Request, res: Response) => {
     // Fetch profile
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("id, email, full_name, role, tenant_id, is_active")
+      .select("id, email, full_name, role, tenant_id, is_active, avatar_url")
       .eq("id", data.user.id)
       .single();
 
@@ -82,6 +82,7 @@ router.post("/login", async (req: Request, res: Response) => {
           role: profile.role,
           tenant_id: profile.tenant_id,
           tenant_name,
+          avatar_url: profile.avatar_url || null,
         },
       },
     });
@@ -145,6 +146,7 @@ router.get("/me", requireAuth, async (req: Request, res: Response) => {
         role: user.role,
         tenant_id: user.tenant_id,
         tenant_name,
+        avatar_url: user.avatar_url,
       },
     });
   } catch (error) {

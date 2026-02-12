@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import { Sidebar, SIDEBAR_W, SIDEBAR_COLLAPSED_W } from './Sidebar';
 import { useApp } from '../contexts/AppContext';
+import { StarryBackground } from './StarryBackground';
 
 export function DashboardLayout() {
   const { sidebarCollapsed } = useApp();
@@ -8,6 +9,7 @@ export function DashboardLayout() {
 
   return (
     <div className="flex min-h-screen">
+      <StarryBackground />
       <Sidebar />
 
       <main

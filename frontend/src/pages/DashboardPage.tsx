@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import {
   Package,
   DollarSign,
@@ -16,25 +17,7 @@ import { SkeletonBanner, SkeletonCard } from '../components/Skeleton';
 import { useDashboard } from '../hooks/useDashboard';
 import { useAuth } from '../contexts/AuthContext';
 import { useBrandPrimaryColor, getBrandPrimaryWithOpacity } from '../hooks/useBrandPrimaryColor';
-
-// ── Formatação ─────────────────────────────────────
-
-function fmtNumber(value: number): string {
-  return value.toLocaleString('pt-BR');
-}
-
-function fmtCurrency(value: number): string {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-}
-
-function fmtPct(value: number): string {
-  return `${value.toFixed(1)}%`;
-}
+import { useFormatting } from '../hooks/useFormatting';
 
 // ── Page ───────────────────────────────────────────
 
@@ -43,6 +26,7 @@ export function DashboardPage() {
     useDashboard();
   const { user } = useAuth();
   const hasTenant = !!user?.tenant_id;
+  const { formatNumber: fmtNumber, formatCurrency: fmtCurrency, formatPercent: fmtPct } = useFormatting();
   const brandPrimaryColor = useBrandPrimaryColor();
 
   return (
@@ -124,18 +108,21 @@ export function DashboardPage() {
                     title="Total de Pedidos"
                     value={fmtNumber(data.stats.totalOrders.value)}
                     change={data.stats.totalOrders.change}
+                    comparedMonths={data.comparedMonths}
                     icon={Package}
                   />
                   <MiniStatCard
                     title="Ticket Médio"
                     value={fmtCurrency(data.stats.avgTicket.value)}
                     change={data.stats.avgTicket.change}
+                    comparedMonths={data.comparedMonths}
                     icon={DollarSign}
                   />
                   <MiniStatCard
                     title="Taxa de Cancelamento"
                     value={fmtPct(data.stats.cancellationRate.value)}
                     change={data.stats.cancellationRate.change}
+                    comparedMonths={data.comparedMonths}
                     icon={XCircle}
                     invertTrend
                   />
@@ -143,6 +130,7 @@ export function DashboardPage() {
                     title="Pedidos Pagos"
                     value={fmtPct(data.insights.paidPct)}
                     change={null}
+                    comparedMonths={null}
                     icon={CheckCircle}
                     subtitle={`${fmtNumber(
                       Math.round((data.stats.totalOrders.value * data.insights.paidPct) / 100),
@@ -169,21 +157,39 @@ export function DashboardPage() {
   );
 }
 
+// ── Helpers ─────────────────────────────────────────
+
+const MONTH_LABELS: Record<string, string> = {
+  '01': 'Jan', '02': 'Fev', '03': 'Mar', '04': 'Abr',
+  '05': 'Mai', '06': 'Jun', '07': 'Jul', '08': 'Ago',
+  '09': 'Set', '10': 'Out', '11': 'Nov', '12': 'Dez',
+};
+
+function formatMonthLabel(yyyyMM: string): string {
+  const [year, month] = yyyyMM.split('-');
+  return `${MONTH_LABELS[month] || month}/${year?.slice(2)}`;
+}
+
 // ── Mini Stat Card (compacto, 2×2 grid) ────────────
 
 interface MiniStatCardProps {
   title: string;
   value: string;
   change: number | null;
+  comparedMonths: { current: string; previous: string } | null;
   icon: React.ElementType;
   invertTrend?: boolean;
   subtitle?: string;
 }
 
-function MiniStatCard({ title, value, change, icon: Icon, invertTrend, subtitle }: MiniStatCardProps) {
+const MiniStatCard = memo(function MiniStatCard({ title, value, change, comparedMonths, icon: Icon, invertTrend, subtitle }: MiniStatCardProps) {
   const hasChange = change !== null && change !== 0;
   const isPositiveChange = change !== null && change > 0;
   const isGood = invertTrend ? !isPositiveChange : isPositiveChange;
+
+  const tooltipText = comparedMonths
+    ? `${formatMonthLabel(comparedMonths.current)} vs ${formatMonthLabel(comparedMonths.previous)}`
+    : 'vs mês anterior';
 
   return (
     <div className="group h-full min-h-[100px] flex flex-col rounded-2xl bg-card p-5 border border-border shadow-soft dark:shadow-dark-card transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:shadow-soft-hover dark:hover:shadow-dark-hover hover:-translate-y-0.5">
@@ -196,8 +202,9 @@ function MiniStatCard({ title, value, change, icon: Icon, invertTrend, subtitle 
         </div>
         {hasChange && (
           <div
-            className={`flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold ${isGood ? 'bg-success/10 text-success' : 'bg-shopee/10 text-shopee'
+            className={`flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold cursor-default ${isGood ? 'bg-success/10 text-success' : 'bg-shopee/10 text-shopee'
               }`}
+            title={tooltipText}
           >
             {isPositiveChange ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
             {change > 0 ? '+' : ''}
@@ -216,9 +223,14 @@ function MiniStatCard({ title, value, change, icon: Icon, invertTrend, subtitle 
           {subtitle}
         </p>
       )}
+      {hasChange && comparedMonths && (
+        <p className="mt-1.5 text-[10px] text-muted/50 tracking-[-0.01em] shrink-0">
+          vs {formatMonthLabel(comparedMonths.previous)}
+        </p>
+      )}
     </div>
   );
-}
+});
 
 // ── Quick Insights ─────────────────────────────────
 
@@ -229,22 +241,23 @@ interface QuickInsightsProps {
   momTrend: number | null;
 }
 
-function QuickInsights({ avgTicket, cancellationRate, paidPct, momTrend }: QuickInsightsProps) {
+const QuickInsights = memo(function QuickInsights({ avgTicket, cancellationRate, paidPct, momTrend }: QuickInsightsProps) {
   const brandPrimaryColor = useBrandPrimaryColor();
+  const { formatCurrency, formatPercent } = useFormatting();
   const items = [
     {
       label: 'Ticket Médio',
-      value: fmtCurrency(avgTicket),
+      value: formatCurrency(avgTicket),
       bar: Math.min((avgTicket / 500) * 100, 100),
     },
     {
       label: '% Pedidos Pagos',
-      value: fmtPct(paidPct),
+      value: formatPercent(paidPct),
       bar: paidPct,
     },
     {
       label: 'Taxa de Cancelamento',
-      value: fmtPct(cancellationRate),
+      value: formatPercent(cancellationRate),
       bar: cancellationRate,
     },
     {
@@ -287,4 +300,4 @@ function QuickInsights({ avgTicket, cancellationRate, paidPct, momTrend }: Quick
       </div>
     </div>
   );
-}
+});

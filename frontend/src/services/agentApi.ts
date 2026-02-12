@@ -17,6 +17,7 @@ class AgentApiService {
   private async request<T>(
     path: string,
     options: RequestInit = {},
+    signal?: AbortSignal,
   ): Promise<ApiResponse<T>> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -31,11 +32,16 @@ class AgentApiService {
       const response = await fetch(`${AGENT_API_URL}${path}`, {
         ...options,
         headers,
+        signal,
       });
 
       const data = await response.json();
       return data;
     } catch (error) {
+      // Silently handle aborted requests
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return { success: false, error: 'Request cancelled' };
+      }
       console.error('Agent API Error:', error);
       return { success: false, error: 'Erro de conexão com o servidor' };
     }
@@ -57,6 +63,7 @@ class AgentApiService {
         role: 'master' | 'user';
         tenant_id: string | null;
         tenant_name: string | null;
+        avatar_url: string | null;
       };
     }>('/api/auth/login', {
       method: 'POST',
@@ -210,7 +217,7 @@ class AgentApiService {
   // DASHBOARD
   // ══════════════════════════════════════════════════════
 
-  async getDashboardSummary(period: string = 'all', startDate?: string, endDate?: string, status?: string) {
+  async getDashboardSummary(period: string = 'all', startDate?: string, endDate?: string, status?: string, signal?: AbortSignal) {
     let url = `/api/dashboard/summary?period=${encodeURIComponent(period)}`;
     if (startDate) url += `&start_date=${encodeURIComponent(startDate)}`;
     if (endDate) url += `&end_date=${encodeURIComponent(endDate)}`;
@@ -242,12 +249,88 @@ class AgentApiService {
         paidPct: number;
         momTrend: number | null;
       };
+      comparedMonths: { current: string; previous: string } | null;
       period: string | { start: string; end: string };
-    }>(url);
+    }>(url, {}, signal);
   }
 
   async getDashboardStatuses() {
     return this.request<string[]>('/api/dashboard/statuses');
+  }
+
+  // ══════════════════════════════════════════════════════
+  // USER — Preferences & Profile
+  // ══════════════════════════════════════════════════════
+
+  async getPreferences() {
+    return this.request<{
+      primary_color: string;
+      font_family: string;
+      number_locale: string;
+      number_decimals: number;
+      currency_symbol: string;
+    }>('/api/user/preferences');
+  }
+
+  async updatePreferences(prefs: Partial<{
+    primary_color: string;
+    font_family: string;
+    number_locale: string;
+    number_decimals: number;
+    currency_symbol: string;
+  }>) {
+    return this.request('/api/user/preferences', {
+      method: 'PUT',
+      body: JSON.stringify(prefs),
+    });
+  }
+
+  async updateProfile(data: { full_name: string }) {
+    return this.request<{ id: string; email: string; full_name: string; role: string }>(
+      '/api/user/profile',
+      {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      },
+    );
+  }
+
+  async uploadAvatar(file: File) {
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    const headers: Record<string, string> = {};
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`;
+    }
+
+    try {
+      const response = await fetch(`${AGENT_API_URL}/api/user/avatar`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+      return await response.json();
+    } catch {
+      return { success: false, error: 'Erro ao enviar avatar' };
+    }
+  }
+
+  async deleteAvatar() {
+    return this.request<{ avatar_url: null }>('/api/user/avatar', {
+      method: 'DELETE',
+    });
+  }
+
+  async changePassword(data: {
+    current_password: string;
+    new_password: string;
+    confirm_password: string;
+  }) {
+    return this.request<{ message: string }>('/api/user/change-password', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   }
 
   // ══════════════════════════════════════════════════════

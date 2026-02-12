@@ -4,4 +4,16 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-charts': ['recharts', 'chart.js'],
+          'vendor-markdown': ['react-markdown', 'remark-gfm'],
+          'vendor-ui': ['lucide-react', 'react-day-picker'],
+        },
+      },
+    },
+  },
 })

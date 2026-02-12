@@ -19,6 +19,7 @@ import {
 } from 'chart.js';
 import { useApp } from '../../contexts/AppContext';
 import { useBrandPrimaryColor } from '../../hooks/useBrandPrimaryColor';
+import { useFormatting } from '../../hooks/useFormatting';
 
 ChartJS.register(
   CategoryScale,
@@ -91,6 +92,7 @@ export function AgentChart({ data }: { data: ChartData }) {
   const { theme } = useApp();
   const isDark = theme === 'dark';
   const brandPrimaryColor = useBrandPrimaryColor();
+  const { formatCurrency, formatPercent, formatInteger } = useFormatting();
 
   // Array de cores dinâmico: primeira cor vem da variável global, resto são fixas
   const COLORS = useMemo(() => {
@@ -156,9 +158,9 @@ export function AgentChart({ data }: { data: ChartData }) {
     const tooltipBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
 
     const formatValue = (value: number) => {
-      if (isCurrency) return 'R$ ' + value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-      if (isPercentage) return value.toFixed(1) + '%';
-      return value.toLocaleString('pt-BR');
+      if (isCurrency) return formatCurrency(value);
+      if (isPercentage) return formatPercent(value);
+      return formatInteger(value);
     };
 
     const datasets = data.datasets.map((ds, i) => {
@@ -276,7 +278,7 @@ export function AgentChart({ data }: { data: ChartData }) {
         chartRef.current = null;
       }
     };
-  }, [data, isDark, COLORS, COLORS_ALPHA]);
+  }, [data, isDark, COLORS, COLORS_ALPHA, formatCurrency, formatPercent, formatInteger]);
 
   const height = (data.type === 'pie' || data.type === 'doughnut') ? 260 : 280;
 

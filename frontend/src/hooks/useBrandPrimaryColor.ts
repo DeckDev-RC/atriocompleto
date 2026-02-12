@@ -1,50 +1,43 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 /**
- * Hook para ler e observar mudanças na variável CSS --color-brand-primary
- * Retorna o valor atual da cor e atualiza automaticamente quando a variável muda
+ * Hook para ler e observar mudanças na variável CSS --color-brand-primary.
+ * Usa MutationObserver (sem polling) e guarda de igualdade para evitar re-renders.
  */
 export function useBrandPrimaryColor() {
-  const getBrandPrimaryColor = (): string => {
+  const [brandPrimaryColor, setBrandPrimaryColor] = useState(() => {
     if (typeof window === 'undefined') return '';
     return getComputedStyle(document.documentElement)
       .getPropertyValue('--color-brand-primary')
       .trim() || '';
-  };
-
-  const [brandPrimaryColor, setBrandPrimaryColor] = useState(() => {
-    const initialColor = getBrandPrimaryColor();
-    return initialColor || '';
   });
 
+  const prevRef = useRef(brandPrimaryColor);
+
   useEffect(() => {
+    const readColor = () =>
+      getComputedStyle(document.documentElement)
+        .getPropertyValue('--color-brand-primary')
+        .trim() || '';
+
     const updateColor = () => {
-      const color = getBrandPrimaryColor();
-      if (color) {
+      const color = readColor();
+      if (color && color !== prevRef.current) {
+        prevRef.current = color;
         setBrandPrimaryColor(color);
       }
     };
 
     updateColor();
 
-    const observer = new MutationObserver(() => {
-      updateColor();
+    const observer = new MutationObserver(updateColor);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['style', 'class', 'data-theme'],
+      subtree: false,
     });
 
-    if (typeof window !== 'undefined') {
-      observer.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['style', 'class', 'data-theme'],
-        subtree: false,
-      });
-
-      const interval = setInterval(updateColor, 500);
-
-      return () => {
-        observer.disconnect();
-        clearInterval(interval);
-      };
-    }
+    return () => observer.disconnect();
   }, []);
 
   return brandPrimaryColor;

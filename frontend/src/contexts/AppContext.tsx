@@ -4,6 +4,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   type ReactNode,
 } from 'react';
 
@@ -104,22 +105,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const value = useMemo<AppContextValue>(() => ({
+    sidebarOpen,
+    toggleSidebar,
+    closeSidebar,
+    sidebarCollapsed,
+    toggleSidebarCollapse,
+    setSidebarCollapsed,
+    theme,
+    toggleTheme,
+    themeColor,
+    setThemeColor,
+    loading,
+  }), [sidebarOpen, sidebarCollapsed, theme, themeColor, loading, toggleSidebar, closeSidebar, toggleSidebarCollapse, setSidebarCollapsed, toggleTheme, setThemeColor]);
+
   return (
-    <AppContext.Provider
-      value={{
-        sidebarOpen,
-        toggleSidebar,
-        closeSidebar,
-        sidebarCollapsed,
-        toggleSidebarCollapse,
-        setSidebarCollapsed,
-        theme,
-        toggleTheme,
-        themeColor,
-        setThemeColor,
-        loading,
-      }}
-    >
+    <AppContext.Provider value={value}>
       {children}
     </AppContext.Provider>
   );

@@ -4,6 +4,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   type ReactNode,
 } from 'react';
 import { agentApi } from '../services/agentApi';
@@ -15,6 +16,7 @@ export interface AuthUser {
   role: 'master' | 'user';
   tenant_id: string | null;
   tenant_name: string | null;
+  avatar_url: string | null;
 }
 
 interface AuthContextValue {
@@ -127,18 +129,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const value = useMemo<AuthContextValue>(() => ({
+    user,
+    isAuthenticated: !!user,
+    isLoading,
+    isMaster: user?.role === 'master',
+    login,
+    logout,
+    refreshUser,
+  }), [user, isLoading, login, logout, refreshUser]);
+
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isAuthenticated: !!user,
-        isLoading,
-        isMaster: user?.role === 'master',
-        login,
-        logout,
-        refreshUser,
-      }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
