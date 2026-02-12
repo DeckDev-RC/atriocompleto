@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { useMemo } from 'react';
 import { extractCharts, AgentChart } from './AgentChart';
 import type { ChartData } from './AgentChart';
-import { useBrandPrimaryColor, getBrandPrimaryWithOpacity } from '../../hooks/useBrandPrimaryColor';
+import { useBrandPrimaryColor } from '../../hooks/useBrandPrimaryColor';
 import { useFormatting } from '../../hooks/useFormatting';
 
 interface TokenUsage {

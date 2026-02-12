@@ -1,3 +1,4 @@
+import type { LucideIcon } from 'lucide-react';
 import {
   ShoppingCart,
   LogOut,
@@ -18,6 +19,14 @@ import logotipoAtrioPng from '../../assets/logotipo-atrio.png';
 import sidebarLogoWhite from '../../assets/sidebar-negativa-white.png';
 import sidebarLogoDark from '../../assets/sidebar-negativa-dark.png';
 import optimusSidebarIcon from '../../assets/channels/optimus-sidebar.png';
+
+/** Item do menu: ícone Lucide ou imagem (imageSrc) */
+interface SidebarMenuItem {
+  label: string;
+  path: string;
+  icon: LucideIcon | null;
+  imageSrc?: string;
+}
 
 /** Larguras em px */
 const SIDEBAR_W = 232;
@@ -46,7 +55,7 @@ export function Sidebar() {
   };
 
   // Build menu items dynamically
-  const menuSections = [
+  const menuSections: { section: string; items: SidebarMenuItem[] }[] = [
     ...(user?.tenant_id
       ? [
         {
