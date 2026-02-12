@@ -4,9 +4,9 @@ import { usePreferences } from '../../contexts/UserPreferencesContext';
 import { ColorPicker } from './ColorPicker';
 
 const FONT_OPTIONS = [
-  { value: 'DM Sans', label: 'DM Sans', description: 'Padrão — Moderno e limpo' },
+  { value: 'Poppins', label: 'Poppins', description: 'Padrão — Geométrico e amigável' },
+  { value: 'DM Sans', label: 'DM Sans', description: 'Moderno e limpo' },
   { value: 'Inter', label: 'Inter', description: 'Ótimo para dashboards' },
-  { value: 'Poppins', label: 'Poppins', description: 'Geométrico e amigável' },
   { value: 'Nunito', label: 'Nunito', description: 'Arredondado e acessível' },
   { value: 'Source Sans 3', label: 'Source Sans 3', description: 'Profissional da Adobe' },
 ];

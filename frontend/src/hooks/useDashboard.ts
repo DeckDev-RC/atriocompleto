@@ -36,16 +36,53 @@ export interface DashboardData {
   comparedMonths: { current: string; previous: string } | null;
 }
 
+// ── Filter persistence (sessionStorage) ────────────
+
+const FILTERS_KEY = 'dashboard-filters';
+
+interface StoredFilters {
+  period: DashboardPeriod;
+  status: string;
+  customStart: string;
+  customEnd: string;
+}
+
+function loadFilters(): StoredFilters {
+  try {
+    const raw = sessionStorage.getItem(FILTERS_KEY);
+    if (raw) return { ...defaultFilters, ...JSON.parse(raw) };
+  } catch { /* ignore */ }
+  return { ...defaultFilters };
+}
+
+function saveFilters(filters: StoredFilters) {
+  sessionStorage.setItem(FILTERS_KEY, JSON.stringify(filters));
+}
+
+const defaultFilters: StoredFilters = {
+  period: 'all',
+  status: 'all',
+  customStart: '',
+  customEnd: '',
+};
+
 // ── Hook ───────────────────────────────────────────
 
 export function useDashboard() {
+  const stored = useRef(loadFilters()).current;
+
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [period, setPeriod] = useState<DashboardPeriod>('all');
-  const [status, setStatus] = useState<string>('all');
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
+  const [period, setPeriod] = useState<DashboardPeriod>(stored.period);
+  const [status, setStatus] = useState<string>(stored.status);
+  const [customStart, setCustomStart] = useState(stored.customStart);
+  const [customEnd, setCustomEnd] = useState(stored.customEnd);
+
+  // Persiste filtros no sessionStorage sempre que mudam
+  useEffect(() => {
+    saveFilters({ period, status, customStart, customEnd });
+  }, [period, status, customStart, customEnd]);
 
   /** Aplica um período personalizado (start + end). */
   const setDateRange = useCallback((start: string, end: string) => {

@@ -18,7 +18,7 @@ END $$;
 CREATE TABLE IF NOT EXISTS user_preferences (
   user_id UUID PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
   primary_color TEXT NOT NULL DEFAULT '#09CAFF',
-  font_family TEXT NOT NULL DEFAULT 'DM Sans',
+  font_family TEXT NOT NULL DEFAULT 'Poppins',
   number_locale TEXT NOT NULL DEFAULT 'pt-BR',
   number_decimals INTEGER NOT NULL DEFAULT 2 CHECK (number_decimals BETWEEN 0 AND 4),
   currency_symbol TEXT NOT NULL DEFAULT 'R$',

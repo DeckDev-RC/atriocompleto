@@ -1,4 +1,5 @@
-import { Brain, User, Zap } from 'lucide-react';
+import { User, Zap } from 'lucide-react';
+import optimusSidebarIcon from '../../assets/channels/optimus-sidebar.png';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useMemo } from 'react';
@@ -61,23 +62,27 @@ export function AgentMessage({ role, content, timestamp, isLoading, tokenUsage }
       style={{ animation: 'slide-up 0.3s cubic-bezier(0.16,1,0.3,1) both' }}
     >
       {/* Avatar */}
-      <div
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] ${isUser
-          ? 'bg-border/80 dark:bg-[rgba(255,255,255,0.06)]'
-          : 'shadow-sm'
-          }`}
-        style={!isUser ? {
-          background: brandPrimaryColor 
-            ? `linear-gradient(to bottom right, ${brandPrimaryColor}, ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.7)})`
-            : 'linear-gradient(to bottom right, var(--color-brand-primary), color-mix(in srgb, var(--color-brand-primary) 70%, transparent))',
-        } : undefined}
-      >
-        {isUser ? (
+      {isUser ? (
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-border/80 dark:bg-[rgba(255,255,255,0.06)]">
           <User size={15} className="text-secondary" strokeWidth={2} />
-        ) : (
-          <Brain size={15} className="text-white" strokeWidth={2} />
-        )}
-      </div>
+        </div>
+      ) : (
+        <div
+          className="h-6 w-6 shrink-0 mt-0.5"
+          style={{
+            backgroundColor: brandPrimaryColor || 'var(--color-brand-primary)',
+            maskImage: `url(${optimusSidebarIcon})`,
+            maskSize: 'contain',
+            maskRepeat: 'no-repeat',
+            maskPosition: 'center',
+            WebkitMaskImage: `url(${optimusSidebarIcon})`,
+            WebkitMaskSize: 'contain',
+            WebkitMaskRepeat: 'no-repeat',
+            WebkitMaskPosition: 'center',
+          }}
+          aria-label="Optimus"
+        />
+      )}
 
       {/* Content */}
       <div className="flex-1 min-w-0 overflow-hidden">

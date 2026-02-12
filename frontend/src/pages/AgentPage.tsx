@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   ArrowLeft,
-  Brain,
-  Sparkles,
   MoreHorizontal,
   Activity,
   AlertCircle,
 } from 'lucide-react';
+import optimusIcon from '../assets/channels/optimus.png';
+import optimusSidebarIcon from '../assets/channels/optimus-sidebar.png';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../contexts/AppContext';
 import { agentApi } from '../services/agentApi';
@@ -220,16 +220,21 @@ export function AgentPage() {
           </button>
 
           <div className="flex items-center gap-2.5 flex-1 min-w-0">
-            <div 
-              className="flex h-8 w-8 items-center justify-center rounded-xl shadow-sm"
+            <div
+              className="h-6 w-6 shrink-0"
               style={{
-                background: brandPrimaryColor 
-                  ? `linear-gradient(to bottom right, ${brandPrimaryColor}, ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.7)})`
-                  : 'linear-gradient(to bottom right, var(--color-brand-primary), color-mix(in srgb, var(--color-brand-primary) 70%, transparent))',
+                backgroundColor: brandPrimaryColor || 'var(--color-brand-primary)',
+                maskImage: `url(${optimusSidebarIcon})`,
+                maskSize: 'contain',
+                maskRepeat: 'no-repeat',
+                maskPosition: 'center',
+                WebkitMaskImage: `url(${optimusSidebarIcon})`,
+                WebkitMaskSize: 'contain',
+                WebkitMaskRepeat: 'no-repeat',
+                WebkitMaskPosition: 'center',
               }}
-            >
-              <Sparkles size={15} className="text-white" strokeWidth={2} />
-            </div>
+              aria-label="Optimus"
+            />
             <div className="min-w-0">
               <h1 className="text-[15px] font-semibold text-primary tracking-[-0.02em] leading-tight">
                 Optimus
@@ -351,10 +356,20 @@ function EmptyState({
             : 'linear-gradient(to bottom right, color-mix(in srgb, var(--color-brand-primary) 15%, transparent), color-mix(in srgb, var(--color-brand-primary) 8%, transparent))',
         }}
       >
-        <Brain 
-          size={34} 
-          style={{ color: brandPrimaryColor || 'var(--color-brand-primary)' }}
-          strokeWidth={1.5} 
+        <div
+          className="h-[40px] w-[40px]"
+          style={{
+            backgroundColor: brandPrimaryColor || 'var(--color-brand-primary)',
+            maskImage: `url(${optimusIcon})`,
+            maskSize: 'contain',
+            maskRepeat: 'no-repeat',
+            maskPosition: 'center',
+            WebkitMaskImage: `url(${optimusIcon})`,
+            WebkitMaskSize: 'contain',
+            WebkitMaskRepeat: 'no-repeat',
+            WebkitMaskPosition: 'center',
+          }}
+          aria-label="Optimus"
         />
       </div>
 

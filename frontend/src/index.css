@@ -272,7 +272,7 @@
   --color-skeleton-shine: #f6f7fa;
   --color-ring: rgba(0, 0, 0, 0.03);
 
-  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-sans: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
 
   --animate-shimmer: shimmer 2s ease-in-out infinite;

@@ -29,7 +29,7 @@ interface UserPreferencesContextValue {
 // ── Defaults ─────────────────────────────────────────────
 const DEFAULT_PREFERENCES: UserPreferences = {
   primary_color: '#09CAFF',
-  font_family: 'DM Sans',
+  font_family: 'Poppins',
   number_locale: 'pt-BR',
   number_decimals: 2,
   currency_symbol: 'R$',

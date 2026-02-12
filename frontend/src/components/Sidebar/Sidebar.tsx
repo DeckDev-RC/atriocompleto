@@ -1,6 +1,5 @@
 import {
   ShoppingCart,
-  Brain,
   LogOut,
   X,
   ChevronLeft,
@@ -18,6 +17,7 @@ import logoAtrioBranca from '../../assets/logo-atrio-branca.png';
 import logotipoAtrioPng from '../../assets/logotipo-atrio.png';
 import sidebarLogoWhite from '../../assets/sidebar-negativa-white.png';
 import sidebarLogoDark from '../../assets/sidebar-negativa-dark.png';
+import optimusSidebarIcon from '../../assets/channels/optimus-sidebar.png';
 
 /** Larguras em px */
 const SIDEBAR_W = 232;
@@ -38,6 +38,7 @@ export function Sidebar() {
   const navigate = useNavigate();
 
   const logoSrc = theme === 'dark' ? logoDark : logoLight;
+  const brandPrimaryColor = useBrandPrimaryColor();
 
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/';
@@ -54,7 +55,7 @@ export function Sidebar() {
         },
         {
           section: "APPS",
-          items: [{ icon: Brain, label: 'Optimus', path: '/agente' }],
+          items: [{ icon: null, imageSrc: optimusSidebarIcon, label: 'Optimus', path: '/agente' }],
         },
       ]
       : []),
@@ -175,12 +176,31 @@ export function Sidebar() {
                       `}
                       style={active ? { color: 'var(--color-brand-primary)' } : undefined}
                     >
-                      <item.icon
-                        size={19}
-                        strokeWidth={active ? 2.2 : 1.8}
-                        className="shrink-0"
-                        style={active ? { color: 'var(--color-brand-primary)' } : undefined}
-                      />
+                      {item.imageSrc ? (
+                        <div
+                          className="shrink-0 h-[19px] w-[19px]"
+                          style={{
+                            backgroundColor: active ? (brandPrimaryColor || 'var(--color-brand-primary)') : 'currentColor',
+                            maskImage: `url(${item.imageSrc})`,
+                            maskSize: 'contain',
+                            maskRepeat: 'no-repeat',
+                            maskPosition: 'center',
+                            WebkitMaskImage: `url(${item.imageSrc})`,
+                            WebkitMaskSize: 'contain',
+                            WebkitMaskRepeat: 'no-repeat',
+                            WebkitMaskPosition: 'center',
+                          }}
+                          role="img"
+                          aria-label={item.label}
+                        />
+                      ) : item.icon ? (
+                        <item.icon
+                          size={19}
+                          strokeWidth={active ? 2.2 : 1.8}
+                          className="shrink-0"
+                          style={active ? { color: 'var(--color-brand-primary)' } : undefined}
+                        />
+                      ) : null}
                       {!collapsed && (
                         <span
                           className="truncate tracking-[-0.01em]"

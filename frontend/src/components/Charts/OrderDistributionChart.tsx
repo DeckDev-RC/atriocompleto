@@ -13,6 +13,22 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useChartColors } from './useChartColors';
 import { useFormatting } from '../../hooks/useFormatting';
 
+/** Canais ocultos na visualização (clicar na legenda alterna) */
+function useHiddenChannels(initialData: DistributionItem[]) {
+  const [hidden, setHidden] = useState<Set<string>>(() => new Set());
+  const toggle = useCallback((name: string) => {
+    setHidden((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }, []);
+  const visibleData = initialData.filter((d) => !hidden.has(d.name));
+  const isHidden = (name: string) => hidden.has(name);
+  return { visibleData, isHidden, toggle, hasAnyHidden: hidden.size > 0 };
+}
+
 // ── Types ──────────────────────────────────────────
 
 interface DistributionItem {
@@ -50,6 +66,7 @@ const FALLBACK_CHART_HEIGHT = 220;
 
 export function OrderDistributionChart({ data }: OrderDistributionChartProps) {
   const { formatInteger } = useFormatting();
+  const { visibleData, isHidden, toggle, hasAnyHidden } = useHiddenChannels(data);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const renderTooltip = useCallback((props: any) => (
@@ -86,7 +103,7 @@ export function OrderDistributionChart({ data }: OrderDistributionChartProps) {
         <div ref={chartWrapperRef} className="min-h-[200px] min-w-0 flex-1 w-full">
           <ResponsiveContainer width="100%" height={chartHeight}>
             <BarChart
-              data={data}
+              data={visibleData.length > 0 ? visibleData : data}
               margin={{ top: 8, right: 8, bottom: 0, left: -16 }}
             >
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
@@ -103,7 +120,7 @@ export function OrderDistributionChart({ data }: OrderDistributionChartProps) {
                   formatter={(v: unknown) => typeof v === 'number' ? formatInteger(v) : String(v)}
                   style={{ fontSize: 10, fontWeight: 600, fill: labelColor }}
                 />
-                {data.map((entry) => (
+                {(visibleData.length > 0 ? visibleData : data).map((entry) => (
                   <Cell 
                     key={entry.name} 
                     fill={entry.color} 
@@ -115,16 +132,23 @@ export function OrderDistributionChart({ data }: OrderDistributionChartProps) {
         </div>
         <div className="flex shrink-0 flex-col gap-2.5 pt-3 max-sm:flex-row max-sm:flex-wrap max-sm:gap-3 max-sm:pt-0">
           {data.map((item) => {
+            const hidden = isHidden(item.name);
             return (
-              <div key={item.name} className="flex items-center gap-2.5">
+              <button
+                key={item.name}
+                type="button"
+                onClick={() => toggle(item.name)}
+                className={`flex items-center gap-2.5 rounded-lg px-2 py-1 -mx-2 text-left transition-opacity hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${hidden ? 'opacity-50' : 'opacity-100'}`}
+                title={hasAnyHidden ? 'Clique para exibir ou ocultar no gráfico' : 'Clique para filtrar o gráfico'}
+              >
                 <span
                   className="h-2.5 w-2.5 shrink-0 rounded-[4px]"
                   style={{ background: item.color }}
                 />
-                <span className="whitespace-nowrap text-[12px] font-medium text-secondary tracking-[-0.01em]">
+                <span className="whitespace-nowrap text-[12px] font-medium text-primary tracking-[-0.01em]">
                   {item.name}
                 </span>
-              </div>
+              </button>
             );
           })}
         </div>

@@ -20,6 +20,7 @@ import {
 import { useApp } from '../../contexts/AppContext';
 import { useBrandPrimaryColor } from '../../hooks/useBrandPrimaryColor';
 import { useFormatting } from '../../hooks/useFormatting';
+import { getMarketplaceColor } from '../../utils/marketplaceColors';
 
 ChartJS.register(
   CategoryScale,
@@ -38,7 +39,7 @@ ChartJS.register(
   Filler,
 );
 
-// Cores fixas para gráficos (exceto a primeira que será substituída pela variável global)
+// Cores fixas para gráficos de linha / quando não há label de marketplace
 const FIXED_COLORS = [
   '#34C759', // success
   '#FF9F0A', // warning
@@ -153,6 +154,7 @@ export function AgentChart({ data }: { data: ChartData }) {
 
     const textColor = isDark ? '#eaebf0' : '#1a1c24';
     const mutedColor = isDark ? '#484a5c' : '#9498a8';
+    const legendAndAxisColor = isDark ? '#b4b6c4' : '#9498a8';
     const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
     const tooltipBg = isDark ? '#181a22' : '#ffffff';
     const tooltipBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
@@ -163,6 +165,12 @@ export function AgentChart({ data }: { data: ChartData }) {
       return formatInteger(value);
     };
 
+    /** Cor por índice: mesmas cores do dashboard (marketplaces/canais) */
+    const getBarColorForLabelIndex = (labelIndex: number): string => {
+      const label = data.labels[labelIndex];
+      return getMarketplaceColor(typeof label === 'string' ? label : String(label ?? ''));
+    };
+
     const datasets = data.datasets.map((ds, i) => {
       const color = ds.color || COLORS[i % COLORS.length];
       const alphaColor = COLORS_ALPHA[i % COLORS_ALPHA.length];
@@ -171,20 +179,25 @@ export function AgentChart({ data }: { data: ChartData }) {
         return {
           label: ds.label,
           data: ds.data,
-          backgroundColor: ds.data.map((_, j) => COLORS[j % COLORS.length]),
-          borderColor: ds.data.map((_, j) => COLORS[j % COLORS.length]),
+          backgroundColor: ds.data.map((_, j) => getBarColorForLabelIndex(j)),
+          borderColor: ds.data.map((_, j) => getBarColorForLabelIndex(j)),
           borderWidth: 2,
           hoverOffset: 8,
         };
       }
 
+      const isBarOrHorizontal = data.type === 'bar' || isHorizontal;
+      const barBackgroundColor = isBarOrHorizontal
+        ? ds.data.map((_, j) => getBarColorForLabelIndex(j))
+        : (data.type === 'line' ? alphaColor : color);
+
       return {
         label: ds.label,
         data: ds.data,
-        backgroundColor: data.type === 'line' ? alphaColor : color,
+        backgroundColor: barBackgroundColor,
         borderColor: color,
         borderWidth: data.type === 'line' ? 3 : 0,
-        borderRadius: data.type === 'bar' || isHorizontal ? 8 : 0,
+        borderRadius: isBarOrHorizontal ? 8 : 0,
         fill: data.type === 'line',
         tension: 0.4,
         pointRadius: data.type === 'line' ? 4 : 0,
@@ -210,7 +223,7 @@ export function AgentChart({ data }: { data: ChartData }) {
             display: data.options?.showLegend !== false && (data.datasets.length > 1 || isPie),
             position: isPie ? 'bottom' : 'top',
             labels: {
-              color: mutedColor,
+              color: legendAndAxisColor,
               font: { family: "'SF Pro Display', -apple-system, sans-serif", size: 12 },
               padding: 16,
               usePointStyle: true,
@@ -247,7 +260,7 @@ export function AgentChart({ data }: { data: ChartData }) {
           x: {
             grid: { color: gridColor, lineWidth: 0.5 },
             ticks: {
-              color: mutedColor,
+              color: legendAndAxisColor,
               font: { family: "'SF Pro Display', -apple-system, sans-serif", size: 11 },
               maxRotation: 45,
             },
@@ -256,7 +269,7 @@ export function AgentChart({ data }: { data: ChartData }) {
           y: {
             grid: { color: gridColor, lineWidth: 0.5 },
             ticks: {
-              color: mutedColor,
+              color: legendAndAxisColor,
               font: { family: "'SF Pro Display', -apple-system, sans-serif", size: 11 },
               callback: (value) => formatValue(Number(value)),
             },
