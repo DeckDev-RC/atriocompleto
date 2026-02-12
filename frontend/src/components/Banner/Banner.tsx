@@ -66,27 +66,26 @@ export function Banner({ totalRevenue, channels }: BannerProps) {
         {/* Metric cards */}
         <div className="mt-auto flex translate-y-1/2 gap-4 max-lg:flex-wrap max-md:flex-nowrap max-md:overflow-x-auto max-md:pb-2 max-sm:translate-y-0 max-sm:mt-5 max-sm:flex-col">
           {/* Total */}
-          <div className="flex-[1.35] rounded-2xl bg-card p-5 px-6 border border-border shadow-float dark:shadow-dark-float transition-all duration-300 hover:shadow-soft-hover dark:hover:shadow-dark-hover hover:-translate-y-0.5 max-lg:flex-[1_1_calc(33%-12px)] max-lg:min-w-[155px] max-md:min-w-[175px] max-md:flex-none max-sm:min-w-0">
+          <div className="flex-[1.35] rounded-2xl bg-card p-5 px-6 border border-border shadow-float dark:shadow-dark-float transition-all duration-300 hover:shadow-soft-hover dark:hover:shadow-dark-hover hover:-translate-y-0.5 max-lg:flex-[1_1_calc(33%-12px)] max-lg:min-w-[180px] max-md:min-w-[175px] max-md:flex-none max-sm:min-w-0">
             <p className="text-[10px] font-semibold tracking-[0.06em] uppercase text-muted mb-1">
               Faturamento (Pagos)
             </p>
-            <p className="text-[26px] font-bold tracking-[-0.03em] text-primary leading-none">
+            <p className="text-[26px] font-bold tracking-[-0.03em] text-primary leading-none whitespace-nowrap">
               {formatCurrency(totalRevenue)}
-
             </p>
           </div>
 
           {channels.map((ch) => (
             <div
               key={ch.id}
-              className="flex-1 rounded-2xl bg-card p-5 px-6 border border-border shadow-float dark:shadow-dark-float transition-all duration-300 hover:shadow-soft-hover dark:hover:shadow-dark-hover hover:-translate-y-0.5 max-lg:flex-[1_1_calc(33%-12px)] max-lg:min-w-[155px] max-md:min-w-[175px] max-md:flex-none max-sm:min-w-0"
+              className="flex-1 rounded-2xl bg-card p-5 px-6 border border-border shadow-float dark:shadow-dark-float transition-all duration-300 hover:shadow-soft-hover dark:hover:shadow-dark-hover hover:-translate-y-0.5 max-lg:flex-[1_1_calc(33%-12px)] max-lg:min-w-[180px] max-md:min-w-[175px] max-md:flex-none max-sm:min-w-0"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-[10px] font-semibold tracking-[0.06em] uppercase text-muted mb-1">
                     {ch.label}
                   </p>
-                  <p className="text-[20px] font-bold tracking-[-0.03em] text-primary leading-none">
+                  <p className="text-[20px] font-bold tracking-[-0.03em] text-primary leading-none whitespace-nowrap">
                     {formatCurrency(ch.value)}
                   </p>
                   <span className="mt-1 inline-block text-[11px] font-medium text-secondary">
