@@ -16,6 +16,8 @@ import logoDark from '../../assets/logo-darkmode.png';
 import logoAtrio from '../../assets/logo-atrio-azul.png';
 import logoAtrioBranca from '../../assets/logo-atrio-branca.png';
 import logotipoAtrioPng from '../../assets/logotipo-atrio.png';
+import sidebarLogoWhite from '../../assets/sidebar-negativa-white.png';
+import sidebarLogoDark from '../../assets/sidebar-negativa-dark.png';
 
 /** Larguras em px */
 const SIDEBAR_W = 232;
@@ -234,11 +236,11 @@ export function Sidebar() {
                   <span>Sair</span>
                 </button>
               </div>
-              <div className="mt-4 flex justify-center">
+              <div className="mt-4 flex justify-center px-1">
                 <img
-                  src={logoSrc}
+                  src={theme === 'dark' ? sidebarLogoDark : sidebarLogoWhite}
                   alt="Agregar Negócios"
-                  className="h-6 w-auto object-contain"
+                  className="w-full max-h-12 object-contain"
                 />
               </div>
             </div>
