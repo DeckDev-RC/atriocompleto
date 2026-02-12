@@ -14,6 +14,7 @@ import logoLight from '../../assets/logo-whitemode.png';
 import logoDark from '../../assets/logo-darkmode.png';
 import logoAtrio from '../../assets/logo-atrio-azul.png';
 import logoAtrioBranca from '../../assets/logo-atrio-branca.png';
+import logotipoAtrioPng from '../../assets/logotipo-atrio.png';
 
 /** Larguras em px */
 const SIDEBAR_W = 232;
@@ -269,28 +270,12 @@ function BrandIcon() {
 
   return (
     <div
-      className="flex h-10 w-10 items-center justify-center rounded-xl"
+      className="flex h-10 w-10 items-center justify-center rounded-xl overflow-hidden"
       style={{
         backgroundColor: brandPrimaryColor ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.1) : 'color-mix(in srgb, var(--color-brand-primary) 10%, transparent)',
       }}
     >
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <path
-          d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="text-secondary"
-        />
-        <path
-          d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
-          stroke={brandPrimaryColor || 'var(--color-brand-primary)'}
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
+      <img src={logotipoAtrioPng} alt="Átrio" className="w-full h-full object-contain p-1.5" />
     </div>
   );
 }

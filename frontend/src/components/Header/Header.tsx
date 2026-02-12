@@ -42,7 +42,7 @@ export function Header({
       <div className="flex items-center gap-2">
         {/* Children (e.g. Filters) - movido do centro */}
         {children && (
-          <div className="flex items-center">
+          <div className="flex items-center gap-3">
             {children}
           </div>
         )}
@@ -50,8 +50,8 @@ export function Header({
         {/* Notification bell */}
         <button className="relative flex h-9 w-9 items-center justify-center rounded-full text-secondary transition-all duration-200 hover:bg-card hover:text-primary hover:shadow-soft active:scale-95">
           <Bell size={18} strokeWidth={2} />
-          <span 
-            className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full ring-2 ring-body" 
+          <span
+            className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full ring-2 ring-body"
             style={{ backgroundColor: brandPrimaryColor || 'var(--color-brand-primary)' }}
           />
         </button>

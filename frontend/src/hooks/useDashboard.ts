@@ -42,6 +42,7 @@ export function useDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState<DashboardPeriod>('all');
+  const [status, setStatus] = useState<string>('all');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
 
@@ -63,6 +64,7 @@ export function useDashboard() {
         period,
         period === 'custom' ? customStart : undefined,
         period === 'custom' ? customEnd : undefined,
+        status
       );
       if (response.success && response.data) {
         setData(response.data as DashboardData);
@@ -74,7 +76,7 @@ export function useDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [period, customStart, customEnd]);
+  }, [period, customStart, customEnd, status]);
 
   useEffect(() => {
     fetchDashboard();
@@ -90,5 +92,7 @@ export function useDashboard() {
     customEnd,
     setDateRange,
     refetch: fetchDashboard,
+    status,
+    setStatus,
   };
 }

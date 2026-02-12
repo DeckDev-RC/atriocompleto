@@ -210,10 +210,11 @@ class AgentApiService {
   // DASHBOARD
   // ══════════════════════════════════════════════════════
 
-  async getDashboardSummary(period: string = 'all', startDate?: string, endDate?: string) {
+  async getDashboardSummary(period: string = 'all', startDate?: string, endDate?: string, status?: string) {
     let url = `/api/dashboard/summary?period=${encodeURIComponent(period)}`;
     if (startDate) url += `&start_date=${encodeURIComponent(startDate)}`;
     if (endDate) url += `&end_date=${encodeURIComponent(endDate)}`;
+    if (status && status !== 'all') url += `&status=${encodeURIComponent(status)}`;
 
     return this.request<{
       banner: {
@@ -243,6 +244,10 @@ class AgentApiService {
       };
       period: string | { start: string; end: string };
     }>(url);
+  }
+
+  async getDashboardStatuses() {
+    return this.request<string[]>('/api/dashboard/statuses');
   }
 
   // ══════════════════════════════════════════════════════

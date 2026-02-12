@@ -10,6 +10,7 @@ import {
 import { Header } from '../components/Header';
 import { Banner } from '../components/Banner';
 import { PeriodFilter } from '../components/PeriodFilter';
+import { StatusFilter } from '../components/StatusFilter';
 import { OrderDistributionChart, MonthlyRevenueChart } from '../components/Charts';
 import { SkeletonBanner, SkeletonCard } from '../components/Skeleton';
 import { useDashboard } from '../hooks/useDashboard';
@@ -38,7 +39,7 @@ function fmtPct(value: number): string {
 // ── Page ───────────────────────────────────────────
 
 export function DashboardPage() {
-  const { data, loading, error, period, setPeriod, customStart, customEnd, setDateRange } =
+  const { data, loading, error, period, setPeriod, customStart, customEnd, setDateRange, status, setStatus } =
     useDashboard();
   const { user } = useAuth();
   const hasTenant = !!user?.tenant_id;
@@ -54,6 +55,7 @@ export function DashboardPage() {
           onChange={setPeriod}
           onDateRangeChange={setDateRange}
         />
+        <StatusFilter value={status} onChange={setStatus} />
       </Header>
 
       {/* Error banner */}
@@ -84,9 +86,9 @@ export function DashboardPage() {
           </>
         ) : !hasTenant ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div 
+            <div
               className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl"
-              style={{ 
+              style={{
                 backgroundColor: brandPrimaryColor ? `color-mix(in srgb, ${brandPrimaryColor} 10%, transparent)` : 'color-mix(in srgb, var(--color-brand-primary) 10%, transparent)',
                 color: brandPrimaryColor || 'var(--color-brand-primary)',
               }}
@@ -186,7 +188,7 @@ function MiniStatCard({ title, value, change, icon: Icon, invertTrend, subtitle 
   return (
     <div className="group h-full min-h-[100px] flex flex-col rounded-2xl bg-card p-5 border border-border shadow-soft dark:shadow-dark-card transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:shadow-soft-hover dark:hover:shadow-dark-hover hover:-translate-y-0.5">
       <div className="flex items-center justify-between mb-3 shrink-0">
-        <div 
+        <div
           className="flex h-8 w-8 items-center justify-center rounded-lg transition-transform duration-300 group-hover:scale-105"
           style={{ backgroundColor: 'rgba(4, 4, 166, 0.1)' }}
         >
@@ -274,7 +276,7 @@ function QuickInsights({ avgTicket, cancellationRate, paidPct, momTrend }: Quick
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-border">
               <div
                 className="h-full rounded-full transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]"
-                style={{ 
+                style={{
                   width: `${item.bar}%`,
                   background: `linear-gradient(to right, ${brandPrimaryColor || 'var(--color-brand-primary)'}, ${brandPrimaryColor ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.7) : 'color-mix(in srgb, var(--color-brand-primary) 70%, transparent)'})`,
                 }}
