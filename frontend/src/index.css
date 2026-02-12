@@ -533,6 +533,14 @@
   animation: toast-exit 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
+/* ===== THEME SWITCH — desabilita transições para troca instantânea ===== */
+.no-transitions,
+.no-transitions *,
+.no-transitions *::before,
+.no-transitions *::after {
+  transition-duration: 0s !important;
+}
+
 /* ===== BASE ===== */
 @layer base {
   html {
@@ -559,7 +567,7 @@
   }
 
   body {
-    @apply text-primary font-sans transition-colors duration-500;
+    @apply text-primary font-sans transition-colors duration-150;
     margin: 0;
     line-height: 1.5;
     letter-spacing: -0.011em;

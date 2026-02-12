@@ -56,10 +56,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [loading, setLoading] = useState(true);
 
-  /* Aplica data-theme no <html> */
+  /* Aplica data-theme no <html> — desabilita transições temporariamente para troca instantânea */
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
+    const root = document.documentElement;
+    root.classList.add('no-transitions');
+    root.setAttribute('data-theme', theme);
     localStorage.setItem(THEME_KEY, theme);
+    // Re-habilita transições no próximo frame (após o repaint)
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        root.classList.remove('no-transitions');
+      });
+    });
   }, [theme]);
 
   /* Theme Color */

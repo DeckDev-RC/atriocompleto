@@ -90,17 +90,17 @@ export function Sidebar() {
           fixed left-0 top-0 z-200 flex h-screen flex-col justify-between
           bg-white/80 backdrop-blur-xl border-r border-border
           dark:bg-[#0f1015]/95 dark:backdrop-blur-xl dark:border-[rgba(255,255,255,0.06)]
-          py-5 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]
+          py-5 transition-[width,padding,transform] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]
           ${collapsed ? 'px-2' : 'px-4'}
           max-md:-translate-x-full max-md:w-[232px] max-md:px-4
           ${sidebarOpen ? 'max-md:translate-x-0' : ''}
         `}
-        style={{ width: collapsed ? SIDEBAR_COLLAPSED_W : SIDEBAR_W }}
+        style={{ width: collapsed ? SIDEBAR_COLLAPSED_W : SIDEBAR_W, willChange: 'width' }}
       >
         {/* Collapse toggle — desktop */}
         <button
           onClick={toggleSidebarCollapse}
-          className="absolute -right-3 top-7 z-10 hidden h-6 w-6 items-center justify-center rounded-full border border-border bg-card text-muted shadow-sm transition-all duration-200 hover:text-primary hover:shadow-md md:flex"
+          className="absolute -right-3 top-7 z-10 hidden h-6 w-6 items-center justify-center rounded-full border border-border bg-card text-muted shadow-sm transition-[color,box-shadow] duration-150 hover:text-primary hover:shadow-md md:flex"
           aria-label={collapsed ? 'Expandir sidebar' : 'Recolher sidebar'}
         >
           <ChevronLeft
@@ -131,7 +131,7 @@ export function Sidebar() {
 
             {/* Close btn — mobile */}
             <button
-              className="hidden max-md:flex shrink-0 items-center justify-center rounded-full p-1.5 text-secondary transition-all duration-200 hover:bg-border hover:text-primary active:scale-90"
+              className="hidden max-md:flex shrink-0 items-center justify-center rounded-full p-1.5 text-secondary transition-[background-color,color] duration-150 hover:bg-border hover:text-primary active:scale-90"
               onClick={closeSidebar}
               aria-label="Fechar menu"
             >
@@ -162,7 +162,7 @@ export function Sidebar() {
                       className={`
                         group relative flex w-full items-center gap-3 rounded-xl
                         text-[13.5px] font-medium text-left
-                        transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]
+                        transition-[background-color,color] duration-150
                         ${collapsed
                           ? 'justify-center px-0 py-3'
                           : 'px-4 py-2.5'}
@@ -176,7 +176,7 @@ export function Sidebar() {
                       <item.icon
                         size={19}
                         strokeWidth={active ? 2.2 : 1.8}
-                        className="shrink-0 transition-all duration-300"
+                        className="shrink-0"
                         style={active ? { color: 'var(--color-brand-primary)' } : undefined}
                       />
                       {!collapsed && (
@@ -217,7 +217,7 @@ export function Sidebar() {
                 <button
                   onClick={() => { navigate('/configuracoes'); closeSidebar(); }}
                   title="Configurações"
-                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium transition-all duration-300 active:scale-95 ${
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium transition-[background-color,color] duration-150 active:scale-95 ${
                     isActive('/configuracoes')
                       ? 'bg-primary/5'
                       : 'text-secondary/60 hover:bg-border/40 hover:text-primary'
@@ -228,7 +228,7 @@ export function Sidebar() {
                 </button>
                 <button
                   onClick={logout}
-                  className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium text-secondary/60 transition-all duration-300 hover:bg-danger/5 hover:text-danger active:scale-95"
+                  className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium text-secondary/60 transition-[background-color,color] duration-150 hover:bg-danger/5 hover:text-danger active:scale-95"
                 >
                   <LogOut size={14} strokeWidth={2} />
                   <span>Sair</span>
@@ -244,7 +244,7 @@ export function Sidebar() {
             </div>
           ) : (
             <div className="px-2 pb-4">
-              <div className="flex items-center gap-3 px-2 py-2 rounded-2xl transition-colors duration-300">
+              <div className="flex items-center gap-3 px-2 py-2 rounded-2xl transition-colors duration-150">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden bg-primary/5 text-[11px] font-bold text-primary border border-border/60">
                   {user?.avatar_url ? (
                     <img src={user.avatar_url} alt={user.full_name} className="h-full w-full object-cover" />
@@ -264,7 +264,7 @@ export function Sidebar() {
               <div className="flex items-center mt-1 px-2 gap-1">
                 <button
                   onClick={() => { navigate('/configuracoes'); closeSidebar(); }}
-                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium transition-all duration-300 active:scale-95 ${
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium transition-[background-color,color] duration-150 active:scale-95 ${
                     isActive('/configuracoes')
                       ? 'bg-primary/5'
                       : 'text-secondary/60 hover:bg-border/40 hover:text-primary'
@@ -277,7 +277,7 @@ export function Sidebar() {
                 </button>
                 <button
                   onClick={logout}
-                  className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium text-secondary/60 transition-all duration-300 hover:bg-danger/5 hover:text-danger active:scale-95"
+                  className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium text-secondary/60 transition-[background-color,color] duration-150 hover:bg-danger/5 hover:text-danger active:scale-95"
                 >
                   <LogOut size={14} strokeWidth={2} />
                   <span>Sair</span>
