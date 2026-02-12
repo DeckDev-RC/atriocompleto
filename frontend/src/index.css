@@ -88,6 +88,22 @@
   color: var(--color-brand-primary);
 }
 
+/* Cards do banner (Distribuição de Vendas): fonte do valor escala com a largura do card (container query) */
+.banner-card-container {
+  container-type: inline-size;
+  container-name: banner-card;
+}
+.banner-value-lg {
+  font-size: clamp(0.75rem, 10cqi, 1.625rem);
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+.banner-value-md {
+  font-size: clamp(0.6875rem, 8cqi, 1.25rem);
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
 /* Não sobrescrever position/display do .rdp-dropdown (select): a lib usa position:absolute+opacity:0
    para o select sobrepor o label; senão os elementos empilham. Estilos visuais só em .rdp-months_dropdown/.rdp-years_dropdown. */
 

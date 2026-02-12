@@ -63,14 +63,14 @@ export function Banner({ totalRevenue, channels }: BannerProps) {
           </h2>
         </div>
 
-        {/* Metric cards — grid responsivo: 1 col (mobile) → 2 col (sm) → 3 col (lg) → 6 col (xl) */}
-        <div className="mt-auto grid translate-y-1/2 gap-3 gap-y-4 max-sm:translate-y-0 max-sm:mt-5 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6 xl:gap-4">
-          {/* Total — destaque em mobile (largura total) */}
-          <div className="min-w-0 rounded-2xl bg-card p-4 px-5 border border-border shadow-float dark:shadow-dark-float transition-all duration-300 hover:shadow-soft-hover dark:hover:shadow-dark-hover hover:-translate-y-0.5 sm:p-5 sm:px-6">
+        {/* Metric cards: cada card é um container para fonte fluida (cqi) em telas menores */}
+        <div className="mt-auto flex translate-y-1/2 gap-4 max-lg:flex-wrap max-md:flex-nowrap max-md:overflow-x-auto max-md:pb-2 max-sm:translate-y-0 max-sm:mt-5 max-sm:flex-col">
+          {/* Total */}
+          <div className="banner-card-container flex-[1.35] rounded-2xl bg-card p-5 px-6 border border-border shadow-float dark:shadow-dark-float transition-all duration-300 hover:shadow-soft-hover dark:hover:shadow-dark-hover hover:-translate-y-0.5 max-lg:flex-[1_1_calc(33%-12px)] max-lg:min-w-[180px] max-md:min-w-[175px] max-md:flex-none max-sm:min-w-0 min-w-0">
             <p className="text-[10px] font-semibold tracking-[0.06em] uppercase text-muted mb-1">
               Faturamento (Pagos)
             </p>
-            <p className="text-[22px] font-bold tracking-[-0.03em] text-primary leading-none truncate sm:text-[26px]">
+            <p className="banner-value-lg font-bold text-primary leading-none break-words min-w-0">
               {formatCurrency(totalRevenue)}
             </p>
           </div>
@@ -78,21 +78,21 @@ export function Banner({ totalRevenue, channels }: BannerProps) {
           {channels.map((ch) => (
             <div
               key={ch.id}
-              className="min-w-0 rounded-2xl bg-card p-4 px-5 border border-border shadow-float dark:shadow-dark-float transition-all duration-300 hover:shadow-soft-hover dark:hover:shadow-dark-hover hover:-translate-y-0.5 sm:p-5 sm:px-6"
+              className="banner-card-container flex-1 rounded-2xl bg-card p-5 px-6 border border-border shadow-float dark:shadow-dark-float transition-all duration-300 hover:shadow-soft-hover dark:hover:shadow-dark-hover hover:-translate-y-0.5 max-lg:flex-[1_1_calc(33%-12px)] max-lg:min-w-[180px] max-md:min-w-[175px] max-md:flex-none max-sm:min-w-0 min-w-0"
             >
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="text-[10px] font-semibold tracking-[0.06em] uppercase text-muted mb-1">
                     {ch.label}
                   </p>
-                  <p className="text-[18px] font-bold tracking-[-0.03em] text-primary leading-none truncate sm:text-[20px]">
+                  <p className="banner-value-md font-bold text-primary leading-none break-words min-w-0">
                     {formatCurrency(ch.value)}
                   </p>
                   <span className="mt-1 inline-block text-[11px] font-medium text-secondary">
                     {ch.percentage.toFixed(1)}% do total
                   </span>
                 </div>
-                <div className="-mt-3 -mr-3 shrink-0">
+                <div className="shrink-0 -mt-3 -mr-3">
                   <MarketplaceIcon type={ch.iconType} />
                 </div>
               </div>
