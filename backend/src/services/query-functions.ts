@@ -64,6 +64,24 @@ async function runSQL<T>(sql: string, tenantId?: string | null): Promise<T[]> {
 }
 
 /**
+ * Validates a YYYY-MM-DD string. If the date is invalid (e.g. 2026-02-29),
+ * clamps the day to the last valid day of that month.
+ */
+function safeDate(dateStr: string): string {
+  const [yearStr, monthStr, dayStr] = dateStr.split("-");
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+  const day = parseInt(dayStr, 10);
+  if (isNaN(year) || isNaN(month) || isNaN(day)) return dateStr;
+
+  // Get last valid day of the month (month is 1-indexed, Date uses 0-indexed)
+  const lastDay = new Date(year, month, 0).getDate();
+  const clampedDay = Math.min(day, lastDay);
+
+  return `${yearStr}-${monthStr}-${String(clampedDay).padStart(2, "0")}`;
+}
+
+/**
  * Builds WHERE clause fragments from params.
  * tenant_id is handled by the RPC function, not here.
  */
@@ -73,8 +91,8 @@ function buildWhere(params: QueryParams, opts: { includeStatus?: boolean; includ
 
   // Date filter
   if (params.start_date && params.end_date) {
-    const s = params.start_date.replace(/[^0-9-]/g, "").substring(0, 10);
-    const e = params.end_date.replace(/[^0-9-]/g, "").substring(0, 10);
+    const s = safeDate(params.start_date.replace(/[^0-9-]/g, "").substring(0, 10));
+    const e = safeDate(params.end_date.replace(/[^0-9-]/g, "").substring(0, 10));
     clauses.push(`order_date >= '${s}T00:00:00-03:00' AND order_date <= '${e}T23:59:59-03:00'`);
   } else if (params.period_days) {
     const n = Math.abs(Math.round(Number(params.period_days)));
