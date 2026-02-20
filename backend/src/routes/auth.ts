@@ -35,6 +35,7 @@ interface ProfileRow {
   avatar_url: string | null;
   email_verified: boolean;
   permissions: Record<string, any>;
+  two_factor_enabled: boolean;
   two_factor_secret: string | null;
   recovery_codes_hash: string[] | null;
   bypass_2fa: boolean;
