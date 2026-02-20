@@ -104,19 +104,18 @@ class AgentApiService {
       }
 
       let data: any = {};
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        const text = await response.text();
-        try {
-          data = text ? JSON.parse(text) : {};
-        } catch (e) {
-          console.error('[agentApi] Error parsing JSON:', e, 'Raw text:', text);
-          data = { success: false, error: 'Erro ao processar resposta do servidor' };
+      const text = await response.text();
+      
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (e) {
+        console.error('[agentApi] Error parsing JSON:', e, 'Raw text:', text);
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          console.error('[agentApi] Unexpected non-JSON response and parse failed:', text);
+          return { success: false, error: 'Resposta inválida do servidor (não JSON)' };
         }
-      } else {
-        const text = await response.text();
-        console.error('[agentApi] Unexpected non-JSON response:', text);
-        return { success: false, error: 'Resposta inválida do servidor (não JSON)' };
+        return { success: false, error: 'Erro ao processar resposta do servidor' };
       }
 
       // Premium error feedback for Rate Limiting
