@@ -1,4 +1,4 @@
-import { supabase } from "../config/supabase";
+import { supabaseAdmin } from "../config/supabase";
 
 /**
  * Query Functions — SQL-Aggregated Analytics for E-Commerce
@@ -56,7 +56,7 @@ async function runSQL<T>(sql: string, tenantId?: string | null): Promise<T[]> {
   const params: Record<string, unknown> = { query_text: sql.trim() };
   if (tenantId) params.p_tenant_id = tenantId;
 
-  const { data, error } = await supabase.rpc("execute_readonly_query", params);
+  const { data, error } = await supabaseAdmin.rpc("execute_readonly_query", params);
   if (error) throw new Error(`SQL error: ${error.message}`);
   if (!data) return [];
   const parsed = typeof data === "string" ? JSON.parse(data) : data;
@@ -131,7 +131,7 @@ export async function getDistinctValues(tenantId?: string | null) {
   try {
     const rpcParams: Record<string, unknown> = {};
     if (tenantId) rpcParams.p_tenant_id = tenantId;
-    const { data, error } = await supabase.rpc("get_orders_metadata", rpcParams);
+    const { data, error } = await supabaseAdmin.rpc("get_orders_metadata", rpcParams);
     if (!error && data) {
       const meta = typeof data === "string" ? JSON.parse(data) : data;
       const statuses = Array.isArray(meta.statuses) ? meta.statuses.filter(Boolean).sort() : [];
@@ -999,14 +999,20 @@ export async function healthCheck(_params: QueryParams) {
     const projected = (currentMonth.total / dayOfMonth) * daysInCurrentMonth;
     const pct = avgRevenue > 0 ? ((projected - avgRevenue) / avgRevenue) * 100 : 0;
     if (pct < -30) {
-      alerts.push({ type: "danger", metric: "revenue_projection",
-        message: `Faturamento projetado em R$ ${Math.round(projected).toLocaleString("pt-BR")} — ${Math.abs(Math.round(pct))}% ABAIXO da média (R$ ${Math.round(avgRevenue).toLocaleString("pt-BR")}). Faltam ${daysInCurrentMonth - dayOfMonth} dias.` });
+      alerts.push({
+        type: "danger", metric: "revenue_projection",
+        message: `Faturamento projetado em R$ ${Math.round(projected).toLocaleString("pt-BR")} — ${Math.abs(Math.round(pct))}% ABAIXO da média (R$ ${Math.round(avgRevenue).toLocaleString("pt-BR")}). Faltam ${daysInCurrentMonth - dayOfMonth} dias.`
+      });
     } else if (pct < -10) {
-      alerts.push({ type: "warning", metric: "revenue_projection",
-        message: `Faturamento projetado ${Math.abs(Math.round(pct))}% abaixo da média. Atual: R$ ${Math.round(currentMonth.total).toLocaleString("pt-BR")} em ${dayOfMonth} dias.` });
+      alerts.push({
+        type: "warning", metric: "revenue_projection",
+        message: `Faturamento projetado ${Math.abs(Math.round(pct))}% abaixo da média. Atual: R$ ${Math.round(currentMonth.total).toLocaleString("pt-BR")} em ${dayOfMonth} dias.`
+      });
     } else if (pct > 20) {
-      alerts.push({ type: "success", metric: "revenue_projection",
-        message: `Mês em alta! Projeção de R$ ${Math.round(projected).toLocaleString("pt-BR")} — ${Math.round(pct)}% acima da média.` });
+      alerts.push({
+        type: "success", metric: "revenue_projection",
+        message: `Mês em alta! Projeção de R$ ${Math.round(projected).toLocaleString("pt-BR")} — ${Math.round(pct)}% acima da média.`
+      });
     }
   }
 
@@ -1020,8 +1026,10 @@ export async function healthCheck(_params: QueryParams) {
     const projected = (currentMonth.total / dayOfMonth) * daysInCurrentMonth;
     const yoy = ly.total > 0 ? ((projected - ly.total) / ly.total) * 100 : 0;
     if (Math.abs(yoy) > 15) {
-      alerts.push({ type: yoy < 0 ? "warning" : "success", metric: "yoy",
-        message: `vs ${lastYearKey}: ${yoy > 0 ? "+" : ""}${Math.round(yoy)}% em faturamento (era R$ ${Math.round(ly.total).toLocaleString("pt-BR")}).` });
+      alerts.push({
+        type: yoy < 0 ? "warning" : "success", metric: "yoy",
+        message: `vs ${lastYearKey}: ${yoy > 0 ? "+" : ""}${Math.round(yoy)}% em faturamento (era R$ ${Math.round(ly.total).toLocaleString("pt-BR")}).`
+      });
     }
   }
 
@@ -1031,11 +1039,15 @@ export async function healthCheck(_params: QueryParams) {
     const avgRate = completeMonths.length > 0
       ? completeMonths.reduce((s, m) => s + (monthly[m].cnt > 0 ? (monthly[m].cancelled / monthly[m].cnt) * 100 : 0), 0) / completeMonths.length : 0;
     if (rate > avgRate + 5) {
-      alerts.push({ type: "danger", metric: "cancellation",
-        message: `Taxa de cancelamento em ${rate.toFixed(1)}% — acima da média de ${avgRate.toFixed(1)}%. Perda: R$ ${Math.round(currentMonth.cancelled_amount).toLocaleString("pt-BR")}.` });
+      alerts.push({
+        type: "danger", metric: "cancellation",
+        message: `Taxa de cancelamento em ${rate.toFixed(1)}% — acima da média de ${avgRate.toFixed(1)}%. Perda: R$ ${Math.round(currentMonth.cancelled_amount).toLocaleString("pt-BR")}.`
+      });
     } else if (rate < avgRate - 3) {
-      alerts.push({ type: "success", metric: "cancellation",
-        message: `Cancelamentos em ${rate.toFixed(1)}% — melhor que a média de ${avgRate.toFixed(1)}%.` });
+      alerts.push({
+        type: "success", metric: "cancellation",
+        message: `Cancelamentos em ${rate.toFixed(1)}% — melhor que a média de ${avgRate.toFixed(1)}%.`
+      });
     }
   }
 
@@ -1048,8 +1060,10 @@ export async function healthCheck(_params: QueryParams) {
       const curRate = (cur.cancelled / cur.cnt) * 100;
       const prevRate = (prev.cancelled / prev.cnt) * 100;
       if (curRate > prevRate + 8) {
-        alerts.push({ type: "warning", metric: "mkt_cancellation",
-          message: `Cancelamentos no ${mktNames[mkt] || mkt} subiram de ${prevRate.toFixed(1)}% para ${curRate.toFixed(1)}% este mês.` });
+        alerts.push({
+          type: "warning", metric: "mkt_cancellation",
+          message: `Cancelamentos no ${mktNames[mkt] || mkt} subiram de ${prevRate.toFixed(1)}% para ${curRate.toFixed(1)}% este mês.`
+        });
       }
     }
   }
@@ -1059,11 +1073,15 @@ export async function healthCheck(_params: QueryParams) {
   if (last3.length === 3) {
     const tk = last3.map(m => monthly[m].cnt > 0 ? monthly[m].total / monthly[m].cnt : 0);
     if (tk[0] > tk[1] && tk[1] > tk[2]) {
-      alerts.push({ type: "warning", metric: "avg_ticket",
-        message: `Ticket médio em queda há 3 meses: R$ ${Math.round(tk[0])} → R$ ${Math.round(tk[1])} → R$ ${Math.round(tk[2])}.` });
+      alerts.push({
+        type: "warning", metric: "avg_ticket",
+        message: `Ticket médio em queda há 3 meses: R$ ${Math.round(tk[0])} → R$ ${Math.round(tk[1])} → R$ ${Math.round(tk[2])}.`
+      });
     } else if (tk[0] < tk[1] && tk[1] < tk[2]) {
-      alerts.push({ type: "success", metric: "avg_ticket",
-        message: `Ticket médio crescendo há 3 meses: R$ ${Math.round(tk[0])} → R$ ${Math.round(tk[1])} → R$ ${Math.round(tk[2])}.` });
+      alerts.push({
+        type: "success", metric: "avg_ticket",
+        message: `Ticket médio crescendo há 3 meses: R$ ${Math.round(tk[0])} → R$ ${Math.round(tk[1])} → R$ ${Math.round(tk[2])}.`
+      });
     }
   }
 
@@ -1071,8 +1089,10 @@ export async function healthCheck(_params: QueryParams) {
   const week = weekRows[0] || { cnt: 0, total: 0 };
   const avgWeekly = avgRevenue / 4.33;
   if (week.total > avgWeekly * 1.3 && week.cnt > 20) {
-    alerts.push({ type: "success", metric: "weekly",
-      message: `Ótima semana! R$ ${Math.round(week.total).toLocaleString("pt-BR")} nos últimos 7 dias (${week.cnt} pedidos) — ${Math.round(((week.total / avgWeekly) - 1) * 100)}% acima da média semanal.` });
+    alerts.push({
+      type: "success", metric: "weekly",
+      message: `Ótima semana! R$ ${Math.round(week.total).toLocaleString("pt-BR")} nos últimos 7 dias (${week.cnt} pedidos) — ${Math.round(((week.total / avgWeekly) - 1) * 100)}% acima da média semanal.`
+    });
   }
 
   if (alerts.length === 0) {

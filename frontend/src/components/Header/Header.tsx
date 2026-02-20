@@ -1,6 +1,8 @@
-import { Menu, Moon, Sun, Bell } from 'lucide-react';
+import { Menu, Moon, Sun, Bell, LogOut } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { useBrandPrimaryColor } from '../../hooks/useBrandPrimaryColor';
+import { useState } from 'react';
 
 interface HeaderProps {
   title?: string;
@@ -14,11 +16,21 @@ export function Header({
   children,
 }: HeaderProps) {
   const { toggleSidebar, theme, toggleTheme } = useApp();
+  const { logout } = useAuth();
   const brandPrimaryColor = useBrandPrimaryColor();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    if (window.confirm('Deseja realmente sair?')) {
+      setIsLoggingOut(true);
+      await logout();
+      setIsLoggingOut(false);
+    }
+  };
 
   return (
     <header className="flex flex-col gap-4 mb-6 md:mb-8 max-sm:gap-3">
-      <div className="flex h-[56px] min-h-[56px] items-center justify-between gap-3 flex-shrink-0">
+      <div className="flex h-[56px] min-h-[56px] items-center justify-between gap-3 shrink-0">
         {/* Left */}
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <button
@@ -67,6 +79,16 @@ export function Header({
             ) : (
               <Sun size={18} strokeWidth={2} />
             )}
+          </button>
+
+          {/* Logout button */}
+          <button
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            aria-label="Sair do sistema"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-secondary transition-all duration-200 hover:bg-danger/10 hover:text-danger active:scale-95 disabled:opacity-50"
+          >
+            <LogOut size={18} strokeWidth={2} />
           </button>
         </div>
       </div>

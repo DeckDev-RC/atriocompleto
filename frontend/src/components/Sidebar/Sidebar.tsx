@@ -42,7 +42,7 @@ export function Sidebar() {
     toggleSidebarCollapse,
     theme,
   } = useApp();
-  const { user, isMaster, logout } = useAuth();
+  const { user, isMaster, logout, hasPermission } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -55,28 +55,31 @@ export function Sidebar() {
   };
 
   // Build menu items dynamically
-  const menuSections: { section: string; items: SidebarMenuItem[] }[] = [
+  const menuSections: { section: string; items: (SidebarMenuItem & { permission?: string })[] }[] = [
     ...(user?.tenant_id
       ? [
         {
           section: 'Home',
-          items: [{ icon: ShoppingCart, label: 'E-Commerce', path: '/' }],
+          items: [{ icon: ShoppingCart, label: 'E-Commerce', path: '/', permission: 'visualizar_venda' }],
         },
         {
           section: "APPS",
-          items: [{ icon: null, imageSrc: optimusSidebarIcon, label: 'Optimus', path: '/agente' }],
+          items: [{ icon: null, imageSrc: optimusSidebarIcon, label: 'Optimus', path: '/agente', permission: 'acessar_agente' }],
         },
       ]
       : []),
-    ...(isMaster
-      ? [
-        {
-          section: 'Sistema',
-          items: [{ icon: Shield, label: 'Administração', path: '/admin' }],
-        },
-      ]
-      : []),
+    {
+      section: 'Sistema',
+      items: [
+        ...(isMaster ? [{ icon: Shield, label: 'Administração', path: '/admin' }] : []),
+      ],
+    },
   ];
+
+  const filteredSections = menuSections.map(section => ({
+    ...section,
+    items: section.items.filter(item => !item.permission || hasPermission(item.permission))
+  })).filter(section => section.items.length > 0);
 
   const initials = user?.full_name
     ? user.full_name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
@@ -153,10 +156,10 @@ export function Sidebar() {
 
           {/* Navigation */}
           <nav className="mt-8 flex flex-col gap-6" aria-label="Menu principal">
-            {menuSections.map((section) => (
+            {filteredSections.map((section) => (
               <div key={section.section} className="flex flex-col gap-1" role="group" aria-label={section.section}>
                 {!collapsed && (
-                  <span className="mb-2 px-4 text-[10.5px] font-semibold tracking-widest uppercase text-[#6f7383] dark:text-[#adb3c4]" aria-hidden="true">
+                  <span className="mb-2 px-4 text-[10.5px] font-semibold tracking-widest uppercase text-muted dark:text-[#adb3c4]" aria-hidden="true">
                     {section.section}
                   </span>
                 )}
@@ -248,11 +251,10 @@ export function Sidebar() {
                 <button
                   onClick={() => { navigate('/configuracoes'); closeSidebar(); }}
                   title="Configurações"
-                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium transition-[background-color,color] duration-150 active:scale-95 ${
-                    isActive('/configuracoes')
-                      ? 'bg-primary/5'
-                      : 'text-secondary/60 hover:bg-border/40 hover:text-primary'
-                  }`}
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium transition-[background-color,color] duration-150 active:scale-95 ${isActive('/configuracoes')
+                    ? 'bg-primary/5'
+                    : 'text-secondary/60 hover:bg-border/40 hover:text-primary'
+                    }`}
                   style={isActive('/configuracoes') ? { color: 'var(--color-brand-primary)' } : undefined}
                 >
                   <Settings size={14} strokeWidth={isActive('/configuracoes') ? 2.2 : 2} />
@@ -295,11 +297,10 @@ export function Sidebar() {
               <div className="flex items-center mt-1 px-2 gap-1">
                 <button
                   onClick={() => { navigate('/configuracoes'); closeSidebar(); }}
-                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium transition-[background-color,color] duration-150 active:scale-95 ${
-                    isActive('/configuracoes')
-                      ? 'bg-primary/5'
-                      : 'text-secondary/60 hover:bg-border/40 hover:text-primary'
-                  }`}
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium transition-[background-color,color] duration-150 active:scale-95 ${isActive('/configuracoes')
+                    ? 'bg-primary/5'
+                    : 'text-secondary/60 hover:bg-border/40 hover:text-primary'
+                    }`}
                   title="Configurações"
                   style={isActive('/configuracoes') ? { color: 'var(--color-brand-primary)' } : undefined}
                 >

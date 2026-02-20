@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { supabase } from "../config/supabase";
+import { supabaseAdmin } from "../config/supabase";
 
 const router = Router();
 
@@ -12,7 +12,7 @@ router.get("/", async (_req: Request, res: Response) => {
 
   try {
     // Quick Supabase ping
-    const { error } = await supabase.from("orders").select("id", { count: "exact", head: true }).limit(1);
+    const { error } = await supabaseAdmin.from("orders").select("id", { count: "exact", head: true }).limit(1);
     checks.supabase = error ? "error" : "ok";
   } catch {
     checks.supabase = "error";

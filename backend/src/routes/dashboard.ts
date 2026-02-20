@@ -3,11 +3,13 @@ import { fetchDashboardAggregated, DashboardParams } from "../services/dashboard
 import { getMarketplaceInfo } from "../config/marketplace";
 import { supabase } from "../config/supabase";
 import { requireAuth } from "../middleware/auth";
+import { requirePermission } from "../middleware/rbac";
 
 const router = Router();
 
-// All dashboard routes require authentication
+// All dashboard routes require authentication + visualizar_venda permission
 router.use(requireAuth);
+router.use(requirePermission('visualizar_venda'));
 
 // ── Helpers ────────────────────────────────────────────
 
@@ -161,6 +163,20 @@ router.get("/summary", async (req: Request, res: Response) => {
           ? "all"
           : { start: params.start_date || "", end: params.end_date || "" },
       },
+    });
+
+    // Audit log for dashboard access
+    const { AuditService } = await import("../services/audit");
+    void AuditService.log({
+      userId: req.user!.id,
+      action: "dashboard.view",
+      resource: "dashboard",
+      entityId: tenantId || "all",
+      details: {
+        message: `Visualização do dashboard (${params.all_time ? "Todo o período" : `${params.start_date} a ${params.end_date}`})`,
+        filters: params
+      },
+      ipAddress: (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "",
     });
   } catch (error) {
     console.error("[Dashboard] Error:", error);

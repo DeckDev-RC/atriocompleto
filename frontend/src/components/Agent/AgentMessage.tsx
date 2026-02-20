@@ -109,7 +109,7 @@ export function AgentMessage({ role, content, timestamp, isLoading, tokenUsage }
               <div
                 key={i}
                 className="h-2 w-2 rounded-full"
-                style={{ 
+                style={{
                   backgroundColor: brandPrimaryColor || 'var(--color-brand-primary)',
                   animation: `bounce-dot 1.2s ease-in-out ${i * 0.15}s infinite`,
                 }}
@@ -117,7 +117,7 @@ export function AgentMessage({ role, content, timestamp, isLoading, tokenUsage }
             ))}
           </div>
         ) : (
-          <div className="text-[14px] leading-[1.7] text-primary break-words agent-message-content">
+          <div className="text-[14px] leading-[1.7] text-primary wrap-break-word agent-message-content">
             {renderContent()}
 
             {tokenUsage && !isUser && (
@@ -141,14 +141,14 @@ export function AgentMessage({ role, content, timestamp, isLoading, tokenUsage }
 
 function MarkdownBlock({ text }: { text: string }) {
   const brandPrimaryColor = useBrandPrimaryColor();
-  
+
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       components={{
         p: ({ children }) => <p>{children}</p>,
         strong: ({ children }) => (
-          <strong 
+          <strong
             className="font-semibold"
             style={{ color: brandPrimaryColor || 'var(--color-brand-primary)' }}
           >

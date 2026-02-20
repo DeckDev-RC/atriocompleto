@@ -7,7 +7,7 @@
  * + Cache in-memory com TTL de 60s para evitar reconsultas.
  */
 
-import { supabase } from "../config/supabase";
+import { supabaseAdmin } from "../config/supabase";
 
 // ── Types ──────────────────────────────────────────
 
@@ -91,7 +91,7 @@ function buildDateWhere(params: DashboardParams): string {
 
 async function runSQL<T>(sql: string): Promise<T[]> {
   // trim() remove \n e espaços que a função PG não remove com TRIM()
-  const { data, error } = await supabase.rpc("execute_readonly_query", {
+  const { data, error } = await supabaseAdmin.rpc("execute_readonly_query", {
     query_text: sql.trim(),
   });
   if (error) throw new Error(`SQL: ${error.message}`);

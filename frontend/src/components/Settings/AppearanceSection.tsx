@@ -42,13 +42,12 @@ export function AppearanceSection() {
         <div className="flex gap-3">
           <button
             onClick={() => { if (theme === 'dark') toggleTheme(); }}
-            className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition-all duration-200 ${
-              theme === 'light'
-                ? 'border-[var(--color-brand-primary)] bg-[var(--color-brand-primary)]/5'
+            className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition-all duration-200 ${theme === 'light'
+                ? 'border-(--color-brand-primary) bg-(--color-brand-primary)/5'
                 : 'border-border hover:border-border-strong hover:bg-card'
-            }`}
+              }`}
           >
-            <Sun size={18} strokeWidth={2} className={theme === 'light' ? 'text-[var(--color-brand-primary)]' : 'text-muted'} />
+            <Sun size={18} strokeWidth={2} className={theme === 'light' ? 'text-(--color-brand-primary)' : 'text-muted'} />
             <div className="text-left">
               <p className="text-[13px] font-medium text-primary">Claro</p>
               <p className="text-[11px] text-muted">Modo diurno</p>
@@ -60,13 +59,12 @@ export function AppearanceSection() {
 
           <button
             onClick={() => { if (theme === 'light') toggleTheme(); }}
-            className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition-all duration-200 ${
-              theme === 'dark'
-                ? 'border-[var(--color-brand-primary)] bg-[var(--color-brand-primary)]/5'
+            className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition-all duration-200 ${theme === 'dark'
+                ? 'border-(--color-brand-primary) bg-(--color-brand-primary)/5'
                 : 'border-border hover:border-border-strong hover:bg-card'
-            }`}
+              }`}
           >
-            <Moon size={18} strokeWidth={2} className={theme === 'dark' ? 'text-[var(--color-brand-primary)]' : 'text-muted'} />
+            <Moon size={18} strokeWidth={2} className={theme === 'dark' ? 'text-(--color-brand-primary)' : 'text-muted'} />
             <div className="text-left">
               <p className="text-[13px] font-medium text-primary">Escuro</p>
               <p className="text-[11px] text-muted">Modo noturno</p>
@@ -93,11 +91,10 @@ export function AppearanceSection() {
               <button
                 key={font.value}
                 onClick={() => updatePreferences({ font_family: font.value })}
-                className={`relative flex flex-col items-start rounded-xl border px-4 py-3 transition-all duration-200 text-left ${
-                  isSelected
-                    ? 'border-[var(--color-brand-primary)] bg-[var(--color-brand-primary)]/5'
+                className={`relative flex flex-col items-start rounded-xl border px-4 py-3 transition-all duration-200 text-left ${isSelected
+                    ? 'border-(--color-brand-primary) bg-(--color-brand-primary)/5'
                     : 'border-border hover:border-border-strong hover:bg-card'
-                }`}
+                  }`}
               >
                 <p
                   className="text-[15px] font-semibold text-primary"

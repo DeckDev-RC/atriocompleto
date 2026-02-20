@@ -1,5 +1,5 @@
 import { genai, GEMINI_MODEL } from "../config/gemini";
-import { supabase } from "../config/supabase";
+import { supabase, supabaseAdmin } from "../config/supabase";
 import { queryFunctions, QueryParams, getDistinctValues } from "./query-functions";
 import { sanitizeSQL } from "../utils/sql-sanitizer";
 import { ChatMessage } from "../types";
@@ -452,7 +452,7 @@ async function executeAdHocSQL(sql: string, tenantId?: string): Promise<unknown>
   if (!result.valid) return { error: result.error };
   const rpcParams: Record<string, unknown> = { query_text: result.query };
   if (tenantId) rpcParams.p_tenant_id = tenantId;
-  const { data, error } = await supabase.rpc("execute_readonly_query", rpcParams);
+  const { data, error } = await supabaseAdmin.rpc("execute_readonly_query", rpcParams);
   if (error) return { error: "Erro: " + error.message };
   return { data, row_count: Array.isArray(data) ? data.length : 0 };
 }

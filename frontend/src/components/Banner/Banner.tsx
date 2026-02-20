@@ -34,22 +34,22 @@ export function Banner({ totalRevenue, channels }: BannerProps) {
       {/* Dark overlay - mais escuro no hover */}
       <div className="absolute inset-0 rounded-[22px] bg-black/30 dark:bg-black/20 group-hover:bg-black/50 dark:group-hover:bg-black/40 transition-all duration-300" />
       {/* Glow accents */}
-      <div 
-        className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full blur-[70px]" 
-        style={{ 
-          backgroundColor: brandPrimaryColor 
+      <div
+        className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full blur-[70px]"
+        style={{
+          backgroundColor: brandPrimaryColor
             ? getBrandPrimaryWithOpacity(brandPrimaryColor, isDark ? 0.3 : 0.2)
-            : isDark 
+            : isDark
               ? 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)'
               : 'color-mix(in srgb, var(--color-brand-primary) 20%, transparent)',
         }}
       />
-      <div 
-        className="pointer-events-none absolute -bottom-8 -left-8 h-36 w-36 rounded-full blur-[50px]" 
-        style={{ 
-          backgroundColor: brandPrimaryColor 
+      <div
+        className="pointer-events-none absolute -bottom-8 -left-8 h-36 w-36 rounded-full blur-[50px]"
+        style={{
+          backgroundColor: brandPrimaryColor
             ? getBrandPrimaryWithOpacity(brandPrimaryColor, isDark ? 0.15 : 0.2)
-            : isDark 
+            : isDark
               ? 'color-mix(in srgb, var(--color-brand-primary) 15%, transparent)'
               : 'color-mix(in srgb, var(--color-brand-primary) 20%, transparent)',
         }}
@@ -70,7 +70,7 @@ export function Banner({ totalRevenue, channels }: BannerProps) {
             <p className="text-[10px] font-semibold tracking-[0.06em] uppercase text-muted mb-1">
               Faturamento (Pagos)
             </p>
-            <p className="banner-value-lg font-bold text-primary leading-none break-words min-w-0">
+            <p className="banner-value-lg font-bold text-primary leading-none wrap-break-word min-w-0">
               {formatCurrency(totalRevenue)}
             </p>
           </div>
@@ -85,7 +85,7 @@ export function Banner({ totalRevenue, channels }: BannerProps) {
                   <p className="text-[10px] font-semibold tracking-[0.06em] uppercase text-muted mb-1">
                     {ch.label}
                   </p>
-                  <p className="banner-value-md font-bold text-primary leading-none break-words min-w-0">
+                  <p className="banner-value-md font-bold text-primary leading-none wrap-break-word min-w-0">
                     {formatCurrency(ch.value)}
                   </p>
                   <span className="mt-1 inline-block text-[11px] font-medium text-secondary">

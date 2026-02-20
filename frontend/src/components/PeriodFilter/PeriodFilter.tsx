@@ -399,7 +399,7 @@ export function PeriodFilter({
                     setFocusStart(false);
                   }}
                   onClick={() => setWhichCalendarOpen('start')}
-                  className="w-full rounded-xl border border-border bg-body px-3 py-2 text-[13px] text-primary outline-none transition-colors duration-150 placeholder:text-muted hover:border-border-strong focus:border-[var(--color-brand-primary)] focus:ring-2 focus:ring-[var(--color-brand-primary)]/20"
+                  className="w-full rounded-xl border border-border bg-body px-3 py-2 text-[13px] text-primary outline-none transition-colors duration-150 placeholder:text-muted hover:border-border-strong focus:border-(--color-brand-primary) focus:ring-2 focus:ring-(--color-brand-primary)/20"
                 />
                 {whichCalendarOpen === 'start' && (
                   <div className="rdp-root mt-2 rounded-xl border border-border bg-card p-3 shadow-soft">
@@ -455,7 +455,7 @@ export function PeriodFilter({
                     setFocusEnd(false);
                   }}
                   onClick={() => setWhichCalendarOpen('end')}
-                  className="w-full rounded-xl border border-border bg-body px-3 py-2 text-[13px] text-primary outline-none transition-colors duration-150 placeholder:text-muted hover:border-border-strong focus:border-[var(--color-brand-primary)] focus:ring-2 focus:ring-[var(--color-brand-primary)]/20"
+                  className="w-full rounded-xl border border-border bg-body px-3 py-2 text-[13px] text-primary outline-none transition-colors duration-150 placeholder:text-muted hover:border-border-strong focus:border-(--color-brand-primary) focus:ring-2 focus:ring-(--color-brand-primary)/20"
                 />
                 {whichCalendarOpen === 'end' && (
                   <div className="rdp-root mt-2 rounded-xl border border-border bg-card p-3 shadow-soft">

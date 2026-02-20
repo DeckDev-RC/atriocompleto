@@ -11,11 +11,13 @@ import {
 } from "../services/conversation";
 import { ChatMessage } from "../types";
 import { requireAuth } from "../middleware/auth";
+import { requirePermission } from "../middleware/rbac";
 
 const router = Router();
 
-// All chat routes require authentication
+// All chat routes require authentication + acessar_agente permission
 router.use(requireAuth);
+router.use(requirePermission('acessar_agente'));
 
 // ── GET /api/chat/health-check ──────────────────────────
 // Executa healthCheck diretamente sem Gemini — rápido e sem custo de tokens

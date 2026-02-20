@@ -1,24 +1,15 @@
-import { useState, useEffect, useCallback, type FormEvent } from 'react';
-import {
-  Building2,
-  Users,
-  Plus,
-  Pencil,
-  Trash2,
-  Loader2,
-  KeyRound,
-  Search,
-  Shield,
-  User,
-  Check,
-  AlertCircle,
-} from 'lucide-react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Header } from '../components/Header';
 import { agentApi } from '../services/agentApi';
 import { useAuth } from '../contexts/AuthContext';
-import { useBrandPrimaryColor, getBrandPrimaryWithOpacity } from '../hooks/useBrandPrimaryColor';
+import { PasswordStrengthIndicator } from '../components/PasswordStrengthIndicator';
+import { AuditLogPanel } from '../components/Admin/AuditLogPanel';
 
-/* ===== Types ===== */
+import { AccessControlPanel } from '../components/Admin/AccessControlPanel';
+
+type RoleType = 'master' | 'user';
+type Tab = 'tenants' | 'users' | 'requests' | 'audit' | 'security' | 'access';
+type RequestStatus = 'pending' | 'reviewed' | 'approved' | 'rejected' | 'converted';
 
 interface Tenant {
   id: string;
@@ -31,744 +22,497 @@ interface UserProfile {
   id: string;
   email: string;
   full_name: string;
-  role: 'master' | 'user';
+  role: RoleType;
   tenant_id: string | null;
   tenant_name: string;
   is_active: boolean;
   created_at: string;
 }
 
-/* ===== AdminPage ===== */
+interface AccessRequest {
+  id: string;
+  full_name: string;
+  phone: string;
+  email: string;
+  company_name: string;
+  status: RequestStatus;
+  admin_notes: string | null;
+  created_at: string;
+}
 
 export function AdminPage() {
-  const [activeTab, setActiveTab] = useState<'tenants' | 'users'>('tenants');
+  const [tab, setTab] = useState<Tab>('tenants');
 
   return (
     <div className="p-6 max-md:p-4">
-      <Header title="Administração" subtitle="Gerenciar empresas e usuários" />
+      <Header title="Administração" subtitle="Gerenciar empresas, usuários e acessos" />
 
-      {/* Tab bar */}
-      <div className="mt-6 mb-6 flex gap-1 rounded-xl bg-border/40 dark:bg-[rgba(255,255,255,0.03)] p-1 w-fit">
-        {[
-          { key: 'tenants' as const, label: 'Empresas', icon: Building2 },
-          { key: 'users' as const, label: 'Usuários', icon: Users },
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-medium transition-all duration-200 ${activeTab === tab.key
-              ? 'bg-card text-primary shadow-soft dark:shadow-dark-card'
-              : 'text-secondary hover:text-primary'
-              }`}
-          >
-            <tab.icon size={15} strokeWidth={2} />
-            {tab.label}
-          </button>
-        ))}
+      <div className="mt-6 mb-6 flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+        <button className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors ${tab === 'tenants' ? 'bg-card border border-border shadow-sm text-brand-primary font-medium' : 'text-muted hover:text-body-content'}`} onClick={() => setTab('tenants')}>Empresas</button>
+        <button className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors ${tab === 'users' ? 'bg-card border border-border shadow-sm text-brand-primary font-medium' : 'text-muted hover:text-body-content'}`} onClick={() => setTab('users')}>Usuários</button>
+        <button className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors ${tab === 'access' ? 'bg-card border border-border shadow-sm text-brand-primary font-medium' : 'text-muted hover:text-body-content'}`} onClick={() => setTab('access')}>Controle de Acessos</button>
+        <button className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors ${tab === 'requests' ? 'bg-card border border-border shadow-sm text-brand-primary font-medium' : 'text-muted hover:text-body-content'}`} onClick={() => setTab('requests')}>Solicitações</button>
+        <button className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors ${tab === 'audit' ? 'bg-card border border-border shadow-sm text-brand-primary font-medium' : 'text-muted hover:text-body-content'}`} onClick={() => setTab('audit')}>Auditoria</button>
+        <button className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors ${tab === 'security' ? 'bg-card border border-border shadow-sm text-brand-primary font-medium' : 'text-muted hover:text-body-content'}`} onClick={() => setTab('security')}>Segurança</button>
       </div>
 
-      {activeTab === 'tenants' ? <TenantsPanel /> : <UsersPanel />}
+      <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+        {tab === 'tenants' && <TenantsPanel />}
+        {tab === 'users' && <UsersPanel />}
+        {tab === 'access' && <AccessControlPanel />}
+        {tab === 'requests' && <RequestsPanel />}
+        {tab === 'audit' && <AuditLogPanel />}
+        {tab === 'security' && <SecurityPanel />}
+      </div>
     </div>
   );
 }
-
-/* ===== Tenants Panel ===== */
 
 function TenantsPanel() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
-  const brandPrimaryColor = useBrandPrimaryColor();
+  const [name, setName] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await agentApi.getTenants();
-    if (r.success && r.data) setTenants(r.data as Tenant[]);
+    const result = await agentApi.getTenants();
+    if (result.success && result.data) setTenants(result.data as Tenant[]);
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Excluir empresa "${name}"? Essa ação não pode ser desfeita.`)) return;
-    const r = await agentApi.deleteTenant(id);
-    if (r.success) load();
-    else alert(r.error || 'Erro ao excluir');
-  };
-
-  return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-[16px] font-semibold text-primary tracking-[-0.01em]">
-          {loading ? '...' : `${tenants.length} empresa${tenants.length !== 1 ? 's' : ''}`}
-        </h2>
-        <button
-          onClick={() => { setEditingTenant(null); setShowForm(true); }}
-          className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold text-white shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 active:scale-95"
-          style={{ backgroundColor: brandPrimaryColor || 'var(--color-brand-primary)' }}
-        >
-          <Plus size={15} strokeWidth={2.5} />
-          Nova Empresa
-        </button>
-      </div>
-
-      {loading ? (
-        <LoadingSkeleton count={3} />
-      ) : tenants.length === 0 ? (
-        <EmptyState icon={Building2} text="Nenhuma empresa cadastrada" />
-      ) : (
-        <div className="grid gap-3">
-          {tenants.map((t) => (
-            <div
-              key={t.id}
-              className="flex items-center justify-between rounded-2xl border border-border bg-card p-5 shadow-soft dark:shadow-dark-card transition-all duration-200 hover:shadow-soft-hover dark:hover:shadow-dark-hover"
-            >
-              <div className="flex items-center gap-4">
-                <div 
-                  className="flex h-10 w-10 items-center justify-center rounded-xl"
-                  style={{ 
-                    backgroundColor: brandPrimaryColor ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.1) : 'color-mix(in srgb, var(--color-brand-primary) 10%, transparent)',
-                  }}
-                >
-                  <Building2 
-                    size={18} 
-                    style={{ color: brandPrimaryColor || 'var(--color-brand-primary)' }}
-                    strokeWidth={1.8} 
-                  />
-                </div>
-                <div>
-                  <p className="text-[14px] font-semibold text-primary tracking-[-0.01em]">{t.name}</p>
-                  <p className="text-[12px] text-muted">
-                    {t.user_count} usuário{t.user_count !== 1 ? 's' : ''} · Criada em {new Date(t.created_at).toLocaleDateString('pt-BR')}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => { setEditingTenant(t); setShowForm(true); }}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-secondary transition-all hover:bg-border/60 hover:text-primary active:scale-90"
-                  title="Editar"
-                >
-                  <Pencil size={14} />
-                </button>
-                <button
-                  onClick={() => handleDelete(t.id, t.name)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-secondary transition-all hover:bg-danger/10 hover:text-danger active:scale-90"
-                  title="Excluir"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {showForm && (
-        <TenantFormModal
-          tenant={editingTenant}
-          onClose={() => setShowForm(false)}
-          onSaved={() => { setShowForm(false); load(); }}
-        />
-      )}
-    </div>
-  );
-}
-
-/* ===== Users Panel ===== */
-
-function UsersPanel() {
-  const [users, setUsers] = useState<UserProfile[]>([]);
-  const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
-  const [resetUserId, setResetUserId] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const { refreshUser } = useAuth();
-  const brandPrimaryColor = useBrandPrimaryColor();
-
-  const load = useCallback(async () => {
-    console.log('[Admin] Loading users and tenants...');
-    setLoading(true);
-    const [uRes, tRes] = await Promise.all([agentApi.getUsers(), agentApi.getTenants()]);
-    console.log('[Admin] Users response:', uRes);
-    if (uRes.success && uRes.data) {
-      setUsers(uRes.data as UserProfile[]);
-      console.log('[Admin] Users set:', (uRes.data as any[]).length);
-    }
-    if (tRes.success && tRes.data) setTenants(tRes.data as Tenant[]);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Excluir "${name}"? O usuário será removido permanentemente.`)) return;
-    const r = await agentApi.deleteUser(id);
-    if (r.success) load();
-    else alert(r.error || 'Erro ao excluir');
-  };
-
-  const handleToggleActive = async (user: UserProfile) => {
-    const r = await agentApi.updateUser(user.id, { is_active: !user.is_active });
-    if (r.success) load();
-  };
-
-  const filtered = users.filter((u) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return u.full_name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.tenant_name.toLowerCase().includes(q);
-  });
-
-  return (
-    <div>
-      <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
-        <h2 className="text-[16px] font-semibold text-primary tracking-[-0.01em]">
-          {loading ? '...' : `${users.length} usuário${users.length !== 1 ? 's' : ''}`}
-        </h2>
-        <div className="flex items-center gap-3">
-          {/* Search */}
-          <div className="relative">
-            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-            <input
-              type="text"
-              placeholder="Buscar..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-48 rounded-xl border border-border bg-body/60 py-2 pl-9 pr-3 text-[13px] text-primary placeholder:text-muted outline-none transition-all duration-200 focus:w-56"
-              onFocus={(e) => {
-                if (brandPrimaryColor) {
-                  e.currentTarget.style.borderColor = getBrandPrimaryWithOpacity(brandPrimaryColor, 0.3);
-                  e.currentTarget.style.boxShadow = `0 0 0 2px ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.08)}`;
-                } else {
-                  e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)';
-                  e.currentTarget.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--color-brand-primary) 8%, transparent)';
-                }
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.borderColor = '';
-                e.currentTarget.style.boxShadow = '';
-              }}
-            />
-          </div>
-          <button
-            onClick={() => { setEditingUser(null); setShowForm(true); }}
-            className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold text-white shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 active:scale-95"
-          style={{ backgroundColor: brandPrimaryColor || 'var(--color-brand-primary)' }}
-          >
-            <Plus size={15} strokeWidth={2.5} />
-            Novo Usuário
-          </button>
-        </div>
-      </div>
-
-      {loading ? (
-        <LoadingSkeleton count={4} />
-      ) : filtered.length === 0 ? (
-        <EmptyState icon={Users} text={search ? 'Nenhum resultado' : 'Nenhum usuário cadastrado'} />
-      ) : (
-        <div className="grid gap-3">
-          {filtered.map((u) => (
-            <div
-              key={u.id}
-              className={`flex items-center justify-between rounded-2xl border bg-card p-5 shadow-soft dark:shadow-dark-card transition-all duration-200 hover:shadow-soft-hover dark:hover:shadow-dark-hover ${u.is_active ? 'border-border' : 'border-danger/20 opacity-60'
-                }`}
-            >
-              <div className="flex items-center gap-4 min-w-0">
-                <div 
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${u.role === 'master' ? 'bg-warning/10' : ''}`}
-                  style={u.role !== 'master' ? {
-                    backgroundColor: brandPrimaryColor ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.1) : 'color-mix(in srgb, var(--color-brand-primary) 10%, transparent)',
-                  } : undefined}
-                >
-                  {u.role === 'master' ? (
-                    <Shield size={18} className="text-warning" strokeWidth={1.8} />
-                  ) : (
-                    <User 
-                      size={18} 
-                      style={{ color: brandPrimaryColor || 'var(--color-brand-primary)' }}
-                      strokeWidth={1.8} 
-                    />
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-[14px] font-semibold text-primary tracking-[-0.01em] truncate">
-                      {u.full_name}
-                    </p>
-                    <span 
-                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${u.role === 'master' ? 'bg-warning/10 text-warning' : ''}`}
-                      style={u.role !== 'master' ? {
-                        backgroundColor: brandPrimaryColor ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.1) : 'color-mix(in srgb, var(--color-brand-primary) 10%, transparent)',
-                        color: brandPrimaryColor || 'var(--color-brand-primary)',
-                      } : undefined}
-                    >
-                      {u.role}
-                    </span>
-                    {!u.is_active && (
-                      <span className="shrink-0 rounded-full bg-danger/10 px-2 py-0.5 text-[10px] font-semibold text-danger uppercase">
-                        Inativo
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[12px] text-muted truncate">
-                    {u.email} · {u.tenant_name || 'Sem empresa'}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0 ml-3">
-                <button
-                  onClick={() => handleToggleActive(u)}
-                  className={`flex h-8 w-8 items-center justify-center rounded-lg text-secondary transition-all hover:bg-border/60 active:scale-90 ${u.is_active ? 'hover:text-success' : 'hover:text-danger'
-                    }`}
-                  title={u.is_active ? 'Desativar' : 'Ativar'}
-                >
-                  {u.is_active ? <Check size={14} /> : <AlertCircle size={14} />}
-                </button>
-                <button
-                  onClick={() => setResetUserId(u.id)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-secondary transition-all hover:bg-border/60 hover:text-warning active:scale-90"
-                  title="Resetar senha"
-                >
-                  <KeyRound size={14} />
-                </button>
-                <button
-                  onClick={() => { setEditingUser(u); setShowForm(true); }}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-secondary transition-all hover:bg-border/60 hover:text-primary active:scale-90"
-                  title="Editar"
-                >
-                  <Pencil size={14} />
-                </button>
-                {u.role !== 'master' && (
-                  <button
-                    onClick={() => handleDelete(u.id, u.full_name)}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-secondary transition-all hover:bg-danger/10 hover:text-danger active:scale-90"
-                    title="Excluir"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {showForm && (
-        <UserFormModal
-          user={editingUser}
-          tenants={tenants}
-          onClose={() => setShowForm(false)}
-          onSaved={() => {
-            console.log('[Admin] User saved, refreshing list...');
-            setShowForm(false);
-            load();
-            refreshUser();
-          }}
-        />
-      )}
-
-      {resetUserId && (
-        <ResetPasswordModal
-          userId={resetUserId}
-          onClose={() => setResetUserId(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-/* ===== Modal: Tenant Form ===== */
-
-function TenantFormModal({
-  tenant,
-  onClose,
-  onSaved,
-}: {
-  tenant: Tenant | null;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [name, setName] = useState(tenant?.name || '');
-  const [loading, setLoading] = useState(false);
-  const brandPrimaryColor = useBrandPrimaryColor();
-  const [error, setError] = useState('');
-  const isEdit = !!tenant;
-
-  const handleSubmit = async (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
-    setError('');
-    setLoading(true);
+    if (!name.trim()) return;
+    if (editingId) await agentApi.updateTenant(editingId, name.trim());
+    else await agentApi.createTenant(name.trim());
+    setName('');
+    setEditingId(null);
+    load();
+  };
 
-    const r = isEdit
-      ? await agentApi.updateTenant(tenant!.id, name)
-      : await agentApi.createTenant(name);
-
-    if (r.success) onSaved();
-    else setError(r.error || 'Erro ao salvar');
-    setLoading(false);
+  const remove = async (tenant: Tenant) => {
+    if (!confirm(`Excluir empresa "${tenant.name}"?`)) return;
+    const result = await agentApi.deleteTenant(tenant.id);
+    if (!result.success) alert(result.error || 'Erro');
+    load();
   };
 
   return (
-    <ModalOverlay onClose={onClose}>
-      <form onSubmit={handleSubmit}>
-        <h3 className="text-[17px] font-bold text-primary tracking-[-0.02em] mb-5">
-          {isEdit ? 'Editar Empresa' : 'Nova Empresa'}
-        </h3>
-
-        {error && <ErrorBanner text={error} />}
-
-        <div className="mb-6">
-          <label className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.05em] text-muted">
-            Nome da empresa
-          </label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Ex: Ambro"
-            required
-            autoFocus
-            className="w-full rounded-xl border border-border bg-body/60 px-4 py-3 text-[14px] text-primary placeholder:text-muted outline-none transition-all"
-            onFocus={(e) => {
-              if (brandPrimaryColor) {
-                e.currentTarget.style.borderColor = getBrandPrimaryWithOpacity(brandPrimaryColor, 0.3);
-                e.currentTarget.style.boxShadow = `0 0 0 2px ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.08)}`;
-              } else {
-                e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)';
-                e.currentTarget.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--color-brand-primary) 8%, transparent)';
-              }
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = '';
-              e.currentTarget.style.boxShadow = '';
-            }}
-          />
-        </div>
-
-        <div className="flex justify-end gap-3">
-          <button type="button" onClick={onClose} className="rounded-xl px-4 py-2.5 text-[13px] font-medium text-secondary transition-all hover:bg-border/60">
-            Cancelar
-          </button>
-          <SubmitButton loading={loading} text={isEdit ? 'Salvar' : 'Criar Empresa'} />
+    <div className="grid gap-4">
+      <form onSubmit={submit} className="rounded-xl border border-border bg-card p-4">
+        <p className="mb-2 text-sm font-semibold">{editingId ? 'Editar empresa' : 'Nova empresa'}</p>
+        <div className="flex gap-2">
+          <input className="flex-1 rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome da empresa" required />
+          <button className="rounded-lg bg-(--color-brand-primary) px-4 py-2 text-sm text-white">{editingId ? 'Salvar' : 'Criar'}</button>
         </div>
       </form>
-    </ModalOverlay>
-  );
-}
-
-/* ===== Modal: User Form ===== */
-
-function UserFormModal({
-  user,
-  tenants,
-  onClose,
-  onSaved,
-}: {
-  user: UserProfile | null;
-  tenants: Tenant[];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const isEdit = !!user;
-  const [form, setForm] = useState({
-    full_name: user?.full_name || '',
-    email: user?.email || '',
-    password: '',
-    role: user?.role || 'user' as 'master' | 'user',
-    tenant_id: user?.tenant_id || '',
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
-  const brandPrimaryColor = useBrandPrimaryColor();
-
-  const set = (key: string, value: string) => setForm((p) => ({ ...p, [key]: value }));
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setFieldErrors({});
-    setLoading(true);
-
-    if (isEdit) {
-      const r = await agentApi.updateUser(user!.id, {
-        full_name: form.full_name,
-        role: form.role,
-        tenant_id: form.tenant_id || null,
-      });
-      if (r.success) onSaved();
-      else setError(r.error || 'Erro ao salvar');
-    } else {
-      const r = await agentApi.createUser({
-        email: form.email,
-        password: form.password,
-        full_name: form.full_name,
-        role: form.role,
-        tenant_id: form.tenant_id || null,
-      });
-      if (r.success) onSaved();
-      else {
-        setError(r.error || 'Erro ao criar');
-        setFieldErrors(r.details || {});
-      }
-    }
-    setLoading(false);
-  };
-
-  return (
-    <ModalOverlay onClose={onClose}>
-      <form onSubmit={handleSubmit}>
-        <h3 className="text-[17px] font-bold text-primary tracking-[-0.02em] mb-5">
-          {isEdit ? 'Editar Usuário' : 'Novo Usuário'}
-        </h3>
-
-        {error && <ErrorBanner text={error} />}
-
-        <div className="grid gap-4 mb-6">
-          <div>
-            <label className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.05em] text-muted">Nome</label>
-            <input type="text" value={form.full_name} onChange={(e) => set('full_name', e.target.value)} required autoFocus
-              className="w-full rounded-xl border border-border bg-body/60 px-4 py-3 text-[14px] text-primary placeholder:text-muted outline-none transition-all"
-            onFocus={(e) => {
-              if (brandPrimaryColor) {
-                e.currentTarget.style.borderColor = getBrandPrimaryWithOpacity(brandPrimaryColor, 0.3);
-                e.currentTarget.style.boxShadow = `0 0 0 2px ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.08)}`;
-              } else {
-                e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)';
-                e.currentTarget.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--color-brand-primary) 8%, transparent)';
-              }
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = '';
-              e.currentTarget.style.boxShadow = '';
-            }}
-              placeholder="Nome completo"
-            />
-            {fieldErrors.full_name && (
-              <p className="mt-1 text-[11px] text-danger">
-                {fieldErrors.full_name[0]}
-              </p>
-            )}
-          </div>
-
-          {!isEdit && (
-            <>
-              <div>
-                <label className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.05em] text-muted">Email</label>
-                <input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} required
-                  className="w-full rounded-xl border border-border bg-body/60 px-4 py-3 text-[14px] text-primary placeholder:text-muted outline-none transition-all"
-            onFocus={(e) => {
-              if (brandPrimaryColor) {
-                e.currentTarget.style.borderColor = getBrandPrimaryWithOpacity(brandPrimaryColor, 0.3);
-                e.currentTarget.style.boxShadow = `0 0 0 2px ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.08)}`;
-              } else {
-                e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)';
-                e.currentTarget.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--color-brand-primary) 8%, transparent)';
-              }
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = '';
-              e.currentTarget.style.boxShadow = '';
-            }}
-                  placeholder="usuario@email.com"
-                />
-                {fieldErrors.email && (
-                  <p className="mt-1 text-[11px] text-danger">
-                    {fieldErrors.email[0]}
-                  </p>
-                )}
-              </div>
-              <div>
-                <label className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.05em] text-muted">Senha</label>
-                <input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} required minLength={6}
-                  className="w-full rounded-xl border border-border bg-body/60 px-4 py-3 text-[14px] text-primary placeholder:text-muted outline-none transition-all"
-            onFocus={(e) => {
-              if (brandPrimaryColor) {
-                e.currentTarget.style.borderColor = getBrandPrimaryWithOpacity(brandPrimaryColor, 0.3);
-                e.currentTarget.style.boxShadow = `0 0 0 2px ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.08)}`;
-              } else {
-                e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)';
-                e.currentTarget.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--color-brand-primary) 8%, transparent)';
-              }
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = '';
-              e.currentTarget.style.boxShadow = '';
-            }}
-                  placeholder="Mínimo 6 caracteres"
-                />
-                {fieldErrors.password && (
-                  <p className="mt-1 text-[11px] text-danger">
-                    {fieldErrors.password[0]}
-                  </p>
-                )}
-              </div>
-            </>
-          )}
-
-          <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
+      {loading ? <p className="text-sm text-muted">Carregando...</p> : tenants.map((tenant) => (
+        <div key={tenant.id} className="rounded-xl border border-border bg-card p-4">
+          <div className="flex items-center justify-between gap-2">
             <div>
-              <label className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.05em] text-muted">Papel</label>
-              <select value={form.role} onChange={(e) => set('role', e.target.value)}
-                className="w-full rounded-xl border border-border bg-body/60 px-4 py-3 text-[14px] text-primary outline-none transition-all focus:border-accent/30 focus:ring-2 focus:ring-accent/8 appearance-none"
-              >
-                <option value="user">Usuário</option>
-                <option value="master">Master</option>
-              </select>
+              <p className="text-sm font-semibold">{tenant.name}</p>
+              <p className="text-xs text-muted">{tenant.user_count} usuario(s)</p>
             </div>
-            <div>
-              <label className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.05em] text-muted">Empresa</label>
-              <select value={form.tenant_id} onChange={(e) => set('tenant_id', e.target.value)}
-                className="w-full rounded-xl border border-border bg-body/60 px-4 py-3 text-[14px] text-primary outline-none transition-all focus:border-accent/30 focus:ring-2 focus:ring-accent/8 appearance-none"
-              >
-                <option value="">— Nenhuma —</option>
-                {tenants.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
+            <div className="flex gap-2">
+              <button className="rounded-md border border-border px-2 py-1 text-xs" onClick={() => { setEditingId(tenant.id); setName(tenant.name); }}>Editar</button>
+              <button className="rounded-md border border-danger/30 px-2 py-1 text-xs text-danger" onClick={() => remove(tenant)}>Excluir</button>
             </div>
           </div>
         </div>
-
-        <div className="flex justify-end gap-3">
-          <button type="button" onClick={onClose} className="rounded-xl px-4 py-2.5 text-[13px] font-medium text-secondary transition-all hover:bg-border/60">
-            Cancelar
-          </button>
-          <SubmitButton loading={loading} text={isEdit ? 'Salvar' : 'Criar Usuário'} />
-        </div>
-      </form>
-    </ModalOverlay>
-  );
-}
-
-/* ===== Modal: Reset Password ===== */
-
-function ResetPasswordModal({ userId, onClose }: { userId: string; onClose: () => void }) {
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState('');
-  const brandPrimaryColor = useBrandPrimaryColor();
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-
-    const r = await agentApi.resetUserPassword(userId, password);
-    if (r.success) {
-      setSuccess(true);
-      setTimeout(onClose, 1200);
-    } else setError(r.error || 'Erro');
-    setLoading(false);
-  };
-
-  return (
-    <ModalOverlay onClose={onClose}>
-      <form onSubmit={handleSubmit}>
-        <h3 className="text-[17px] font-bold text-primary tracking-[-0.02em] mb-5">
-          Resetar Senha
-        </h3>
-
-        {error && <ErrorBanner text={error} />}
-        {success && (
-          <div className="mb-5 rounded-xl border border-success/20 bg-success/5 px-4 py-3 text-[13px] text-success flex items-center gap-2">
-            <Check size={15} /> Senha alterada com sucesso!
-          </div>
-        )}
-
-        <div className="mb-6">
-          <label className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.05em] text-muted">Nova senha</label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} autoFocus
-            className="w-full rounded-xl border border-border bg-body/60 px-4 py-3 text-[14px] text-primary placeholder:text-muted outline-none transition-all"
-            onFocus={(e) => {
-              if (brandPrimaryColor) {
-                e.currentTarget.style.borderColor = getBrandPrimaryWithOpacity(brandPrimaryColor, 0.3);
-                e.currentTarget.style.boxShadow = `0 0 0 2px ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.08)}`;
-              } else {
-                e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)';
-                e.currentTarget.style.boxShadow = '0 0 0 2px color-mix(in srgb, var(--color-brand-primary) 8%, transparent)';
-              }
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = '';
-              e.currentTarget.style.boxShadow = '';
-            }}
-            placeholder="Mínimo 6 caracteres"
-          />
-        </div>
-
-        <div className="flex justify-end gap-3">
-          <button type="button" onClick={onClose} className="rounded-xl px-4 py-2.5 text-[13px] font-medium text-secondary transition-all hover:bg-border/60">
-            Cancelar
-          </button>
-          <SubmitButton loading={loading} text="Resetar Senha" />
-        </div>
-      </form>
-    </ModalOverlay>
-  );
-}
-
-/* ===== Shared Components ===== */
-
-function ModalOverlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-500 flex items-center justify-center p-4 bg-overlay backdrop-blur-[3px]"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      style={{ animation: 'fade-in 0.2s ease-out' }}
-    >
-      <div className="w-full max-w-[460px] rounded-2xl border border-border bg-card p-7 shadow-float dark:shadow-dark-float"
-        style={{ animation: 'scale-in 0.25s cubic-bezier(0.16,1,0.3,1)' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function SubmitButton({ loading, text }: { loading: boolean; text: string }) {
-  const brandPrimaryColor = useBrandPrimaryColor();
-  
-  return (
-    <button
-      type="submit"
-      disabled={loading}
-      className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13px] font-semibold text-white transition-all duration-200 ${loading ? 'bg-muted cursor-not-allowed' : 'hover:shadow-md active:scale-95'}`}
-      style={!loading ? { backgroundColor: brandPrimaryColor || 'var(--color-brand-primary)' } : undefined}
-    >
-      {loading && <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />}
-      {text}
-    </button>
-  );
-}
-
-function ErrorBanner({ text }: { text: string }) {
-  return (
-    <div className="mb-5 rounded-xl border border-danger/20 bg-danger/5 px-4 py-3 text-[13px] text-danger">
-      {text}
-    </div>
-  );
-}
-
-function EmptyState({ icon: Icon, text }: { icon: typeof Building2; text: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 text-center rounded-2xl border border-dashed border-border bg-card/50">
-      <Icon size={32} className="text-muted mb-3" strokeWidth={1.2} />
-      <p className="text-[14px] text-muted">{text}</p>
-    </div>
-  );
-}
-
-function LoadingSkeleton({ count }: { count: number }) {
-  return (
-    <div className="grid gap-3">
-      {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="h-[76px] rounded-2xl shimmer" />
       ))}
     </div>
   );
 }
+
+function UsersPanel() {
+  const { user: currentUser } = useAuth();
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [resetId, setResetId] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    full_name: '',
+    email: '',
+    role: 'user' as RoleType,
+    tenant_id: '',
+  });
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    const [usersResult, tenantsResult] = await Promise.all([agentApi.getUsers(), agentApi.getTenants()]);
+
+    if (usersResult.success && usersResult.data) {
+      setUsers(usersResult.data as UserProfile[]);
+    } else if (usersResult.error?.includes('negado') || usersResult.error?.includes('encontrado')) {
+      setError('Erro de permissão ou sessão. Tente atualizar seu perfil.');
+    } else {
+      setError(usersResult.error || 'Erro ao carregar usuários');
+    }
+
+    if (tenantsResult.success && tenantsResult.data) {
+      setTenants(tenantsResult.data as Tenant[]);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (editingId) {
+      const result = await agentApi.updateUser(editingId, {
+        full_name: form.full_name,
+        role: form.role,
+        tenant_id: form.tenant_id || null,
+      });
+      if (!result.success) setError(result.error || 'Erro ao salvar');
+    } else {
+      const result = await agentApi.createUser({
+        full_name: form.full_name,
+        email: form.email,
+        role: form.role,
+        tenant_id: form.tenant_id || null,
+      });
+      if (!result.success) setError(result.error || 'Erro ao criar');
+    }
+    setEditingId(null);
+    setForm({ full_name: '', email: '', role: 'user', tenant_id: '' });
+    load();
+  };
+
+  const filtered = users.filter((user) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return user.full_name.toLowerCase().includes(q) || user.email.toLowerCase().includes(q) || user.tenant_name.toLowerCase().includes(q);
+  });
+
+  const startEdit = (user: UserProfile) => {
+    setEditingId(user.id);
+    setForm({
+      full_name: user.full_name,
+      email: user.email,
+      role: user.role,
+      tenant_id: user.tenant_id || '',
+    });
+  };
+
+  const remove = async (user: UserProfile) => {
+    if (!confirm(`Excluir usuario "${user.full_name}"?`)) return;
+    const result = await agentApi.deleteUser(user.id);
+    if (!result.success) alert(result.error || 'Erro');
+    load();
+  };
+
+  return (
+    <div className="grid gap-4">
+      <form onSubmit={submit} className="rounded-xl border border-border bg-card p-4">
+        <p className="mb-2 text-sm font-semibold">{editingId ? 'Editar usuario' : 'Novo usuario'}</p>
+        {error && (
+          <div className="mb-4 rounded-lg border border-danger/20 bg-danger/5 p-3">
+            <p className="text-xs text-danger">{error}</p>
+            {(error.includes('sessão') || error.includes('permissão')) && (
+              <button
+                type="button"
+                onClick={() => { useAuth().refreshUser(); load(); }}
+                className="mt-2 text-xs font-semibold text-brand-primary underline"
+              >
+                Atualizar minha sessão agora
+              </button>
+            )}
+          </div>
+        )}
+        <div className="grid gap-2 md:grid-cols-2">
+          <input className="rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" placeholder="Nome" value={form.full_name} onChange={(e) => setForm((p) => ({ ...p, full_name: e.target.value }))} required />
+          <input className="rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" placeholder="Email" value={form.email} disabled={!!editingId} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} required />
+          <select
+            className="rounded-lg border border-border bg-body/60 px-3 py-2 text-sm disabled:opacity-50"
+            value={form.role}
+            onChange={(e) => setForm((p) => ({ ...p, role: e.target.value as RoleType }))}
+            disabled={editingId === currentUser?.id}
+          >
+            <option value="user">Usuario</option>
+            <option value="master">Master</option>
+          </select>
+          <select
+            className="rounded-lg border border-border bg-body/60 px-3 py-2 text-sm disabled:opacity-50"
+            value={form.tenant_id}
+            onChange={(e) => setForm((p) => ({ ...p, tenant_id: e.target.value }))}
+            disabled={editingId === currentUser?.id}
+          >
+            <option value="">Sem empresa</option>
+            {tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
+          </select>
+        </div>
+        {editingId === currentUser?.id && (
+          <p className="mt-2 text-xs text-brand-primary">
+            ℹ️ Como administrador master, você não pode alterar sua própria empresa ou nível de acesso por aqui para evitar bloqueio acidental.
+          </p>
+        )}
+        <div className="mt-3 flex gap-2">
+          <button className="rounded-lg bg-(--color-brand-primary) px-4 py-2 text-sm text-white">{editingId ? 'Salvar' : 'Criar'}</button>
+          {editingId && <button type="button" className="rounded-lg border border-border px-4 py-2 text-sm" onClick={() => { setEditingId(null); setForm({ full_name: '', email: '', role: 'user', tenant_id: '' }); }}>Cancelar</button>}
+        </div>
+      </form>
+
+      <div className="rounded-xl border border-border bg-card p-4">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold">Usuarios</p>
+          <input className="w-56 rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" placeholder="Buscar..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        {loading ? <p className="text-sm text-muted">Carregando...</p> : filtered.map((user) => (
+          <div key={user.id} className="mb-2 rounded-lg border border-border p-3">
+            <p className="text-sm font-semibold">{user.full_name} ({user.role})</p>
+            <p className="text-xs text-muted">{user.email} · {user.tenant_name}</p>
+            <div className="mt-2 flex gap-2">
+              <button className="rounded-md border border-border px-2 py-1 text-xs" onClick={() => startEdit(user)}>Editar</button>
+              <button className="rounded-md border border-border px-2 py-1 text-xs" onClick={() => setResetId(user.id)}>Resetar senha</button>
+              {user.role !== 'master' && user.id !== currentUser?.id && (
+                <button className="rounded-md border border-danger/30 px-2 py-1 text-xs text-danger" onClick={() => remove(user)}>Excluir</button>
+              )}
+            </div>
+            {resetId === user.id && <ResetInline userId={user.id} onDone={() => { setResetId(null); load(); }} />}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ResetInline({ userId, onDone }: { userId: string; onDone: () => void }) {
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [isPasswordValid, setIsPasswordValid] = useState(false);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!isPasswordValid) { setError("Senha insuficiente"); return; }
+    if (password !== confirmPassword) { setError('As senhas nao coincidem'); return; }
+    setSaving(true);
+    const result = await agentApi.resetUserPassword(userId, password, confirmPassword);
+    setSaving(false);
+    if (!result.success) { setError(result.error || 'Erro'); return; }
+    onDone();
+  };
+
+  return (
+    <form onSubmit={submit} className="mt-2 rounded-md border border-border bg-body/50 p-2">
+      {error && <p className="mb-1 text-xs text-danger">{error}</p>}
+      <div className="grid gap-2 md:grid-cols-2">
+        <div>
+          <input type="password" className="w-full rounded border border-border bg-body px-2 py-1 text-xs" placeholder="Nova senha" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <PasswordStrengthIndicator password={password} onValidityChange={setIsPasswordValid} />
+        </div>
+        <input type="password" className="h-7 rounded border border-border bg-body px-2 py-1 text-xs" placeholder="Confirmar senha" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+      </div>
+      <button className="mt-2 rounded bg-(--color-brand-primary) px-2 py-1 text-xs text-white" disabled={saving}>{saving ? 'Salvando...' : 'Salvar senha'}</button>
+    </form>
+  );
+}
+
+function RequestsPanel() {
+  const [requests, setRequests] = useState<AccessRequest[]>([]);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState<'all' | RequestStatus>('all');
+  const [search, setSearch] = useState('');
+  const [convertId, setConvertId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [requestsResult, tenantsResult] = await Promise.all([
+      agentApi.getAccessRequests({ status: status === 'all' ? undefined : status, q: search || undefined }),
+      agentApi.getTenants(),
+    ]);
+    if (requestsResult.success && requestsResult.data) setRequests(requestsResult.data as AccessRequest[]);
+    if (tenantsResult.success && tenantsResult.data) setTenants(tenantsResult.data as Tenant[]);
+    setLoading(false);
+  }, [search, status]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const updateStatus = async (request: AccessRequest, nextStatus: RequestStatus) => {
+    const result = await agentApi.updateAccessRequest(request.id, { status: nextStatus });
+    if (!result.success) alert(result.error || 'Erro');
+    load();
+  };
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <div className="mb-3 flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-sm font-semibold">Solicitacoes</p>
+        <div className="flex gap-2">
+          <input className="rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" placeholder="Buscar..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          <select className="rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" value={status} onChange={(e) => setStatus(e.target.value as 'all' | RequestStatus)}>
+            <option value="all">Todos</option>
+            <option value="pending">Pendente</option>
+            <option value="reviewed">Revisado</option>
+            <option value="approved">Aprovado</option>
+            <option value="rejected">Rejeitado</option>
+            <option value="converted">Convertido</option>
+          </select>
+        </div>
+      </div>
+      {loading ? <p className="text-sm text-muted">Carregando...</p> : requests.map((request) => (
+        <div key={request.id} className="mb-2 rounded-lg border border-border p-3">
+          <p className="text-sm font-semibold">{request.full_name} · {request.status}</p>
+          <p className="text-xs text-muted">{request.email} · {request.phone} · {request.company_name}</p>
+          <div className="mt-2 flex gap-2 flex-wrap">
+            {request.status === 'pending' && <button className="rounded-md border border-border px-2 py-1 text-xs" onClick={() => updateStatus(request, 'reviewed')}>Revisado</button>}
+            {(request.status === 'pending' || request.status === 'reviewed') && <button className="rounded-md border border-success/30 px-2 py-1 text-xs text-success" onClick={() => updateStatus(request, 'approved')}>Aprovar</button>}
+            {request.status !== 'rejected' && request.status !== 'converted' && <button className="rounded-md border border-danger/30 px-2 py-1 text-xs text-danger" onClick={() => updateStatus(request, 'rejected')}>Rejeitar</button>}
+            {request.status !== 'converted' && request.status !== 'rejected' && <button className="rounded-md bg-(--color-brand-primary) px-2 py-1 text-xs text-white" onClick={() => setConvertId(request.id)}>Converter em usuario</button>}
+          </div>
+          {convertId === request.id && <ConvertInline request={request} tenants={tenants} onDone={() => { setConvertId(null); load(); }} />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ConvertInline({ request, tenants, onDone }: { request: AccessRequest; tenants: Tenant[]; onDone: () => void }) {
+  const [role, setRole] = useState<RoleType>('user');
+  const [tenantId, setTenantId] = useState('');
+  const [notes, setNotes] = useState(request.admin_notes || '');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSaving(true);
+    const result = await agentApi.convertAccessRequest(request.id, {
+      role,
+      tenant_id: tenantId || null,
+      admin_notes: notes || undefined,
+    });
+    setSaving(false);
+    if (!result.success) {
+      console.error("[Admin] Conversion failed:", result);
+      setError(result.error || 'Erro ao converter');
+      return;
+    }
+    onDone();
+  };
+
+  return (
+    <form onSubmit={submit} className="mt-2 rounded-md border border-border bg-body/50 p-2">
+      {error && <p className="mb-1 text-xs text-danger">{error}</p>}
+      <div className="grid gap-2 md:grid-cols-2">
+        <select className="rounded border border-border bg-body px-2 py-1 text-xs" value={role} onChange={(e) => setRole(e.target.value as RoleType)}>
+          <option value="user">Usuario</option>
+          <option value="master">Master</option>
+        </select>
+        <select className="rounded border border-border bg-body px-2 py-1 text-xs" value={tenantId} onChange={(e) => setTenantId(e.target.value)}>
+          <option value="">Sem empresa</option>
+          {tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
+        </select>
+      </div>
+      <textarea className="mt-2 w-full rounded border border-border bg-body px-2 py-1 text-xs" rows={2} placeholder="Notas (opcional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
+      <button className="mt-2 rounded bg-(--color-brand-primary) px-2 py-1 text-xs text-white" disabled={saving}>{saving ? 'Convertendo...' : 'Confirmar conversao'}</button>
+    </form>
+  );
+}
+
+function SecurityPanel() {
+  const [blockedIps, setBlockedIps] = useState<Array<{ ip: string; ttl: number }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    const result = await agentApi.getBlockedIps();
+    if (result.success && result.data) {
+      setBlockedIps(result.data as Array<{ ip: string; ttl: number }>);
+    } else {
+      setError(result.error || 'Erro ao carregar IPs bloqueados');
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const unblock = async (ip: string) => {
+    if (!confirm(`Deseja realmente desbloquear o IP ${ip}?`)) return;
+    const result = await agentApi.unblockIp(ip);
+    if (result.success) {
+      load();
+    } else {
+      alert(result.error || 'Erro ao desbloquear IP');
+    }
+  };
+
+  const formatTTL = (seconds: number) => {
+    if (seconds <= 0) return 'Expirado';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}m ${secs}s`;
+  };
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold">IPs Bloqueados (Rate Limit)</h3>
+          <p className="text-xs text-muted">IPs bloqueados automaticamente por abuso de tentativas.</p>
+        </div>
+        <button
+          onClick={() => load()}
+          className="rounded-lg border border-border px-3 py-1 text-xs hover:bg-body"
+        >
+          Atualizar
+        </button>
+      </div>
+
+      {error && <p className="mb-4 text-xs text-danger">{error}</p>}
+
+      {loading ? (
+        <p className="text-sm text-muted">Carregando...</p>
+      ) : blockedIps.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border py-8 text-center text-muted">
+          <p className="text-sm">Nenhum IP bloqueado no momento.</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-border text-xs text-muted uppercase tracking-wider">
+                <th className="px-3 py-2 font-medium">IP Address</th>
+                <th className="px-3 py-2 font-medium">Tempo Restante</th>
+                <th className="px-3 py-2 font-medium text-right">Acoes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {blockedIps.map((item) => (
+                <tr key={item.ip} className="border-b border-border/50 hover:bg-body/30 transition-colors">
+                  <td className="px-3 py-3 font-mono text-xs">{item.ip}</td>
+                  <td className="px-3 py-3 text-xs">{formatTTL(item.ttl)}</td>
+                  <td className="px-3 py-3 text-right">
+                    <button
+                      onClick={() => unblock(item.ip)}
+                      className="rounded-md border border-danger/30 px-2 py-1 text-xs text-danger hover:bg-danger/10 transition-colors"
+                    >
+                      Desbloquear
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+

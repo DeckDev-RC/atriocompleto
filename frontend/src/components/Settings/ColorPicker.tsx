@@ -115,7 +115,7 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
           onChange={(e) => handleColorInput(e.target.value)}
           placeholder="#09CAFF"
           maxLength={7}
-          className="h-9 w-28 rounded-xl border border-border bg-card px-3 text-[13px] font-mono text-primary placeholder:text-muted/40 focus:border-[var(--color-brand-primary)] focus:outline-none transition-colors duration-200"
+          className="h-9 w-28 rounded-xl border border-border bg-card px-3 text-[13px] font-mono text-primary placeholder:text-muted/40 focus:border-(--color-brand-primary) focus:outline-none transition-colors duration-200"
         />
 
         {/* Preview da cor atual */}
@@ -129,7 +129,7 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
           <button
             onClick={handleEyeDropper}
             disabled={isPickingColor}
-            className="flex h-9 items-center gap-2 rounded-xl border border-border px-3 text-[12.5px] font-medium text-secondary transition-all duration-200 hover:bg-card hover:text-primary hover:border-[var(--color-brand-primary)] disabled:opacity-50 active:scale-95"
+            className="flex h-9 items-center gap-2 rounded-xl border border-border px-3 text-[12.5px] font-medium text-secondary transition-all duration-200 hover:bg-card hover:text-primary hover:border-(--color-brand-primary) disabled:opacity-50 active:scale-95"
           >
             <Pipette size={15} strokeWidth={2} />
             <span className="hidden sm:inline">

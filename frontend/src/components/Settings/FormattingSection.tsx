@@ -46,11 +46,10 @@ export function FormattingSection() {
               <button
                 key={locale.value}
                 onClick={() => updatePreferences({ number_locale: locale.value })}
-                className={`flex flex-col items-start rounded-xl border px-4 py-2.5 transition-all duration-200 text-left ${
-                  isSelected
-                    ? 'border-[var(--color-brand-primary)] bg-[var(--color-brand-primary)]/5'
+                className={`flex flex-col items-start rounded-xl border px-4 py-2.5 transition-all duration-200 text-left ${isSelected
+                    ? 'border-(--color-brand-primary) bg-(--color-brand-primary)/5'
                     : 'border-border hover:border-border-strong hover:bg-card'
-                }`}
+                  }`}
               >
                 <p className="text-[13px] font-medium text-primary">{locale.label}</p>
                 <p className="text-[11px] text-muted font-mono">{locale.example}</p>
@@ -75,11 +74,10 @@ export function FormattingSection() {
               <button
                 key={dec}
                 onClick={() => updatePreferences({ number_decimals: dec })}
-                className={`flex items-center justify-center h-10 w-12 rounded-xl border text-[13px] font-medium transition-all duration-200 ${
-                  isSelected
-                    ? 'border-[var(--color-brand-primary)] bg-[var(--color-brand-primary)]/5 text-[var(--color-brand-primary)]'
+                className={`flex items-center justify-center h-10 w-12 rounded-xl border text-[13px] font-medium transition-all duration-200 ${isSelected
+                    ? 'border-(--color-brand-primary) bg-(--color-brand-primary)/5 text-(--color-brand-primary)'
                     : 'border-border text-secondary hover:border-border-strong hover:bg-card'
-                }`}
+                  }`}
               >
                 {dec}
               </button>
@@ -102,18 +100,17 @@ export function FormattingSection() {
             value={preferences.currency_symbol}
             onChange={(e) => updatePreferences({ currency_symbol: e.target.value })}
             maxLength={5}
-            className="h-10 w-20 rounded-xl border border-border bg-card px-3 text-[13px] text-center font-medium text-primary focus:border-[var(--color-brand-primary)] focus:outline-none transition-colors duration-200"
+            className="h-10 w-20 rounded-xl border border-border bg-card px-3 text-[13px] text-center font-medium text-primary focus:border-(--color-brand-primary) focus:outline-none transition-colors duration-200"
           />
           <div className="flex gap-1.5">
             {CURRENCY_SUGGESTIONS.map((symbol) => (
               <button
                 key={symbol}
                 onClick={() => updatePreferences({ currency_symbol: symbol })}
-                className={`h-8 px-3 rounded-lg border text-[12px] font-medium transition-all duration-200 ${
-                  preferences.currency_symbol === symbol
-                    ? 'border-[var(--color-brand-primary)] bg-[var(--color-brand-primary)]/5 text-[var(--color-brand-primary)]'
+                className={`h-8 px-3 rounded-lg border text-[12px] font-medium transition-all duration-200 ${preferences.currency_symbol === symbol
+                    ? 'border-(--color-brand-primary) bg-(--color-brand-primary)/5 text-(--color-brand-primary)'
                     : 'border-border text-muted hover:text-primary hover:bg-card'
-                }`}
+                  }`}
               >
                 {symbol}
               </button>

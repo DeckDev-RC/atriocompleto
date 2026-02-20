@@ -1,0 +1,29 @@
+﻿
+> atrio-frontend@1.0.0 lint
+> eslint .
+
+node.exe : 
+No linha:1 caractere:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Oops! Something went wrong! :(
+
+ESLint: 9.39.2
+
+TypeError: Error while loading rule '@typescript-eslint/no-unused-expressions': Cannot read properties of undefined (reading 'allowShortCircuit')
+Occurred while linting C:\Users\User\Documents\Lightshot\atrio-integrado-v2\frontend\src\components\Agent\AgentChart.tsx
+    at Object.create (C:\Users\User\Documents\Lightshot\atrio-integrado-v2\frontend\node_modules\eslint\lib\rules\no-unused-expressions.js:85:5)
+    at create (C:\Users\User\Documents\Lightshot\atrio-integrado-v2\frontend\node_modules\@typescript-eslint\eslint-plugin\dist\rules\no-unused-expressions.js:28:32)
+    at Object.create (C:\Users\User\Documents\Lightshot\atrio-integrado-v2\frontend\node_modules\@typescript-eslint\utils\dist\eslint-utils\RuleCreator.js:31:20)
+    at createRuleListeners (C:\Users\User\Documents\Lightshot\atrio-integrado-v2\frontend\node_modules\eslint\lib\linter\linter.js:1019:15)
+    at C:\Users\User\Documents\Lightshot\atrio-integrado-v2\frontend\node_modules\eslint\lib\linter\linter.js:1151:7
+    at Array.forEach (<anonymous>)
+    at runRules (C:\Users\User\Documents\Lightshot\atrio-integrado-v2\frontend\node_modules\eslint\lib\linter\linter.js:1085:31)
+    at #flatVerifyWithoutProcessors (C:\Users\User\Documents\Lightshot\atrio-integrado-v2\frontend\node_modules\eslint\lib\linter\linter.js:2115:4)
+    at Linter._verifyWithFlatConfigArrayAndWithoutProcessors 
+(C:\Users\User\Documents\Lightshot\atrio-integrado-v2\frontend\node_modules\eslint\lib\linter\linter.js:2203:43)
+    at Linter._verifyWithFlatConfigArray (C:\Users\User\Documents\Lightshot\atrio-integrado-v2\frontend\node_modules\eslint\lib\linter\linter.js:2306:15)
+

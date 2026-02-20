@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { UserPreferencesProvider } from './contexts/UserPreferencesContext';
 import { ToastProvider } from './components/Toast';
 import { DashboardLayout } from './components/DashboardLayout';
+import { ProtectedRoute } from './components/ProtectedRoute';
 
 // ── Lazy-loaded pages (code splitting) ──────────────
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
@@ -12,6 +13,10 @@ const AgentPage = lazy(() => import('./pages/AgentPage').then(m => ({ default: m
 const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
 const AdminPage = lazy(() => import('./pages/AdminPage').then(m => ({ default: m.AdminPage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const AccessRequestPage = lazy(() => import('./pages/AccessRequestPage').then(m => ({ default: m.AccessRequestPage })));
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage').then(m => ({ default: m.ResetPasswordPage })));
+const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage').then(m => ({ default: m.VerifyEmailPage })));
 
 function PageLoader() {
   return (
@@ -22,7 +27,7 @@ function PageLoader() {
 }
 
 function AppRoutes() {
-  const { isAuthenticated, isLoading, isMaster } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
     return (
@@ -39,7 +44,14 @@ function AppRoutes() {
     return (
       <Suspense fallback={<PageLoader />}>
         <Routes>
-          <Route path="*" element={<LoginPage />} />
+          <Route path="/" element={<LoginPage />} />
+          <Route path="/solicitar-acesso" element={<AccessRequestPage />} />
+          <Route path="/esqueci-senha" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
+          <Route path="/redefinir-senha/:token" element={<ResetPasswordPage />} />
+          <Route path="/redefinir-senha" element={<ResetPasswordPage />} />
+          <Route path="/verificar-email/:token" element={<VerifyEmailPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
     );
@@ -48,12 +60,36 @@ function AppRoutes() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
+        {/* Rotas de onboarding permitidas mesmo autenticado */}
+        <Route path="/verificar-email/:token" element={<VerifyEmailPage />} />
+        <Route path="/redefinir-senha/:token" element={<ResetPasswordPage />} />
+        <Route path="/redefinir-senha" element={<ResetPasswordPage />} />
+        <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
+
         <Route element={<DashboardLayout />}>
-          <Route index element={<DashboardPage />} />
-          <Route path="agente" element={<AgentPage />} />
-          <Route path="configuracoes" element={<SettingsPage />} />
-          {isMaster && <Route path="admin" element={<AdminPage />} />}
+          <Route index element={
+            <ProtectedRoute permission="visualizar_venda">
+              <DashboardPage />
+            </ProtectedRoute>
+          } />
+          <Route path="agente" element={
+            <ProtectedRoute permission="acessar_agente">
+              <AgentPage />
+            </ProtectedRoute>
+          } />
+          <Route path="configuracoes" element={
+            <ProtectedRoute>
+              <SettingsPage />
+            </ProtectedRoute>
+          } />
+          <Route path="admin" element={
+            <ProtectedRoute requireMaster>
+              <AdminPage />
+            </ProtectedRoute>
+          } />
         </Route>
+
+        {/* Fallback para usuários logados */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>

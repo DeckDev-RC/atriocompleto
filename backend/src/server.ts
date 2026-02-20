@@ -2,10 +2,11 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
-import rateLimit from "express-rate-limit";
+import { globalLimiter, checkIPBlock, publicApiLimiter } from "./middleware/rate-limit";
 
 import { env } from "./config/env";
 import { errorHandler } from "./middleware/error";
+import { auditMiddleware } from "./middleware/audit";
 
 import authRoutes from "./routes/auth";
 import adminRoutes from "./routes/admin";
@@ -13,6 +14,7 @@ import userRoutes from "./routes/user";
 import chatRoutes from "./routes/chat";
 import dashboardRoutes from "./routes/dashboard";
 import healthRoutes from "./routes/health";
+import auditRoutes from "./routes/audit";
 
 const app = express();
 
@@ -47,21 +49,18 @@ app.use(cors(corsOptions));
 // Handle preflight requests explicitly
 app.options('*', cors(corsOptions));
 
-// ── Rate Limiting ───────────────────────────────────────
-const limiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 100, // 100 requests per minute
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, error: "Muitas requisições. Tente novamente em 1 minuto." },
-});
-app.use(limiter);
+// ── Rate Limiting & Security ────────────────────────────
+app.use(checkIPBlock); // Bloqueio imediato para IPs na blacklist/blocked
+app.use(globalLimiter); // Limite global de 100 req/min via Redis
 
 // ── Compression ─────────────────────────────────────────
 app.use(compression());
 
 // ── Body Parsing ────────────────────────────────────────
 app.use(express.json({ limit: "1mb" }));
+
+// ── Audit Info Capture ──────────────────────────────────
+app.use(auditMiddleware);
 
 // ── Request Logging (dev only) ──────────────────────────
 if (env.NODE_ENV !== "production") {
@@ -72,12 +71,13 @@ if (env.NODE_ENV !== "production") {
 }
 
 // ── Routes ──────────────────────────────────────────────
-app.use("/api/health", healthRoutes);
+app.use("/api/health", publicApiLimiter, healthRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/audit-logs", auditRoutes);
 
 // ── Error Handler ───────────────────────────────────────
 app.use(errorHandler);

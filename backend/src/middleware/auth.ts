@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from "express";
-import { supabase } from "../config/supabase";
+import { supabase, supabaseAdmin } from "../config/supabase";
+import { AccessControlService } from "../services/access-control";
+import { redis } from "../config/redis";
 
 /**
  * User info attached to req after auth middleware.
@@ -11,6 +13,8 @@ export interface AuthUser {
   tenant_id: string | null;
   full_name: string;
   avatar_url: string | null;
+  permissions: Record<string, any>; // Granular permissions
+  two_factor_enabled: boolean;
 }
 
 // Extend Express Request
@@ -22,79 +26,128 @@ declare global {
   }
 }
 
-// ── In-memory auth cache (TTL 30s) ─────────────────────
-interface CacheEntry {
-  user: AuthUser;
-  expiresAt: number;
-}
+// ── Redis auth cache (TTL 5min) ─────────────────────────
+const AUTH_CACHE_TTL_S = 300; // 5 minutes
+const AUTH_CACHE_PREFIX = "auth:user:";
+const SESSION_SET_PREFIX = "auth:sessions:";
 
-const AUTH_CACHE_TTL_MS = 30_000; // 30 seconds
-const authCache = new Map<string, CacheEntry>();
+/** Invalidate cache for a specific user or token */
+export async function invalidateAuthCache(identifier?: string) {
+  try {
+    if (!identifier) {
+      // Clear all auth cache entries
+      const keys = await redis.keys(`${AUTH_CACHE_PREFIX}*`);
+      if (keys.length > 0) await redis.del(...keys);
+      const sessionKeys = await redis.keys(`${SESSION_SET_PREFIX}*`);
+      if (sessionKeys.length > 0) await redis.del(...sessionKeys);
+      return;
+    }
 
-/** Remove expired entries periodically (every 60s) to prevent unbounded growth */
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of authCache) {
-    if (now >= entry.expiresAt) authCache.delete(key);
-  }
-}, 60_000);
+    // If it's a UUID (userId), invalidate all tokens for that user
+    const isUserId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
 
-/** Invalidate cache for a specific user (call after profile updates) */
-export function invalidateAuthCache(token?: string) {
-  if (token) {
-    authCache.delete(token);
-  } else {
-    authCache.clear();
+    if (isUserId) {
+      const sessionKey = `${SESSION_SET_PREFIX}${identifier}`;
+      const tokens = await redis.smembers(sessionKey);
+      if (tokens.length > 0) {
+        const cacheKeys = tokens.map(t => `${AUTH_CACHE_PREFIX}${t}`);
+        await redis.del(...cacheKeys);
+        await redis.del(sessionKey);
+      }
+    } else {
+      // Treat as token
+      await redis.del(`${AUTH_CACHE_PREFIX}${identifier}`);
+    }
+  } catch (err) {
+    console.error(`[Auth] Redis cache invalidation error: ${err}`);
   }
 }
 
 /**
  * Middleware: validates Supabase JWT token and loads profile.
- * Uses in-memory cache to avoid 2 remote DB calls per request.
+ * Uses Redis cache (5min TTL) to avoid 2 remote DB calls per request.
  * Expects: Authorization: Bearer <supabase_access_token>
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
+  let token = "";
   const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) {
+
+  if (authHeader?.startsWith("Bearer ")) {
+    token = authHeader.slice(7);
+  } else if (req.query.token) {
+    token = req.query.token as string;
+  }
+
+  if (!token) {
     res.status(401).json({ success: false, error: "Token não fornecido" });
     return;
   }
 
-  const token = authHeader.slice(7);
-
-  // ── Check cache first ────────────────────────────
-  const cached = authCache.get(token);
-  if (cached && Date.now() < cached.expiresAt) {
-    req.user = cached.user;
-    return next();
+  // ── Check Redis cache first ───────────────────────
+  try {
+    const cached = await redis.get(`${AUTH_CACHE_PREFIX}${token}`);
+    if (cached) {
+      req.user = JSON.parse(cached) as AuthUser;
+      return next();
+    }
+  } catch (err) {
+    console.error(`[Auth] Redis cache read error: ${err}`);
   }
 
   try {
+    const start = Date.now();
     // Validate token with Supabase
     const { data: { user }, error } = await supabase.auth.getUser(token);
 
     if (error || !user) {
-      authCache.delete(token);
+      void redis.del(`${AUTH_CACHE_PREFIX}${token}`).catch(() => { });
       res.status(401).json({ success: false, error: "Token inválido ou expirado" });
       return;
     }
+    const authTime = Date.now() - start;
 
     // Fetch profile with tenant info
-    const { data: profile, error: profileError } = await supabase
+    const profileStart = Date.now();
+    let { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
-      .select("id, email, full_name, role, tenant_id, is_active, avatar_url")
+      .select("id, email, full_name, role, tenant_id, is_active, avatar_url, permissions, two_factor_enabled")
       .eq("id", user.id)
       .single();
+
+    // Retry once after 500ms if profile not found (to handle transient issues or race conditions)
+    if (profileError || !profile) {
+      console.warn(`[Auth] Profile fetch failed for ${user.id}, retrying once...`);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const retry = await supabaseAdmin
+        .from("profiles")
+        .select("id, email, full_name, role, tenant_id, is_active, avatar_url, permissions, two_factor_enabled")
+        .eq("id", user.id)
+        .single();
+      profile = retry.data;
+      profileError = retry.error;
+    }
 
     if (profileError || !profile) {
       res.status(403).json({ success: false, error: "Perfil não encontrado. Contate o administrador." });
       return;
     }
+    const profileTime = Date.now() - profileStart;
 
     if (!profile.is_active) {
       res.status(403).json({ success: false, error: "Conta desativada. Contate o administrador." });
       return;
     }
+
+    // 3. Always fetch real-time RBAC permissions from DB (source of truth)
+    const rbacStart = Date.now();
+    const rbacPermissions = await AccessControlService.getUserPermissions(profile.id);
+    const rbacTime = Date.now() - rbacStart;
+
+    const finalPermissions = {
+      ...(profile.permissions || {}),
+      ...rbacPermissions,
+    };
+
 
     const authUser: AuthUser = {
       id: profile.id,
@@ -103,13 +156,25 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       tenant_id: profile.tenant_id,
       full_name: profile.full_name,
       avatar_url: profile.avatar_url || null,
+      permissions: finalPermissions,
+      two_factor_enabled: profile.two_factor_enabled || false,
     };
 
-    // ── Populate cache ──────────────────────────────
-    authCache.set(token, {
-      user: authUser,
-      expiresAt: Date.now() + AUTH_CACHE_TTL_MS,
-    });
+    // ── Populate Redis cache ────────────────────────
+    try {
+      await redis.set(
+        `${AUTH_CACHE_PREFIX}${token}`,
+        JSON.stringify(authUser),
+        "EX",
+        AUTH_CACHE_TTL_S
+      );
+      // Track this token for the user
+      const sessionKey = `${SESSION_SET_PREFIX}${authUser.id}`;
+      await redis.sadd(sessionKey, token);
+      await redis.expire(sessionKey, AUTH_CACHE_TTL_S + 60); // slightly longer than token cache
+    } catch (err) {
+      console.error("[Auth] Redis cache write error:", err);
+    }
 
     req.user = authUser;
     next();

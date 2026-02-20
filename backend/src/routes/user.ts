@@ -1,8 +1,11 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
 import multer from "multer";
-import { supabase } from "../config/supabase";
+import { supabase, supabaseAdmin } from "../config/supabase";
 import { requireAuth, invalidateAuthCache } from "../middleware/auth";
+import { strongPasswordSchema } from "../utils/password";
+import { AuditService } from "../services/audit";
+import { addSSEClient } from "../services/sse";
 
 const router = Router();
 
@@ -22,6 +25,34 @@ const upload = multer({
 
 // Todas as rotas requerem autenticação
 router.use(requireAuth);
+
+// ══════════════════════════════════════════════════════════
+// SSE — Real-time permission updates
+// ══════════════════════════════════════════════════════════
+
+router.get("/events", (req: Request, res: Response) => {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no", // Disable nginx buffering
+  });
+
+  // Send initial heartbeat
+  res.write(`event: connected\ndata: ${JSON.stringify({ userId: req.user!.id })}\n\n`);
+
+  // Register client for push notifications
+  addSSEClient(req.user!.id, res);
+
+  // Keep-alive every 30s to prevent proxy timeouts
+  const keepAlive = setInterval(() => {
+    res.write(": heartbeat\n\n");
+  }, 30_000);
+
+  req.on("close", () => {
+    clearInterval(keepAlive);
+  });
+});
 
 // ══════════════════════════════════════════════════════════
 // PREFERENCES
@@ -140,6 +171,13 @@ router.put("/profile", async (req: Request, res: Response) => {
 
     const userId = req.user!.id;
 
+    // Fetch previous data for diff
+    const { data: previousProfile } = await supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", userId)
+      .single();
+
     const { data, error } = await supabase
       .from("profiles")
       .update({
@@ -156,9 +194,19 @@ router.put("/profile", async (req: Request, res: Response) => {
       return;
     }
 
+    // Audit log
+    void AuditService.log({
+      userId: req.user!.id,
+      action: "user.update_profile",
+      resource: "users",
+      entityId: userId,
+      ipAddress: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent,
+      details: AuditService.getDiff(previousProfile, { full_name: data.full_name }),
+    });
+
     // Invalida cache de auth para refletir mudança de nome
-    const token = req.headers.authorization?.slice(7);
-    invalidateAuthCache(token);
+    invalidateAuthCache(userId);
 
     res.json({ success: true, data });
   } catch (err) {
@@ -186,10 +234,10 @@ router.post("/avatar", upload.single("avatar"), async (req: Request, res: Respon
     const filePath = `${userId}/avatar.${ext}`;
 
     // Remove avatar antigo (ignora erro se não existe)
-    await supabase.storage.from("avatars").remove([`${userId}/avatar.jpg`, `${userId}/avatar.png`, `${userId}/avatar.webp`, `${userId}/avatar.gif`]);
+    await supabaseAdmin.storage.from("avatars").remove([`${userId}/avatar.jpg`, `${userId}/avatar.png`, `${userId}/avatar.webp`, `${userId}/avatar.gif`]);
 
     // Upload novo
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabaseAdmin.storage
       .from("avatars")
       .upload(filePath, file.buffer, {
         contentType: file.mimetype,
@@ -203,13 +251,13 @@ router.post("/avatar", upload.single("avatar"), async (req: Request, res: Respon
     }
 
     // Gera URL pública
-    const { data: { publicUrl } } = supabase.storage
+    const { data: { publicUrl } } = supabaseAdmin.storage
       .from("avatars")
       .getPublicUrl(filePath);
 
     // Atualiza profiles.avatar_url
     const avatarUrl = `${publicUrl}?t=${Date.now()}`; // cache bust
-    const { error: updateError } = await supabase
+    const { error: updateError } = await supabaseAdmin
       .from("profiles")
       .update({ avatar_url: avatarUrl, updated_at: new Date().toISOString() })
       .eq("id", userId);
@@ -221,8 +269,18 @@ router.post("/avatar", upload.single("avatar"), async (req: Request, res: Respon
     }
 
     // Invalida cache de auth para refletir novo avatar
-    const token = req.headers.authorization?.slice(7);
-    invalidateAuthCache(token);
+    invalidateAuthCache(userId);
+
+    // Audit log
+    void AuditService.log({
+      userId: req.user!.id,
+      action: "user.upload_avatar",
+      resource: "users",
+      entityId: userId,
+      ipAddress: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent,
+      details: { avatar_url: avatarUrl },
+    });
 
     res.json({ success: true, data: { avatar_url: avatarUrl } });
   } catch (err) {
@@ -237,7 +295,7 @@ router.delete("/avatar", async (req: Request, res: Response) => {
     const userId = req.user!.id;
 
     // Remove todos os possíveis avatars
-    await supabase.storage.from("avatars").remove([
+    await supabaseAdmin.storage.from("avatars").remove([
       `${userId}/avatar.jpg`,
       `${userId}/avatar.png`,
       `${userId}/avatar.webp`,
@@ -245,7 +303,7 @@ router.delete("/avatar", async (req: Request, res: Response) => {
     ]);
 
     // Limpa avatar_url no profile
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from("profiles")
       .update({ avatar_url: null, updated_at: new Date().toISOString() })
       .eq("id", userId);
@@ -257,8 +315,17 @@ router.delete("/avatar", async (req: Request, res: Response) => {
     }
 
     // Invalida cache de auth para refletir remoção do avatar
-    const token = req.headers.authorization?.slice(7);
-    invalidateAuthCache(token);
+    invalidateAuthCache(userId);
+
+    // Audit log
+    void AuditService.log({
+      userId: req.user!.id,
+      action: "user.delete_avatar",
+      resource: "users",
+      entityId: userId,
+      ipAddress: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent,
+    });
 
     res.json({ success: true, data: { avatar_url: null } });
   } catch (err) {
@@ -273,7 +340,7 @@ router.delete("/avatar", async (req: Request, res: Response) => {
 
 const changePasswordSchema = z.object({
   current_password: z.string().min(1, "Senha atual obrigatória"),
-  new_password: z.string().min(6, "Nova senha deve ter no mínimo 6 caracteres"),
+  new_password: strongPasswordSchema,
   confirm_password: z.string().min(1, "Confirmação obrigatória"),
 }).refine((data) => data.new_password === data.confirm_password, {
   message: "As senhas não coincidem",
@@ -308,7 +375,7 @@ router.post("/change-password", async (req: Request, res: Response) => {
     }
 
     // Atualiza senha via admin
-    const { error: updateError } = await supabase.auth.admin.updateUserById(
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
       req.user!.id,
       { password: new_password },
     );
@@ -318,6 +385,16 @@ router.post("/change-password", async (req: Request, res: Response) => {
       res.status(500).json({ success: false, error: "Erro ao alterar senha" });
       return;
     }
+
+    // Audit log
+    void AuditService.log({
+      userId: req.user!.id,
+      action: "user.change_password",
+      resource: "users",
+      entityId: req.user!.id,
+      ipAddress: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent,
+    });
 
     res.json({ success: true, data: { message: "Senha alterada com sucesso" } });
   } catch (err) {
