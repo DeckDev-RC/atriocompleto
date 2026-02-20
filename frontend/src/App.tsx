@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, type ComponentType } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './contexts/AppContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -7,16 +7,41 @@ import { ToastProvider } from './components/Toast';
 import { DashboardLayout } from './components/DashboardLayout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
+// ── Auto-reload handler for deployed chunks ─────────
+const lazyWithRetry = (componentImport: () => Promise<{ default: ComponentType<any> }>) =>
+  lazy(async () => {
+    try {
+      const component = await componentImport();
+      window.sessionStorage.removeItem('chunk_load_retried');
+      return component;
+    } catch (error: any) {
+      const isChunkError =
+        error.name === 'ChunkLoadError' ||
+        error.message?.includes('Failed to fetch dynamically') ||
+        error.message?.includes('text/html');
+
+      if (isChunkError) {
+        const isRetried = window.sessionStorage.getItem('chunk_load_retried');
+        if (!isRetried) {
+          window.sessionStorage.setItem('chunk_load_retried', 'true');
+          window.location.reload();
+          return new Promise<{ default: ComponentType<any> }>(() => { }); // Wait for reload
+        }
+      }
+      throw error;
+    }
+  });
+
 // ── Lazy-loaded pages (code splitting) ──────────────
-const DashboardPage = lazy(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
-const AgentPage = lazy(() => import('./pages/AgentPage').then(m => ({ default: m.AgentPage })));
-const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
-const AdminPage = lazy(() => import('./pages/AdminPage').then(m => ({ default: m.AdminPage })));
-const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
-const AccessRequestPage = lazy(() => import('./pages/AccessRequestPage').then(m => ({ default: m.AccessRequestPage })));
-const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })));
-const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage').then(m => ({ default: m.ResetPasswordPage })));
-const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage').then(m => ({ default: m.VerifyEmailPage })));
+const DashboardPage = lazyWithRetry(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
+const AgentPage = lazyWithRetry(() => import('./pages/AgentPage').then(m => ({ default: m.AgentPage })));
+const LoginPage = lazyWithRetry(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
+const AdminPage = lazyWithRetry(() => import('./pages/AdminPage').then(m => ({ default: m.AdminPage })));
+const SettingsPage = lazyWithRetry(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const AccessRequestPage = lazyWithRetry(() => import('./pages/AccessRequestPage').then(m => ({ default: m.AccessRequestPage })));
+const ForgotPasswordPage = lazyWithRetry(() => import('./pages/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })));
+const ResetPasswordPage = lazyWithRetry(() => import('./pages/ResetPasswordPage').then(m => ({ default: m.ResetPasswordPage })));
+const VerifyEmailPage = lazyWithRetry(() => import('./pages/VerifyEmailPage').then(m => ({ default: m.VerifyEmailPage })));
 
 function PageLoader() {
   return (
