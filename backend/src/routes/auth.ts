@@ -35,9 +35,9 @@ interface ProfileRow {
   avatar_url: string | null;
   email_verified: boolean;
   permissions: Record<string, any>;
-  two_factor_enabled: boolean;
   two_factor_secret: string | null;
   recovery_codes_hash: string[] | null;
+  bypass_2fa: boolean;
 }
 
 function normalizeEmail(email: string): string {
@@ -47,7 +47,7 @@ function normalizeEmail(email: string): string {
 async function getProfile(userId: string): Promise<ProfileRow | null> {
   const { data, error } = await supabaseAdmin
     .from("profiles")
-    .select("id, email, full_name, role, tenant_id, is_active, avatar_url, email_verified, permissions, two_factor_enabled, two_factor_secret, recovery_codes_hash")
+    .select("id, email, full_name, role, tenant_id, is_active, avatar_url, email_verified, permissions, two_factor_enabled, two_factor_secret, recovery_codes_hash, bypass_2fa")
     .eq("id", userId)
     .single();
 
@@ -119,6 +119,49 @@ router.post("/login", authLimiter, async (req: Request, res: Response) => {
         success: false,
         requires_verification: true,
         error: "Por favor, verifique seu email antes de fazer login.",
+      });
+      return;
+    }
+
+    if (profile.bypass_2fa) {
+      const tenant_name = await getTenantName(profile.tenant_id);
+
+      const expiresAt = data.session.expires_at
+        ? Math.floor(new Date(data.session.expires_at * 1000).getTime() / 1000)
+        : null;
+
+      res.json({
+        success: true,
+        data: {
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+          expires_at: expiresAt,
+          user: {
+            id: profile.id,
+            email: profile.email,
+            full_name: profile.full_name,
+            role: profile.role,
+            tenant_id: profile.tenant_id,
+            tenant_name,
+            avatar_url: profile.avatar_url || null,
+            permissions: {
+              ...(profile.permissions || {}),
+              ...(await AccessControlService.getUserPermissions(profile.id)),
+            },
+            two_factor_enabled: profile.two_factor_enabled,
+          },
+        },
+      });
+
+      void AuditService.log({
+        userId: profile.id,
+        action: "user.login",
+        resource: "auth",
+        entityId: profile.id,
+        ipAddress: req.auditInfo?.ip,
+        userAgent: req.auditInfo?.userAgent,
+        tenantId: profile.tenant_id || undefined,
+        details: { message: "Login realizado (Bypass 2FA)" },
       });
       return;
     }

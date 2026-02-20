@@ -436,7 +436,7 @@ router.get("/users", async (req: Request, res: Response) => {
   try {
     let query = supabaseAdmin
       .from("profiles")
-      .select("id, email, full_name, role, tenant_id, is_active, created_at, permissions")
+      .select("id, email, full_name, role, tenant_id, is_active, created_at, permissions, bypass_2fa")
       .order("created_at", { ascending: false });
 
     const tenantId = req.query.tenant_id as string | undefined;
@@ -596,6 +596,7 @@ const updateUserSchema = z.object({
   tenant_id: z.string().uuid().nullable().optional(),
   is_active: z.boolean().optional(),
   permissions: z.record(z.any()).optional(),
+  bypass_2fa: z.boolean().optional(),
 });
 
 router.put("/users/:id", async (req: Request, res: Response) => {
@@ -614,6 +615,7 @@ router.put("/users/:id", async (req: Request, res: Response) => {
     if (parsed.data.tenant_id !== undefined) updates.tenant_id = parsed.data.tenant_id;
     if (parsed.data.is_active !== undefined) updates.is_active = parsed.data.is_active;
     if (parsed.data.permissions !== undefined) updates.permissions = parsed.data.permissions;
+    if (parsed.data.bypass_2fa !== undefined) updates.bypass_2fa = parsed.data.bypass_2fa;
 
     if (req.params.id === req.user!.id) {
       if (parsed.data.role !== undefined && parsed.data.role !== "master") {

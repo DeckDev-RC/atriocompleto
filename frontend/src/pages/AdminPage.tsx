@@ -26,6 +26,7 @@ interface UserProfile {
   tenant_id: string | null;
   tenant_name: string;
   is_active: boolean;
+  bypass_2fa: boolean;
   created_at: string;
 }
 
@@ -140,6 +141,7 @@ function UsersPanel() {
     email: '',
     role: 'user' as RoleType,
     tenant_id: '',
+    bypass_2fa: false,
   });
   const [error, setError] = useState('');
 
@@ -172,6 +174,7 @@ function UsersPanel() {
         full_name: form.full_name,
         role: form.role,
         tenant_id: form.tenant_id || null,
+        bypass_2fa: form.bypass_2fa,
       });
       if (!result.success) setError(result.error || 'Erro ao salvar');
     } else {
@@ -180,11 +183,12 @@ function UsersPanel() {
         email: form.email,
         role: form.role,
         tenant_id: form.tenant_id || null,
+        bypass_2fa: form.bypass_2fa,
       });
       if (!result.success) setError(result.error || 'Erro ao criar');
     }
     setEditingId(null);
-    setForm({ full_name: '', email: '', role: 'user', tenant_id: '' });
+    setForm({ full_name: '', email: '', role: 'user', tenant_id: '', bypass_2fa: false });
     load();
   };
 
@@ -201,6 +205,7 @@ function UsersPanel() {
       email: user.email,
       role: user.role,
       tenant_id: user.tenant_id || '',
+      bypass_2fa: user.bypass_2fa || false,
     });
   };
 
@@ -251,14 +256,26 @@ function UsersPanel() {
             {tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
           </select>
         </div>
+        <div className="mt-3 flex items-center gap-2 px-1">
+          <input
+            type="checkbox"
+            id="bypass_2fa"
+            checked={form.bypass_2fa}
+            onChange={(e) => setForm(p => ({ ...p, bypass_2fa: e.target.checked }))}
+            className="rounded border-border accent-brand-primary h-4 w-4"
+          />
+          <label htmlFor="bypass_2fa" className="text-sm font-medium text-primary cursor-pointer select-none">
+            Permitir Login sem 2FA (Para clientes Beta/Testes)
+          </label>
+        </div>
         {editingId === currentUser?.id && (
           <p className="mt-2 text-xs text-brand-primary">
             ℹ️ Como administrador master, você não pode alterar sua própria empresa ou nível de acesso por aqui para evitar bloqueio acidental.
           </p>
         )}
-        <div className="mt-3 flex gap-2">
+        <div className="mt-4 flex gap-2">
           <button className="rounded-lg bg-(--color-brand-primary) px-4 py-2 text-sm text-white">{editingId ? 'Salvar' : 'Criar'}</button>
-          {editingId && <button type="button" className="rounded-lg border border-border px-4 py-2 text-sm" onClick={() => { setEditingId(null); setForm({ full_name: '', email: '', role: 'user', tenant_id: '' }); }}>Cancelar</button>}
+          {editingId && <button type="button" className="rounded-lg border border-border px-4 py-2 text-sm" onClick={() => { setEditingId(null); setForm({ full_name: '', email: '', role: 'user', tenant_id: '', bypass_2fa: false }); }}>Cancelar</button>}
         </div>
       </form>
 

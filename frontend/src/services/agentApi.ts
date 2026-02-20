@@ -105,7 +105,7 @@ class AgentApiService {
 
       let data: any = {};
       const text = await response.text();
-      
+
       try {
         data = text ? JSON.parse(text) : {};
       } catch (e) {
@@ -325,6 +325,7 @@ class AgentApiService {
       tenant_id: string | null;
       tenant_name: string;
       is_active: boolean;
+      bypass_2fa: boolean;
       created_at: string;
     }>>(url);
   }
@@ -335,6 +336,7 @@ class AgentApiService {
     role: 'master' | 'user';
     tenant_id: string | null;
     access_request_id?: string | null;
+    bypass_2fa?: boolean;
   }) {
     return this.request('/api/admin/users', {
       method: 'POST',
