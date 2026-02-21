@@ -18,19 +18,27 @@ import auditRoutes from "./routes/audit";
 
 const app = express();
 
-// ── CORS Configuration (MUST BE FIRST) ──────────────────
-app.use(cors({
-  origin: true, // Echoes the origin of the request (permissive for debugging)
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-  optionsSuccessStatus: 200 // Some legacy browsers crash on 204
-}));
+// ── CORS Configuration (Aggressive Force) ───────────────
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
 
-// Handle preflight requests explicitly
-app.options('*', (req, res) => {
-  res.sendStatus(200);
+  // Se houver origin, a gente ecoa ele (permite qualquer um dos seus domínios)
+  if (origin) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+  }
+
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept");
+
+  // Responder preflight (OPTIONS) imediatamente
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
+  next();
 });
+
 
 // ── Security & Middleware ───────────────────────────────
 app.use(helmet({
