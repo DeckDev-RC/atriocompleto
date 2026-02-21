@@ -45,16 +45,25 @@ const handleViolation = (req: Request, res: Response, options: any) => {
 
 // ── Check Blocked IP Middleware ──────────────────────────
 export const checkIPBlock = async (req: Request, res: Response, next: any) => {
-    if (isWhitelisted(req)) return next();
+    try {
+        if (isWhitelisted(req)) return next();
 
-    const ip = req.ip || req.socket.remoteAddress || "unknown";
-    const blocked = await redis.get(`ratelimit:blocked:${ip}`);
+        const ip = req.ip || req.socket.remoteAddress || "unknown";
 
-    if (blocked) {
-        return res.status(403).json({
-            success: false,
-            error: "Seu IP está temporariamente bloqueado por abuso da API. Tente novamente em 1 hora."
-        });
+        // Timeout de segurança para evitar travar se o Redis estiver lento ou offline
+        const blocked = await Promise.race([
+            redis.get(`ratelimit:blocked:${ip}`),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Redis Timeout")), 500))
+        ]).catch(() => null); // Se der erro ou timeout, assume que não está bloqueado e segue
+
+        if (blocked) {
+            return res.status(403).json({
+                success: false,
+                error: "Seu IP está temporariamente bloqueado por abuso da API. Tente novamente em 1 hora."
+            });
+        }
+    } catch (err) {
+        console.error("[RateLimit] Error in checkIPBlock middleware:", err);
     }
     next();
 };

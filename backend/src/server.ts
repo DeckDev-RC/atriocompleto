@@ -18,42 +18,25 @@ import auditRoutes from "./routes/audit";
 
 const app = express();
 
-// ── Security ────────────────────────────────────────────
-app.use(helmet());
-
-// CORS configuration - allow frontend origin
-const corsOptions: cors.CorsOptions = {
-  origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, etc)
-    if (!origin) return callback(null, true);
-
-    // Check if origin matches ALLOWED_ORIGINS
-    const allowedOrigins = env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
-
-    // Add HTTP variant for each HTTPS origin if not already there
-    const allExpected = [...allowedOrigins];
-    allowedOrigins.forEach(o => {
-      if (o.startsWith('https://')) {
-        const httpVariant = o.replace('https://', 'http://');
-        if (!allExpected.includes(httpVariant)) allExpected.push(httpVariant);
-      }
-    });
-
-    if (allExpected.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.warn(`CORS blocked origin: ${origin}`);
-      callback(null, true); // Allow anyway for now to debug
-    }
-  },
+// ── CORS Configuration (MUST BE FIRST) ──────────────────
+app.use(cors({
+  origin: true, // Echoes the origin of the request (permissive for debugging)
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-};
-app.use(cors(corsOptions));
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  optionsSuccessStatus: 200 // Some legacy browsers crash on 204
+}));
 
 // Handle preflight requests explicitly
-app.options('*', cors(corsOptions));
+app.options('*', (req, res) => {
+  res.sendStatus(200);
+});
+
+// ── Security & Middleware ───────────────────────────────
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+
 
 // ── Rate Limiting & Security ────────────────────────────
 app.use(checkIPBlock); // Bloqueio imediato para IPs na blacklist/blocked
