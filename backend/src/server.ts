@@ -27,13 +27,19 @@ const corsOptions: cors.CorsOptions = {
     // Allow requests with no origin (mobile apps, curl, etc)
     if (!origin) return callback(null, true);
 
-    // Check if origin matches FRONTEND_URL
-    const allowedOrigins = [
-      env.FRONTEND_URL,
-      env.FRONTEND_URL.replace('https://', 'http://'), // Allow HTTP variant
-    ];
+    // Check if origin matches ALLOWED_ORIGINS
+    const allowedOrigins = env.ALLOWED_ORIGINS.split(',').map(o => o.trim());
 
-    if (allowedOrigins.includes(origin)) {
+    // Add HTTP variant for each HTTPS origin if not already there
+    const allExpected = [...allowedOrigins];
+    allowedOrigins.forEach(o => {
+      if (o.startsWith('https://')) {
+        const httpVariant = o.replace('https://', 'http://');
+        if (!allExpected.includes(httpVariant)) allExpected.push(httpVariant);
+      }
+    });
+
+    if (allExpected.includes(origin)) {
       callback(null, true);
     } else {
       console.warn(`CORS blocked origin: ${origin}`);
