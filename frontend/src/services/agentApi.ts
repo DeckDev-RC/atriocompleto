@@ -55,10 +55,15 @@ class AgentApiService {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
+    // Limpar o base URL e o path para evitar barras duplas ou falta de barra
+    const baseUrl = AGENT_API_URL.endsWith('/') ? AGENT_API_URL.slice(0, -1) : AGENT_API_URL;
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    const fullUrl = `${baseUrl}${cleanPath}`;
+
     // Add cache buster to GET requests
     const url = options.method === 'GET' || !options.method
-      ? `${AGENT_API_URL}${path}${path.includes('?') ? '&' : '?'}_t=${Date.now()}`
-      : `${AGENT_API_URL}${path}`;
+      ? `${fullUrl}${fullUrl.includes('?') ? '&' : '?'}_t=${Date.now()}`
+      : fullUrl;
 
     try {
       const response = await fetch(url, {

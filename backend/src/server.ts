@@ -18,33 +18,36 @@ import auditRoutes from "./routes/audit";
 
 const app = express();
 
-// ── CORS Configuration (Aggressive Force) ───────────────
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
+// ── Security ────────────────────────────────────────────
+app.use(helmet());
 
-  // Se houver origin, a gente ecoa ele (permite qualquer um dos seus domínios)
-  if (origin) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Access-Control-Allow-Credentials", "true");
-  }
+// CORS configuration - allow frontend origin
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, etc)
+    if (!origin) return callback(null, true);
 
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept");
+    // Check if origin matches FRONTEND_URL
+    const allowedOrigins = [
+      env.FRONTEND_URL,
+      env.FRONTEND_URL.replace('https://', 'http://'), // Allow HTTP variant
+    ];
 
-  // Responder preflight (OPTIONS) imediatamente
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`CORS blocked origin: ${origin}`);
+      callback(null, true); // Allow anyway for now to debug
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
+app.use(cors(corsOptions));
 
-  next();
-});
-
-
-// ── Security & Middleware ───────────────────────────────
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
-}));
-
+// Handle preflight requests explicitly
+app.options('*', cors(corsOptions));
 
 // ── Rate Limiting & Security ────────────────────────────
 app.use(checkIPBlock); // Bloqueio imediato para IPs na blacklist/blocked

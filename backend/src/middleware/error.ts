@@ -11,12 +11,6 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
     method: req.method,
   });
 
-  // Garantir que cabeçalhos CORS existam mesmo em erro para não mascarar a causa real
-  if (req.headers.origin) {
-    res.setHeader("Access-Control-Allow-Origin", req.headers.origin as string);
-    res.setHeader("Access-Control-Allow-Credentials", "true");
-  }
-
   res.status(500).json({
     success: false,
     error: env.NODE_ENV === "development" ? err.message : "Erro interno do servidor",
