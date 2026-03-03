@@ -4,6 +4,7 @@ import { Request, Response } from "express";
 import { redis } from "../config/redis";
 import { env } from "../config/env";
 import { RateLimitQueueService } from "../services/rate-limit-queue";
+import { supabaseAdmin } from "../config/supabase";
 
 // ── Helpers ─────────────────────────────────────────────
 const whitelist = env.WHITELIST_IPS.split(",").map(ip => ip.trim()).filter(Boolean);
@@ -118,5 +119,53 @@ export const publicApiLimiter = rateLimit({
         prefix: "ratelimit:public:",
     }),
     message: { success: false, error: "Limite de API pública excedido. Tente novamente daqui a pouco." },
+    handler: handleViolation
+});
+
+// 5. AI Insights Limiter (Configurable per Tenant)
+export const aiLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour window
+    limit: async (req: Request) => {
+        const tenantId = (req as any).user?.tenant_id;
+        if (!tenantId) return 20; // Default fallback
+
+        const cacheKey = `config:tenant:${tenantId}:ai_limit`;
+
+        try {
+            // Check Redis cache first
+            const cachedLimit = await redis.get(cacheKey);
+            if (cachedLimit) return parseInt(cachedLimit);
+
+            // Fetch from Supabase
+            const { data, error } = await supabaseAdmin
+                .from("tenants")
+                .select("ai_rate_limit")
+                .eq("id", tenantId)
+                .single();
+
+            if (error || !data) return 20;
+
+            const limit = data.ai_rate_limit || 20;
+
+            // Cache for 1 hour
+            await redis.set(cacheKey, limit.toString(), "EX", 3600);
+
+            return limit;
+        } catch (err) {
+            console.error("[RateLimit] Error fetching AI limit:", err);
+            return 20;
+        }
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req: Request) => (req as any).user?.id || req.ip || "unknown",
+    store: new RedisStore({
+        sendCommand: (async (...args: string[]) => redis.call(args[0], ...args.slice(1))) as any,
+        prefix: "ratelimit:ai:",
+    }),
+    message: {
+        success: false,
+        error: "Limite de perguntas excedido para esta hora. Tente novamente mais tarde."
+    },
     handler: handleViolation
 });

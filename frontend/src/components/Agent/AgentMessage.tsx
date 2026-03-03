@@ -7,6 +7,8 @@ import { extractCharts, AgentChart } from './AgentChart';
 import type { ChartData } from './AgentChart';
 import { useBrandPrimaryColor } from '../../hooks/useBrandPrimaryColor';
 import { useFormatting } from '../../hooks/useFormatting';
+import { InsightCard } from './InsightCard';
+import type { AIAction } from './InsightCard';
 
 interface TokenUsage {
   inputTokens: number;
@@ -21,9 +23,12 @@ interface AgentMessageProps {
   timestamp?: string;
   isLoading?: boolean;
   tokenUsage?: TokenUsage;
+  action?: AIAction;
+  onExecuteAction?: (action: AIAction) => void;
+  onChartClick?: (label: string, value: number, chartTitle?: string) => void;
 }
 
-export function AgentMessage({ role, content, timestamp, isLoading, tokenUsage }: AgentMessageProps) {
+export function AgentMessage({ role, content, timestamp, isLoading, tokenUsage, action, onExecuteAction, onChartClick }: AgentMessageProps) {
   const isUser = role === 'user';
   const brandPrimaryColor = useBrandPrimaryColor();
   const { formatInteger } = useFormatting();
@@ -43,7 +48,11 @@ export function AgentMessage({ role, content, timestamp, isLoading, tokenUsage }
           if (chartMatch) {
             const chartIndex = parseInt(chartMatch[1]);
             return charts[chartIndex] ? (
-              <AgentChart key={`chart-${i}`} data={charts[chartIndex] as ChartData} />
+              <AgentChart
+                key={`chart-${i}`}
+                data={charts[chartIndex] as ChartData}
+                onElementClick={onChartClick}
+              />
             ) : null;
           }
           if (part.trim()) {
@@ -131,6 +140,10 @@ export function AgentMessage({ role, content, timestamp, isLoading, tokenUsage }
                     : tokenUsage.estimatedCostUSD.toFixed(3)}
                 </span>
               </div>
+            )}
+
+            {!isUser && action && onExecuteAction && (
+              <InsightCard action={action} onExecute={onExecuteAction} />
             )}
           </div>
         )}

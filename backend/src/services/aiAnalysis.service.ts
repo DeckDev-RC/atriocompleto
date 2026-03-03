@@ -4,6 +4,7 @@ import { queryFunctions, QueryParams, getDistinctValues } from "./query-function
 import { sanitizeSQL } from "../utils/sql-sanitizer";
 import { ChatMessage } from "../types";
 import type { Content, FunctionDeclaration, Type } from "@google/genai";
+import { DataContextService } from "./dataContext.service";
 
 // ── Cached metadata ─────────────────────────────────────
 let cachedMetadata: { statuses: string[]; marketplaces: string[] } | null = null;
@@ -226,6 +227,28 @@ const functionDeclarations: FunctionDeclaration[] = [
     name: "healthCheck",
     description: "DIAGNOSTICO RAPIDO com alertas inteligentes. Detecta automaticamente: faturamento abaixo/acima da media, cancelamentos anomalos, tendencia de ticket medio, comparacao YoY, performance semanal. Use para: 'como estao as coisas', 'algum alerta', 'saude do negocio', 'tem algo errado', 'diagnostico rapido', 'como estamos', 'novidades'.",
     parameters: { type: "object" as Type, properties: {} },
+  },
+  {
+    name: "suggestAction",
+    description: "Sugere uma ação concreta no sistema baseada no insight. Use quando o usuário precisar tomar uma decisão ou executar uma tarefa.",
+    parameters: {
+      type: "object" as Type,
+      properties: {
+        action: {
+          type: "string" as Type,
+          description: "Tipo de ação: CREATE_PROMOTION, SEND_CUSTOMER_EMAIL, ADJUST_STOCK_ALERT, REVIEW_MARKETPLACE_SETTING"
+        },
+        payload: {
+          type: "object" as Type,
+          description: "Dados relevantes para a ação (ex: { product_id: '123', promo_type: 'discount' })"
+        },
+        reason: {
+          type: "string" as Type,
+          description: "Breve explicação do porquê sugeriu isso"
+        },
+      },
+      required: ["action", "reason"]
+    },
   },
 ];
 
@@ -965,7 +988,14 @@ export async function processMessage(
 
   try {
     const history = buildHistory(conversationHistory);
-    const systemPrompt = await buildSystemPrompt(tenantId);
+    let systemPrompt = await buildSystemPrompt(tenantId);
+
+    // Injetar Pre-Context (Resumo rápido)
+    if (tenantId) {
+      const summary = await DataContextService.getQuickSummary(tenantId);
+      const summaryText = DataContextService.formatSummaryForPrompt(summary);
+      systemPrompt = `${systemPrompt}\n\n${summaryText}`;
+    }
 
     // Build the initial conversation contents
     const contents: Content[] = [...history, { role: "user", parts: [{ text: userMessage }] }];
@@ -1061,6 +1091,120 @@ export async function processMessage(
     const tokenUsage: TokenUsage = { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, totalTokens: totalInputTokens + totalOutputTokens, estimatedCostUSD: calculateCost(totalInputTokens, totalOutputTokens) };
     if (error instanceof Error && error.message.includes("429")) return { text: "Servico sobrecarregado. Tente em segundos.", tokenUsage };
     return { text: "Erro ao processar. Tente novamente.", tokenUsage };
+  }
+}
+
+// ── Streaming Agent ─────────────────────────────────────
+export async function* processMessageStream(
+  userMessage: string,
+  conversationHistory: ChatMessage[],
+  tenantId?: string
+) {
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+
+  try {
+    const history = buildHistory(conversationHistory);
+    let systemPrompt = await buildSystemPrompt(tenantId);
+
+    // Injetar Pre-Context (Resumo rápido)
+    if (tenantId) {
+      const summary = await DataContextService.getQuickSummary(tenantId);
+      const summaryText = DataContextService.formatSummaryForPrompt(summary);
+      systemPrompt = `${systemPrompt}\n\n${summaryText}`;
+    }
+
+    const result = await genai.models.generateContentStream({
+      model: GEMINI_MODEL,
+      contents: [...history, { role: "user", parts: [{ text: userMessage }] }],
+      config: { systemInstruction: systemPrompt, tools: [{ functionDeclarations }], temperature: 0.3, maxOutputTokens: 8192 },
+    });
+
+    let functionCall: { name: string; args: any } | null = null;
+
+    for await (const chunk of result) {
+      if (chunk.usageMetadata) {
+        totalInputTokens += chunk.usageMetadata.promptTokenCount || 0;
+        totalOutputTokens += chunk.usageMetadata.candidatesTokenCount || 0;
+      }
+
+      const part = chunk.candidates?.[0]?.content?.parts?.[0];
+      if (part?.text) {
+        yield { type: "text", content: part.text };
+      } else if (part?.functionCall) {
+        functionCall = { name: part.functionCall.name as string, args: part.functionCall.args };
+      }
+    }
+
+    if (functionCall) {
+      const { name, args } = functionCall;
+      console.log("[AgentStream] Fn:", name, JSON.stringify(args || {}));
+
+      // Se for suggestAction, emitir evento especial e NÃO chamar o modelo de volta (é uma folha)
+      if (name === "suggestAction") {
+        yield { type: "action", content: args };
+        return;
+      }
+
+      let fnResult: unknown;
+      try {
+        if (name === "executeSQLQuery" && args?.sql) {
+          fnResult = await executeAdHocSQL(args.sql as string, tenantId);
+        } else if (name && (queryFunctions as any)[name]) {
+          fnResult = await (queryFunctions as any)[name]({ ...args, _tenant_id: tenantId } as QueryParams);
+        } else {
+          fnResult = { error: "Funcao nao encontrada: " + name };
+        }
+      } catch (e) {
+        fnResult = { error: (e instanceof Error ? e.message : "erro") };
+      }
+
+      const truncated = truncateForGemini(fnResult);
+
+      const finalResult = await genai.models.generateContentStream({
+        model: GEMINI_MODEL,
+        contents: [
+          ...history,
+          { role: "user", parts: [{ text: userMessage }] },
+          { role: "model", parts: [{ functionCall: { name: name!, args: args || {} } }] },
+          { role: "user", parts: [{ functionResponse: { name: name!, response: truncated } }] },
+        ],
+        config: { systemInstruction: systemPrompt, temperature: 0.3, maxOutputTokens: 8192 },
+      });
+
+      for await (const chunk of finalResult) {
+        if (chunk.usageMetadata) {
+          totalInputTokens += chunk.usageMetadata.promptTokenCount || 0;
+          totalOutputTokens += chunk.usageMetadata.candidatesTokenCount || 0;
+        }
+        const text = chunk.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) yield { type: "text", content: text };
+      }
+
+      yield {
+        type: "done",
+        tokenUsage: {
+          inputTokens: totalInputTokens,
+          outputTokens: totalOutputTokens,
+          totalTokens: totalInputTokens + totalOutputTokens,
+          estimatedCostUSD: calculateCost(totalInputTokens, totalOutputTokens)
+        },
+        suggestions: SUGGESTIONS_MAP[name]
+      };
+    } else {
+      yield {
+        type: "done",
+        tokenUsage: {
+          inputTokens: totalInputTokens,
+          outputTokens: totalOutputTokens,
+          totalTokens: totalInputTokens + totalOutputTokens,
+          estimatedCostUSD: calculateCost(totalInputTokens, totalOutputTokens)
+        }
+      };
+    }
+  } catch (error) {
+    console.error("[AgentStream] Fatal:", error);
+    yield { type: "error", content: "Erro ao processar mensagem." };
   }
 }
 

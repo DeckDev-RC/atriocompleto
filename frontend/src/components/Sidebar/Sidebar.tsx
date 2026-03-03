@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   Shield,
   Settings,
+  Search,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../../contexts/AppContext';
@@ -63,8 +64,11 @@ export function Sidebar() {
           items: [{ icon: ShoppingCart, label: 'E-Commerce', path: '/', permission: 'visualizar_venda' }],
         },
         {
-          section: "APPS",
-          items: [{ icon: null, imageSrc: optimusSidebarIcon, label: 'Optimus', path: '/agente', permission: 'acessar_agente' }],
+          section: 'APPS',
+          items: [
+            { icon: null, imageSrc: optimusSidebarIcon, label: 'Optimus', path: '/agente', permission: 'acessar_agente' },
+            { icon: Search, label: 'Padrões', path: '/analytics/patterns', permission: 'acessar_agente' }
+          ],
         },
       ]
       : []),

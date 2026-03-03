@@ -36,13 +36,14 @@ function normalizeEmail(email: string): string {
 
 const tenantSchema = z.object({
   name: z.string().trim().min(2, "Nome mínimo 2 caracteres").max(100, "Nome muito longo"),
+  ai_rate_limit: z.number().int().min(1).max(1000).default(20),
 });
 
 router.get("/tenants", async (req: Request, res: Response) => {
   try {
     const { data, error } = await supabaseAdmin
       .from("tenants")
-      .select("id, name, created_at")
+      .select("id, name, ai_rate_limit, created_at")
       .order("name");
 
     if (error) throw error;
@@ -95,7 +96,10 @@ router.post("/tenants", async (req: Request, res: Response) => {
 
     const { data, error } = await supabaseAdmin
       .from("tenants")
-      .insert({ name: parsed.data.name })
+      .insert({
+        name: parsed.data.name,
+        ai_rate_limit: parsed.data.ai_rate_limit
+      })
       .select()
       .single();
 
@@ -138,7 +142,10 @@ router.put("/tenants/:id", async (req: Request, res: Response) => {
 
     const { data, error } = await supabaseAdmin
       .from("tenants")
-      .update({ name: parsed.data.name })
+      .update({
+        name: parsed.data.name,
+        ai_rate_limit: parsed.data.ai_rate_limit
+      })
       .eq("id", req.params.id)
       .select()
       .single();

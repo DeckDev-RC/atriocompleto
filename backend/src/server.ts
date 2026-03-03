@@ -5,13 +5,14 @@ import compression from "compression";
 import { globalLimiter, checkIPBlock, publicApiLimiter } from "./middleware/rate-limit";
 
 import { env } from "./config/env";
+import { setupDailyCrons } from "./services/cron.service";
 import { errorHandler } from "./middleware/error";
 import { auditMiddleware } from "./middleware/audit";
 
 import authRoutes from "./routes/auth";
 import adminRoutes from "./routes/admin";
 import userRoutes from "./routes/user";
-import chatRoutes from "./routes/chat";
+import aiInsightsRoutes from "./routes/ai-insights";
 import dashboardRoutes from "./routes/dashboard";
 import healthRoutes from "./routes/health";
 import auditRoutes from "./routes/audit";
@@ -77,7 +78,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/dashboard", dashboardRoutes);
-app.use("/api/chat", chatRoutes);
+app.use("/api/ai", aiInsightsRoutes);
+app.use("/api/chat", aiInsightsRoutes); // Backward compatibility
 app.use("/api/audit-logs", auditRoutes);
 
 // ── Error Handler ───────────────────────────────────────
@@ -95,6 +97,9 @@ const server = app.listen(env.PORT, () => {
   ║   PID:  ${String(process.pid).padEnd(30)}║
   ╚══════════════════════════════════════════╝
   `);
+
+  // Initialize Background Jobs
+  setupDailyCrons();
 });
 
 // ── Graceful Shutdown + Self-Healing ────────────────────

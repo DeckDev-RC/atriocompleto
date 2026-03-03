@@ -87,7 +87,7 @@ export function extractCharts(content: string): { text: string; charts: ChartDat
   return { text, charts };
 }
 
-export function AgentChart({ data }: { data: ChartData }) {
+export function AgentChart({ data, onElementClick }: { data: ChartData, onElementClick?: (label: string, value: number, chartTitle?: string) => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<ChartJS | null>(null);
   const { theme } = useApp();
@@ -218,6 +218,15 @@ export function AgentChart({ data }: { data: ChartData }) {
         responsive: true,
         maintainAspectRatio: false,
         indexAxis: isHorizontal ? 'y' : 'x',
+        onClick: (_event, elements, chart) => {
+          if (elements.length > 0 && onElementClick) {
+            const firstElement = elements[0];
+            const dataIndex = firstElement.index;
+            const label = chart.data.labels ? chart.data.labels[dataIndex] as string : '';
+            const value = chart.data.datasets[firstElement.datasetIndex].data[dataIndex] as number;
+            onElementClick(label, value, data.title);
+          }
+        },
         plugins: {
           legend: {
             display: data.options?.showLegend !== false && (data.datasets.length > 1 || isPie),

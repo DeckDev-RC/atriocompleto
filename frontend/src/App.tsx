@@ -42,6 +42,8 @@ const AccessRequestPage = lazyWithRetry(() => import('./pages/AccessRequestPage'
 const ForgotPasswordPage = lazyWithRetry(() => import('./pages/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })));
 const ResetPasswordPage = lazyWithRetry(() => import('./pages/ResetPasswordPage').then(m => ({ default: m.ResetPasswordPage })));
 const VerifyEmailPage = lazyWithRetry(() => import('./pages/VerifyEmailPage').then(m => ({ default: m.VerifyEmailPage })));
+const InsightsHistoryPage = lazyWithRetry(() => import('./pages/InsightsHistoryPage'));
+const PatternDiscoveryPage = lazyWithRetry(() => import('./pages/PatternDiscoveryPage'));
 
 function PageLoader() {
   return (
@@ -110,6 +112,16 @@ function AppRoutes() {
           <Route path="admin" element={
             <ProtectedRoute requireMaster>
               <AdminPage />
+            </ProtectedRoute>
+          } />
+          <Route path="insights/history" element={
+            <ProtectedRoute permission="acessar_agente">
+              <InsightsHistoryPage />
+            </ProtectedRoute>
+          } />
+          <Route path="analytics/patterns" element={
+            <ProtectedRoute permission="acessar_agente">
+              <PatternDiscoveryPage />
             </ProtectedRoute>
           } />
         </Route>

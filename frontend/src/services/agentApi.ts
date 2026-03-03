@@ -293,22 +293,23 @@ class AgentApiService {
     return this.request<Array<{
       id: string;
       name: string;
+      ai_rate_limit: number;
       created_at: string;
       user_count: number;
     }>>('/api/admin/tenants');
   }
 
-  async createTenant(name: string) {
-    return this.request<{ id: string; name: string }>('/api/admin/tenants', {
+  async createTenant(name: string, aiRateLimit?: number) {
+    return this.request<{ id: string; name: string; ai_rate_limit: number }>('/api/admin/tenants', {
       method: 'POST',
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, ai_rate_limit: aiRateLimit || 20 }),
     });
   }
 
-  async updateTenant(id: string, name: string) {
-    return this.request<{ id: string; name: string }>(`/api/admin/tenants/${id}`, {
+  async updateTenant(id: string, name: string, aiRateLimit: number) {
+    return this.request<{ id: string; name: string; ai_rate_limit: number }>(`/api/admin/tenants/${id}`, {
       method: 'PUT',
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, ai_rate_limit: aiRateLimit }),
     });
   }
 
@@ -424,10 +425,59 @@ class AgentApiService {
         totalTokens: number;
         estimatedCostUSD: number;
       };
-    }>('/api/chat/message', {
+    }>('/api/ai/analyze', {
       method: 'POST',
       body: JSON.stringify({ message, conversation_id: conversationId }),
     });
+  }
+
+  async *sendMessageStream(message: string, conversationId?: string) {
+    const baseUrl = AGENT_API_URL.endsWith('/') ? AGENT_API_URL.slice(0, -1) : AGENT_API_URL;
+    const url = `${baseUrl}/api/ai/analyze`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.token}`,
+        'Accept': 'text/event-stream',
+      },
+      body: JSON.stringify({ message, conversation_id: conversationId, stream: true }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Erro de conexão' }));
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) return;
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.trim().startsWith('data: ')) {
+          try {
+            const jsonStr = line.trim().substring(6);
+            if (jsonStr) {
+              const data = JSON.parse(jsonStr);
+              yield data;
+            }
+          } catch (e) {
+            console.error('[agentApi] Error parsing SSE data:', e, 'Line:', line);
+          }
+        }
+      }
+    }
   }
 
   async getChatHistory() {
@@ -702,6 +752,64 @@ class AgentApiService {
       alerts: Array<{ type: string; message: string }>;
       summary: Record<string, unknown> | null;
     }>('/api/chat/health-check');
+  }
+
+  // ══════════════════════════════════════════════════════
+  // DAILY INSIGHTS
+  // ══════════════════════════════════════════════════════
+
+  async getDailyInsights() {
+    return this.request<import('../types/insights').AutoInsight[]>('/api/ai/daily-insights');
+  }
+
+  async updateInsightStatus(id: string, status: import('../types/insights').InsightStatus) {
+    return this.request<void>(`/api/ai/insights/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+  }
+
+  async getDailyInsightsHistory(params: { page?: number; limit?: number; category?: string; priority?: string }) {
+    const query = new URLSearchParams();
+    if (params.page) query.append('page', String(params.page));
+    if (params.limit) query.append('limit', String(params.limit));
+    if (params.category) query.append('category', params.category);
+    if (params.priority) query.append('priority', params.priority);
+
+    return this.request<{
+      insights: import('../types/insights').AutoInsight[];
+      total: number;
+      page: number;
+      totalPages: number;
+    }>(`/api/ai/insights/history?${query.toString()}`);
+  }
+
+  async executeInsightAction(id: string, action: string, params?: any) {
+    return this.request<{ status: string; message: string }>(`/api/ai/insights/${id}/action`, {
+      method: 'POST',
+      body: JSON.stringify({ action, params }),
+    });
+  }
+
+  async getPatterns(days: number = 30) {
+    return this.request<{
+      success: boolean;
+      data: {
+        rfm: import('../types/insights').RFMAnalysis;
+        correlation: any;
+        basket: any[];
+      };
+    }>(`/api/ai/patterns?days=${days}`);
+  }
+
+  async getSmartSegments() {
+    return this.request<{
+      success: boolean;
+      data: {
+        churn_risk: any[];
+        upsell_candidates: any[];
+      };
+    }>(`/api/ai/segments`);
   }
 }
 

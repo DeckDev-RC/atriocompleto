@@ -218,3 +218,64 @@ export async function sendEmailVerification(params: {
     html,
   });
 }
+
+export async function sendDailyInsightsSummary(params: {
+  to: string;
+  fullName?: string | null;
+  insights: any[];
+}): Promise<void> {
+  await ensureTransportReady();
+
+  const greeting = params.fullName?.trim() ? `Oi ${params.fullName.trim()},` : "Oi,";
+  const subject = `📊 Resumo Diário: ${params.insights.length} novos insights para você`;
+
+  const insightsHtml = params.insights.map(insight => {
+    const priorityColor = insight.priority === 'critical' ? '#ef4444' : insight.priority === 'high' ? '#f97316' : '#3b82f6';
+    const importanceBar = `<div style="width: 100%; background: #e2e8f0; height: 8px; border-radius: 4px; margin-top: 8px;">
+      <div style="width: ${insight.importance_score}%; background: ${priorityColor}; height: 8px; border-radius: 4px;"></div>
+    </div>`;
+
+    return `
+      <div style="margin-bottom: 24px; padding: 16px; border-left: 4px solid ${priorityColor}; background: #f8fafc; border-radius: 4px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <strong style="color: #1e293b; font-size: 16px;">${escapeHtml(insight.title)}</strong>
+          <span style="font-size: 12px; color: ${priorityColor}; font-weight: bold; text-transform: uppercase;">${insight.priority}</span>
+        </div>
+        <p style="color: #475569; font-size: 14px; margin: 8px 0;">${escapeHtml(insight.description)}</p>
+        <div style="font-size: 12px; color: #64748b;">Impacto Estimado: ${insight.importance_score}%</div>
+        ${importanceBar}
+        <div style="margin-top: 12px;">
+          <strong style="font-size: 12px; color: #1e293b;">Próximos Passos:</strong>
+          <ul style="margin: 4px 0; padding-left: 20px; font-size: 13px; color: #475569;">
+            ${insight.recommended_actions.map((a: any) => `<li>${escapeHtml(typeof a === 'string' ? a : (a.label || 'Ação Recomendada'))}</li>`).join('')}
+          </ul>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const html = `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+      <h2 style="color: #0f172a;">${escapeHtml(greeting)}</h2>
+      <p style="font-size: 16px; line-height: 1.5;">Seu assistente Atrio identificou <strong>${params.insights.length} pontos importantes</strong> para sua gestão hoje.</p>
+      
+      ${insightsHtml}
+      
+      <div style="margin-top: 32px; padding: 20px; text-align: center; background: #f1f5f9; border-radius: 8px;">
+        <p style="margin-bottom: 16px; font-size: 14px; color: #475569;">Para ver mais detalhes e agir sobre estes insights, acesse seu painel:</p>
+        <a href="${env.FRONTEND_URL}/dashboard" style="display: inline-block; padding: 12px 24px; background-color: #000000; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600;">Ver Todos no Dashboard</a>
+      </div>
+      
+      <p style="font-size: 12px; color: #94a3b8; margin-top: 24px; text-align: center;">
+        Este é um relatório automático gerado pela Inteligência Artificial Atrio.
+      </p>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: env.SMTP_FROM,
+    to: params.to,
+    subject,
+    html,
+  });
+}

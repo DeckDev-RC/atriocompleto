@@ -956,12 +956,23 @@ export async function seasonalityAnalysis(params: QueryParams) {
   };
 }
 
+/**
+ * Calculates Z-score for a value relative to a distribution.
+ * Z = (x - mean) / stdDev
+ */
+function calcZScore(value: number, distribution: number[]): { z: number; mean: number; std: number } {
+  if (distribution.length === 0) return { z: 0, mean: 0, std: 0 };
+  const mean = distribution.reduce((a, b) => a + b, 0) / distribution.length;
+  const std = Math.sqrt(distribution.map(x => Math.pow(x - mean, 2)).reduce((a, b) => a + b, 0) / distribution.length);
+  return { z: std > 0 ? (value - mean) / std : 0, mean, std };
+}
+
 // ── 19. healthCheck ─────────────────────────────────────
 export async function healthCheck(_params: QueryParams) {
   const tid = _params._tenant_id;
 
   // All aggregation done in SQL: monthly data + marketplace×month data
-  const [monthlyRows, mktMonthlyRows] = await Promise.all([
+  const [monthlyRows, mktMonthlyRows, dailyRows] = await Promise.all([
     runSQL<{ month: string; cnt: number; total: number; paid: number; cancelled: number; cancelled_amount: number }>(`
       SELECT TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM') AS month,
              COUNT(*)::int AS cnt,
@@ -969,7 +980,7 @@ export async function healthCheck(_params: QueryParams) {
              COUNT(*) FILTER (WHERE LOWER(status) = 'paid')::int AS paid,
              COUNT(*) FILTER (WHERE LOWER(status) = 'cancelled')::int AS cancelled,
              COALESCE(SUM(total_amount) FILTER (WHERE LOWER(status) = 'cancelled'), 0)::float AS cancelled_amount
-      FROM orders WHERE 1=1
+      FROM orders
       GROUP BY month ORDER BY month
     `, tid),
     runSQL<{ marketplace: string; month: string; cnt: number; total: number; cancelled: number }>(`
@@ -978,10 +989,18 @@ export async function healthCheck(_params: QueryParams) {
              COUNT(*)::int AS cnt,
              COALESCE(SUM(total_amount), 0)::float AS total,
              COUNT(*) FILTER (WHERE LOWER(status) = 'cancelled')::int AS cancelled
-      FROM orders WHERE 1=1
+      FROM orders
       GROUP BY marketplace, month ORDER BY marketplace, month
     `, tid),
-    // Also get last 7 days summary
+    runSQL<{ date: string; total: number; cnt: number; cancelled: number }>(`
+      SELECT TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD') AS date,
+             COALESCE(SUM(total_amount), 0)::float AS total,
+             COUNT(*)::int AS cnt,
+             COUNT(*) FILTER (WHERE LOWER(status) = 'cancelled')::int AS cancelled
+      FROM orders 
+      WHERE order_date >= NOW() - INTERVAL '30 days'
+      GROUP BY date ORDER BY date
+    `, tid),
   ]);
 
   // Weekly summary via separate query
@@ -990,7 +1009,58 @@ export async function healthCheck(_params: QueryParams) {
     FROM orders WHERE order_date >= NOW() - INTERVAL '7 days'
   `, tid);
 
-  const alerts: Array<{ type: "danger" | "warning" | "success" | "info"; message: string; metric?: string }> = [];
+  const alerts: Array<{ type: "danger" | "warning" | "success" | "info"; message: string; metric?: string; data_support?: any }> = [];
+
+  // ALERT 0: Statistical Anomalies (Z-score)
+  if (dailyRows.length >= 7) {
+    const lastDay = dailyRows[dailyRows.length - 1];
+    const history = dailyRows.slice(0, -1);
+
+    // 1. Revenue Anomaly
+    const rev = calcZScore(lastDay.total, history.map(h => h.total));
+    if (Math.abs(rev.z) > 1.5) {
+      alerts.push({
+        type: rev.z > 2.5 ? "success" : rev.z < -2.5 ? "danger" : "warning",
+        metric: "revenue_anomaly",
+        message: rev.z > 0
+          ? `Vendas em alta! R$ ${Math.round(lastDay.total).toLocaleString("pt-BR")} hoje — desvio positivo de ${rev.z.toFixed(1)}σ.`
+          : `Vendas abaixo do padrão: R$ ${Math.round(lastDay.total).toLocaleString("pt-BR")} hoje (esperado ~R$ ${Math.round(rev.mean)}).`,
+        data_support: { z_score: rnd(rev.z), actual: rnd(lastDay.total), expected: rnd(rev.mean) }
+      });
+    }
+
+    // 2. Average Ticket Anomaly
+    const avgTicketDist = history.filter(h => h.cnt > 0).map(h => h.total / h.cnt);
+    const lastAvgTicket = lastDay.cnt > 0 ? lastDay.total / lastDay.cnt : 0;
+    if (lastAvgTicket > 0 && avgTicketDist.length >= 5) {
+      const atk = calcZScore(lastAvgTicket, avgTicketDist);
+      if (Math.abs(atk.z) > 2.0) {
+        alerts.push({
+          type: atk.z > 0 ? "success" : "warning",
+          metric: "ticket_anomaly",
+          message: atk.z > 0
+            ? `Ticket médio disparou: R$ ${Math.round(lastAvgTicket)} hoje (${atk.z.toFixed(1)}σ acima da média).`
+            : `Ticket médio caiu: R$ ${Math.round(lastAvgTicket)} hoje (esperado R$ ${Math.round(atk.mean)}).`,
+          data_support: { z_score: rnd(atk.z), actual: rnd(lastAvgTicket), expected: rnd(atk.mean) }
+        });
+      }
+    }
+
+    // 3. Cancellation Rate Anomaly
+    const cancelRateDist = history.filter(h => h.cnt > 0).map(h => (h.cancelled / h.cnt) * 100);
+    const lastCancelRate = lastDay.cnt > 0 ? (lastDay.cancelled / lastDay.cnt) * 100 : 0;
+    if (lastDay.cnt > 10 && cancelRateDist.length >= 5) {
+      const cr = calcZScore(lastCancelRate, cancelRateDist);
+      if (cr.z > 2.0) {
+        alerts.push({
+          type: "danger",
+          metric: "cancellation_anomaly",
+          message: `Alerta de cancelamento! Taxa de ${lastCancelRate.toFixed(1)}% hoje — pico anômalo (${cr.z.toFixed(1)}σ).`,
+          data_support: { z_score: rnd(cr.z), actual: rnd(lastCancelRate, 1), avg_rate: rnd(cr.mean, 1) }
+        });
+      }
+    }
+  }
 
   if (monthlyRows.length < 2) {
     return { alerts: [{ type: "info" as const, message: "Dados insuficientes para análise (menos de 2 meses)" }], summary: null };
@@ -1144,6 +1214,292 @@ export async function healthCheck(_params: QueryParams) {
   };
 }
 
+/**
+ * 20. getRFMAnalysis — Behavioral Segmentation
+ * Calculates Recency, Frequency, and Monetary value per customer.
+ */
+async function getRFMAnalysis(params: QueryParams): Promise<unknown> {
+  const tenantId = params._tenant_id;
+  const where = buildWhere(params, { includeStatus: false });
+
+  const sql = `
+    WITH recent_orders AS (
+      SELECT o.id, o.tenant_id, o.total_amount, o.order_date, o.external_order_id, o.marketplace
+      FROM public.orders o
+      WHERE ${where} AND o.status = 'paid' AND o.tenant_id = '${tenantId}'::uuid
+    ),
+    customer_orders AS (
+      SELECT 
+        o.id as order_id,
+        o.tenant_id,
+        o.total_amount,
+        o.order_date,
+        COALESCE(
+          ml.raw_json->'buyer'->>'id',
+          sh.raw_json->>'buyer_username',
+          bg.raw_json->>'nome',
+          sn.raw_json->>'orderNo'
+        ) as customer_id,
+        COALESCE(
+          ml.raw_json->'buyer'->>'nickname',
+          sh.raw_json->>'buyer_username',
+          bg.raw_json->>'nome',
+          'Cliente Shein'
+        ) as customer_name
+      FROM recent_orders o
+      LEFT JOIN public.ml_raw_orders ml ON o.external_order_id = ml.id AND o.marketplace = 'ml' AND ml.tenant_id = '${tenantId}'::uuid
+      LEFT JOIN public.bagy_raw_orders bg ON o.external_order_id = bg.id AND o.marketplace = 'bagy' AND bg.tenant_id = '${tenantId}'::uuid
+      LEFT JOIN public.shopee_raw_orders sh ON o.external_order_id = sh.id AND o.marketplace = 'shopee' AND sh.tenant_id = '${tenantId}'::uuid
+      LEFT JOIN public.shein_raw_orders sn ON o.external_order_id = sn.id AND o.marketplace = 'shein' AND sn.tenant_id = '${tenantId}'::uuid
+    ),
+    rfm_metrics AS (
+      SELECT 
+        customer_id,
+        MAX(customer_name) as customer_name,
+        EXTRACT(DAY FROM (NOW() - MAX(order_date))) as recency,
+        COUNT(order_id) as frequency,
+        SUM(total_amount) as monetary
+      FROM customer_orders
+      WHERE customer_id IS NOT NULL
+      GROUP BY customer_id
+    ),
+    rfm_scores AS (
+      SELECT 
+        *,
+        NTILE(4) OVER (ORDER BY recency DESC) as r_score,
+        NTILE(4) OVER (ORDER BY frequency ASC) as f_score,
+        NTILE(4) OVER (ORDER BY monetary ASC) as m_score
+      FROM rfm_metrics
+    )
+    SELECT 
+      customer_id,
+      customer_name,
+      recency,
+      frequency,
+      monetary,
+      (r_score + f_score + m_score) as total_score,
+      CASE 
+        WHEN (r_score + f_score + m_score) >= 10 THEN 'VIP / Campeão'
+        WHEN (r_score + f_score + m_score) >= 7 THEN 'Fiel'
+        WHEN (r_score + f_score) >= 6 THEN 'Promissor'
+        WHEN r_score <= 2 THEN 'Em Risco / Hibernando'
+        ELSE 'Regular'
+      END as segment
+    FROM rfm_scores
+    ORDER BY monetary DESC
+    LIMIT 100
+  `;
+
+  const data = await runSQL(sql, null);
+  return { data };
+}
+
+/**
+ * 21. marketBasketLite — Product Correlation
+ * Identifies products that are frequently bought together.
+ */
+async function marketBasketLite(params: QueryParams): Promise<unknown> {
+  const tenantId = params._tenant_id;
+  if (!tenantId) return { data: [] };
+
+  const where = buildWhere(params);
+
+  // Optimization: Filter orders by date/tenant FIRST, then join with raw tables
+  const sql = `
+    WITH recent_orders AS (
+      SELECT external_order_id, marketplace, tenant_id 
+      FROM public.orders 
+      WHERE ${where} AND tenant_id = '${tenantId}'::uuid
+    ),
+    order_items AS (
+      SELECT r.external_order_id as order_id, r.tenant_id, jsonb_array_elements(ml.raw_json->'order_items')->'item'->>'title' as product_name 
+      FROM recent_orders r JOIN public.ml_raw_orders ml ON r.external_order_id = ml.id WHERE r.marketplace = 'ml' AND ml.tenant_id = '${tenantId}'::uuid
+      UNION ALL
+      SELECT r.external_order_id as order_id, r.tenant_id, jsonb_array_elements(sh.raw_json->'item_list')->>'item_name' as product_name 
+      FROM recent_orders r JOIN public.shopee_raw_orders sh ON r.external_order_id = sh.id WHERE r.marketplace = 'shopee' AND sh.tenant_id = '${tenantId}'::uuid
+      UNION ALL
+      SELECT r.external_order_id as order_id, r.tenant_id, jsonb_array_elements(bg.raw_json->'order_items')->>'name' as product_name 
+      FROM recent_orders r JOIN public.bagy_raw_orders bg ON r.external_order_id = bg.id WHERE r.marketplace = 'bagy' AND bg.tenant_id = '${tenantId}'::uuid
+      UNION ALL
+      SELECT r.external_order_id as order_id, r.tenant_id, jsonb_array_elements(sn.raw_json->'orderGoodsInfoList')->>'goodsTitle' as product_name 
+      FROM recent_orders r JOIN public.shein_raw_orders sn ON r.external_order_id = sn.id WHERE r.marketplace = 'shein' AND sn.tenant_id = '${tenantId}'::uuid
+    ),
+    product_pairs AS (
+      SELECT a.product_name as product_a, b.product_name as product_b, COUNT(*) as frequency
+      FROM order_items a
+      JOIN order_items b ON a.order_id = b.order_id AND a.product_name < b.product_name
+      GROUP BY 1, 2
+    )
+    SELECT product_a, product_b, frequency
+    FROM product_pairs
+    WHERE frequency > 1
+    ORDER BY frequency DESC
+    LIMIT 20
+  `;
+
+  const data = await runSQL(sql, null);
+  return { data };
+}
+
+// ── Advanced Analytics: Patterns & Segments ────────────────────────
+
+/**
+ * Calculates Pearson correlation between revenue and other metrics.
+ * Uses PostgreSQL's native corr(y, x) function.
+ */
+export async function getMetricCorrelation(params: QueryParams) {
+  const tenantId = params._tenant_id;
+  const where = buildWhere(params);
+
+  const sql = `
+        WITH daily_metrics AS (
+            SELECT 
+                DATE(order_date) as day,
+                SUM(total_amount) as revenue,
+                COUNT(id) as order_count,
+                AVG(total_amount) as avg_ticket
+            FROM public.orders
+            WHERE ${where} AND tenant_id = '${tenantId}'::uuid
+            GROUP BY 1
+        )
+        SELECT 
+            corr(revenue, order_count) as revenue_vs_count,
+            corr(revenue, avg_ticket) as revenue_vs_ticket,
+            corr(order_count, avg_ticket) as count_vs_ticket
+        FROM daily_metrics
+    `;
+
+  const rows = await runSQL<any>(sql, null);
+  const result = rows[0] || {};
+
+  return {
+    revenue_v_orders: rnd(result.revenue_vs_count || 0),
+    revenue_v_ticket: rnd(result.revenue_vs_ticket || 0),
+    orders_v_ticket: rnd(result.count_vs_ticket || 0),
+    period: fmtPeriod(params)
+  };
+}
+
+/**
+ * Identifies specific smart segments (Churn Warning, Upsell Candidates).
+ * Based on RFM logic but returns specific customer lists.
+ */
+export async function getSmartSegments(params: QueryParams) {
+  const tenantId = params._tenant_id;
+  const where = buildWhere(params);
+  const limit = params.limit || 5;
+
+  const churnSql = `
+        WITH recent_orders AS (
+            SELECT o.id, o.total_amount, o.order_date, o.external_order_id, o.marketplace
+            FROM public.orders o
+            WHERE ${where} AND o.tenant_id = '${tenantId}'::uuid
+        ),
+        customer_orders AS (
+            SELECT 
+                o.id,
+                o.total_amount,
+                o.order_date,
+                COALESCE(
+                  ml.raw_json->'buyer'->>'nickname',
+                  sh.raw_json->>'buyer_username',
+                  bg.raw_json->>'nome',
+                  'Cliente Oculto'
+                ) as customer_name,
+                COALESCE(
+                  ml.raw_json->'buyer'->>'email',
+                  sh.raw_json->>'buyer_username',
+                  bg.raw_json->>'email'
+                ) as customer_email
+            FROM recent_orders o
+            LEFT JOIN public.ml_raw_orders ml ON o.external_order_id = ml.id AND o.marketplace = 'ml' AND ml.tenant_id = '${tenantId}'::uuid
+            LEFT JOIN public.bagy_raw_orders bg ON o.external_order_id = bg.id AND o.marketplace = 'bagy' AND bg.tenant_id = '${tenantId}'::uuid
+            LEFT JOIN public.shopee_raw_orders sh ON o.external_order_id = sh.id AND o.marketplace = 'shopee' AND sh.tenant_id = '${tenantId}'::uuid
+            LEFT JOIN public.shein_raw_orders sn ON o.external_order_id = sn.id AND o.marketplace = 'shein' AND sn.tenant_id = '${tenantId}'::uuid
+        ),
+        customer_stats AS (
+            SELECT 
+                customer_name as name,
+                customer_email as email,
+                MAX(order_date) as last_order,
+                COUNT(id) as total_orders,
+                SUM(total_amount) as total_spent
+            FROM customer_orders
+            GROUP BY 1, 2
+            HAVING COUNT(id) > 2
+        )
+        SELECT * FROM customer_stats
+        WHERE last_order < NOW() - INTERVAL '45 days'
+        ORDER BY total_spent DESC
+        LIMIT ${limit}
+    `;
+
+  const upsellSql = `
+        WITH recent_orders AS (
+            SELECT o.id, o.total_amount, o.order_date, o.external_order_id, o.marketplace
+            FROM public.orders o
+            WHERE ${where} AND o.tenant_id = '${tenantId}'::uuid
+        ),
+        customer_orders AS (
+            SELECT 
+                o.id,
+                o.total_amount,
+                o.order_date,
+                COALESCE(
+                  ml.raw_json->'buyer'->>'nickname',
+                  sh.raw_json->>'buyer_username',
+                  bg.raw_json->>'nome',
+                  'Cliente Oculto'
+                ) as customer_name,
+                COALESCE(
+                  ml.raw_json->'buyer'->>'email',
+                  sh.raw_json->>'buyer_username',
+                  bg.raw_json->>'email'
+                ) as customer_email
+            FROM recent_orders o
+            LEFT JOIN public.ml_raw_orders ml ON o.external_order_id = ml.id AND o.marketplace = 'ml' AND ml.tenant_id = '${tenantId}'::uuid
+            LEFT JOIN public.bagy_raw_orders bg ON o.external_order_id = bg.id AND o.marketplace = 'bagy' AND bg.tenant_id = '${tenantId}'::uuid
+            LEFT JOIN public.shopee_raw_orders sh ON o.external_order_id = sh.id AND o.marketplace = 'shopee' AND sh.tenant_id = '${tenantId}'::uuid
+            LEFT JOIN public.shein_raw_orders sn ON o.external_order_id = sn.id AND o.marketplace = 'shein' AND sn.tenant_id = '${tenantId}'::uuid
+        ),
+        customer_stats AS (
+            SELECT 
+                customer_name as name,
+                customer_email as email,
+                COUNT(id) as total_orders,
+                AVG(total_amount) as avg_ticket,
+                SUM(total_amount) as total_spent
+            FROM customer_orders
+            GROUP BY 1, 2
+            HAVING COUNT(id) > 5
+        )
+        SELECT * FROM customer_stats
+        WHERE avg_ticket < (SELECT AVG(total_amount) FROM public.orders WHERE ${where} AND tenant_id = '${tenantId}'::uuid) * 1.2
+        ORDER BY total_orders DESC
+        LIMIT ${limit}
+    `;
+
+  const [churners, upsellers] = await Promise.all([
+    runSQL<any>(churnSql, null),
+    runSQL<any>(upsellSql, null)
+  ]);
+
+  return {
+    churn_risk: (churners || []).map(c => ({
+      name: c.name,
+      email: c.email || 'N/A',
+      last_order: c.last_order,
+      total_spent: rnd(c.total_spent)
+    })),
+    upsell_candidates: (upsellers || []).map(u => ({
+      name: u.name,
+      email: u.email || 'N/A',
+      avg_ticket: rnd(u.avg_ticket),
+      orders: u.total_orders
+    }))
+  };
+}
+
 // ── Function Registry ───────────────────────────────────
 export const queryFunctions: Record<string, (params: QueryParams) => Promise<unknown>> = {
   countOrders,
@@ -1165,4 +1521,8 @@ export const queryFunctions: Record<string, (params: QueryParams) => Promise<unk
   yearOverYear,
   seasonalityAnalysis,
   healthCheck,
+  getRFMAnalysis,
+  marketBasketLite,
+  getMetricCorrelation,
+  getSmartSegments,
 };

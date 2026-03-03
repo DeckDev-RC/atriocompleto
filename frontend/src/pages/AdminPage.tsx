@@ -14,6 +14,7 @@ type RequestStatus = 'pending' | 'reviewed' | 'approved' | 'rejected' | 'convert
 interface Tenant {
   id: string;
   name: string;
+  ai_rate_limit: number;
   created_at: string;
   user_count: number;
 }
@@ -73,6 +74,7 @@ function TenantsPanel() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
+  const [aiLimit, setAiLimit] = useState(20);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -87,9 +89,10 @@ function TenantsPanel() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    if (editingId) await agentApi.updateTenant(editingId, name.trim());
-    else await agentApi.createTenant(name.trim());
+    if (editingId) await agentApi.updateTenant(editingId, name.trim(), aiLimit);
+    else await agentApi.createTenant(name.trim(), aiLimit);
     setName('');
+    setAiLimit(20);
     setEditingId(null);
     load();
   };
@@ -105,9 +108,17 @@ function TenantsPanel() {
     <div className="grid gap-4">
       <form onSubmit={submit} className="rounded-xl border border-border bg-card p-4">
         <p className="mb-2 text-sm font-semibold">{editingId ? 'Editar empresa' : 'Nova empresa'}</p>
-        <div className="flex gap-2">
-          <input className="flex-1 rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome da empresa" required />
-          <button className="rounded-lg bg-(--color-brand-primary) px-4 py-2 text-sm text-white">{editingId ? 'Salvar' : 'Criar'}</button>
+        <div className="flex gap-2 items-end flex-wrap md:flex-nowrap">
+          <div className="flex-1 min-w-[200px]">
+            <label className="text-xs text-muted mb-1 block">Nome da Empresa</label>
+            <input className="w-full rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" value={name} onChange={(e) => setName(e.target.value)} placeholder="Agência..." required />
+          </div>
+          <div className="w-32">
+            <label className="text-xs text-muted mb-1 block">Limite IA (hora)</label>
+            <input type="number" className="w-full rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" value={aiLimit} onChange={(e) => setAiLimit(parseInt(e.target.value))} required />
+          </div>
+          <button className="rounded-lg bg-(--color-brand-primary) px-4 py-2 text-sm text-white h-[38px]">{editingId ? 'Salvar' : 'Criar'}</button>
+          {editingId && <button type="button" className="rounded-lg border border-border px-4 py-2 text-sm h-[38px]" onClick={() => { setEditingId(null); setName(''); setAiLimit(20); }}>Cancelar</button>}
         </div>
       </form>
       {loading ? <p className="text-sm text-muted">Carregando...</p> : tenants.map((tenant) => (
@@ -115,10 +126,13 @@ function TenantsPanel() {
           <div className="flex items-center justify-between gap-2">
             <div>
               <p className="text-sm font-semibold">{tenant.name}</p>
-              <p className="text-xs text-muted">{tenant.user_count} usuario(s)</p>
+              <div className="flex gap-3">
+                <p className="text-xs text-muted">{tenant.user_count} usuario(s)</p>
+                <p className="text-xs text-brand-primary font-medium">Limite IA: {tenant.ai_rate_limit}/h</p>
+              </div>
             </div>
             <div className="flex gap-2">
-              <button className="rounded-md border border-border px-2 py-1 text-xs" onClick={() => { setEditingId(tenant.id); setName(tenant.name); }}>Editar</button>
+              <button className="rounded-md border border-border px-2 py-1 text-xs" onClick={() => { setEditingId(tenant.id); setName(tenant.name); setAiLimit(tenant.ai_rate_limit); }}>Editar</button>
               <button className="rounded-md border border-danger/30 px-2 py-1 text-xs text-danger" onClick={() => remove(tenant)}>Excluir</button>
             </div>
           </div>

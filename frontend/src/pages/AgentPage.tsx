@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../contexts/AppContext';
 import { agentApi } from '../services/agentApi';
 import { AgentMessage, AgentInput, AgentHistory } from '../components/Agent';
+import type { AIAction } from '../components/Agent/InsightCard';
 import { useAuth } from '../contexts/AuthContext';
 import { useBrandPrimaryColor, getBrandPrimaryWithOpacity } from '../hooks/useBrandPrimaryColor';
 
@@ -29,6 +30,7 @@ interface Message {
   timestamp: string;
   tokenUsage?: TokenUsage;
   suggestions?: string[];
+  action?: AIAction;
 }
 
 interface Conversation {
@@ -107,32 +109,82 @@ export function AgentPage() {
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
 
-    const result = await agentApi.sendMessage(message, conversationId || undefined);
+    // Placeholder for assistant response during stream
+    const assistantMsg: Message = {
+      role: 'assistant',
+      content: '',
+      timestamp: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, assistantMsg]);
 
-    if (result.success && result.data) {
-      setConversationId(result.data.conversation_id);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: result.data!.message,
-          timestamp: new Date().toISOString(),
-          tokenUsage: result.data!.tokenUsage,
-          suggestions: result.data!.suggestions,
-        },
-      ]);
-      loadConversations();
-    } else {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: result.error || 'Erro ao processar mensagem. Tente novamente.',
-          timestamp: new Date().toISOString(),
-        },
-      ]);
+    let fullText = '';
+    let lastAction: AIAction | undefined;
+
+    try {
+      const stream = agentApi.sendMessageStream(message, conversationId || undefined);
+
+      for await (const chunk of stream) {
+        if (chunk.type === 'text') {
+          fullText += chunk.content;
+          setMessages((prev) => {
+            const newMessages = [...prev];
+            const last = newMessages[newMessages.length - 1];
+            if (last && last.role === 'assistant') {
+              last.content = fullText;
+            }
+            return newMessages;
+          });
+        } else if (chunk.type === 'action') {
+          lastAction = chunk.content;
+          setMessages((prev) => {
+            const newMessages = [...prev];
+            const last = newMessages[newMessages.length - 1];
+            if (last && last.role === 'assistant') {
+              last.action = lastAction;
+            }
+            return newMessages;
+          });
+        } else if (chunk.type === 'done') {
+          if (chunk.conversation_id) setConversationId(chunk.conversation_id);
+          setMessages((prev) => {
+            const newMessages = [...prev];
+            const last = newMessages[newMessages.length - 1];
+            if (last && last.role === 'assistant') {
+              last.tokenUsage = chunk.tokenUsage;
+              last.suggestions = chunk.suggestions;
+            }
+            return newMessages;
+          });
+          loadConversations();
+        } else if (chunk.type === 'error') {
+          throw new Error(chunk.content);
+        }
+      }
+    } catch (err: any) {
+      console.error('[AgentPage] Stream error:', err);
+      setMessages((prev) => {
+        const newMessages = [...prev];
+        const last = newMessages[newMessages.length - 1];
+        if (last && last.role === 'assistant') {
+          last.content = err.message || 'Erro ao processar mensagem. Tente novamente.';
+        }
+        return newMessages;
+      });
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
+  };
+
+  const handleExecuteAction = (action: AIAction) => {
+    console.log('[AgentPage] Executing action:', action);
+    // Aqui poderíamos disparar navegação ou abrir modais específicos
+    // Ex: if (action.action === 'CREATE_PROMOTION') navigate('/promotions/new', { state: action.payload });
+    alert(`Ação solicitada: ${action.action}\nMotivo: ${action.reason}`);
+  };
+
+  const handleChartClick = (label: string, value: number, chartTitle?: string) => {
+    const prompt = `Me dê mais detalhes sobre "${label}" ${chartTitle ? `no gráfico de "${chartTitle}"` : ''}. O valor é ${value}.`;
+    handleSend(prompt);
   };
 
   const handleNewChat = async () => {
@@ -277,6 +329,9 @@ export function AgentPage() {
                     content={msg.content}
                     timestamp={msg.timestamp}
                     tokenUsage={msg.tokenUsage}
+                    action={msg.action}
+                    onExecuteAction={handleExecuteAction}
+                    onChartClick={handleChartClick}
                   />
                   {/* Suggestion chips */}
                   {msg.role === 'assistant' && msg.suggestions && msg.suggestions.length > 0 &&
@@ -343,15 +398,15 @@ function EmptyState({
   hasTenant: boolean;
 }) {
   const brandPrimaryColor = useBrandPrimaryColor();
-  
+
   return (
     <div className="flex h-full flex-col items-center justify-center px-6 py-12">
       {/* Icon */}
       <div
         className="mb-6 flex h-[72px] w-[72px] items-center justify-center rounded-[22px] shadow-[0_8px_32px_rgba(56,182,255,0.12)]"
-        style={{ 
+        style={{
           animation: 'scale-in 0.5s cubic-bezier(0.16,1,0.3,1) both',
-          background: brandPrimaryColor 
+          background: brandPrimaryColor
             ? `linear-gradient(to bottom right, ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.15)}, ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.08)})`
             : 'linear-gradient(to bottom right, color-mix(in srgb, var(--color-brand-primary) 15%, transparent), color-mix(in srgb, var(--color-brand-primary) 8%, transparent))',
         }}
@@ -400,7 +455,7 @@ function EmptyState({
         onClick={onHealthCheck}
         disabled={!isConnected || !hasTenant}
         className="mb-6 flex items-center gap-2 rounded-full border px-5 py-2.5 text-[13px] font-semibold transition-all duration-300 hover:text-white active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-        style={{ 
+        style={{
           animation: 'slide-up 0.5s cubic-bezier(0.16,1,0.3,1) 0.2s both',
           borderColor: brandPrimaryColor ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.3) : 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)',
           backgroundColor: brandPrimaryColor ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.05) : 'color-mix(in srgb, var(--color-brand-primary) 5%, transparent)',
@@ -423,7 +478,7 @@ function EmptyState({
         }}
         onMouseLeave={(e) => {
           if (!e.currentTarget.disabled) {
-            e.currentTarget.style.backgroundColor = brandPrimaryColor 
+            e.currentTarget.style.backgroundColor = brandPrimaryColor
               ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.05)
               : 'color-mix(in srgb, var(--color-brand-primary) 5%, transparent)';
             e.currentTarget.style.boxShadow = '';
