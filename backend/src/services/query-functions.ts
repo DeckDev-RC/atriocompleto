@@ -867,6 +867,7 @@ export async function yearOverYear(params: QueryParams) {
   const w = buildWhere(params);
   const tid = params._tenant_id;
 
+  // Annual totals
   const rows = await runSQL<{ year: string; cnt: number; total: number; avg: number }>(`
     SELECT TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY') AS year,
            COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total,
@@ -883,11 +884,41 @@ export async function yearOverYear(params: QueryParams) {
     growth_pct: i > 0 && rows[i - 1].total > 0 ? rnd(((r.total - rows[i - 1].total) / rows[i - 1].total) * 100) : null,
   }));
 
+  // Monthly breakdown across years (e.g. Jan 2025 vs Jan 2026)
+  const monthRows = await runSQL<{ year: string; month: string; cnt: number; total: number; avg: number }>(`
+    SELECT TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY') AS year,
+           TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'MM') AS month,
+           COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total,
+           COALESCE(AVG(total_amount), 0)::float AS avg
+    FROM orders WHERE ${w}
+    GROUP BY year, month ORDER BY month, year
+  `, tid);
+
+  // Group by month for cross-year comparison
+  const monthMap: Record<string, Array<{ year: string; orders: number; revenue: number; avg_ticket: number }>> = {};
+  monthRows.forEach(r => {
+    if (!monthMap[r.month]) monthMap[r.month] = [];
+    monthMap[r.month].push({ year: r.year, orders: r.cnt, revenue: rnd(r.total), avg_ticket: rnd(r.avg) });
+  });
+
+  const monthlyComparison = Object.entries(monthMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, yearData]) => {
+      const sorted = yearData.sort((a, b) => a.year.localeCompare(b.year));
+      const lastTwo = sorted.length >= 2 ? sorted.slice(-2) : sorted;
+      const growthPct = lastTwo.length === 2 && lastTwo[0].revenue > 0
+        ? rnd(((lastTwo[1].revenue - lastTwo[0].revenue) / lastTwo[0].revenue) * 100)
+        : null;
+      return { month, years: sorted, growth_pct: growthPct };
+    });
+
   return {
     years,
+    monthly_comparison: monthlyComparison,
     filters: { status: params.status, marketplace: params.marketplace, period: fmtPeriod(params) },
   };
 }
+
 
 // ── 18. seasonalityAnalysis ─────────────────────────────
 export async function seasonalityAnalysis(params: QueryParams) {

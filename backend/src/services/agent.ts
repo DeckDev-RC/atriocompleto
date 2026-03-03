@@ -203,11 +203,12 @@ const functionDeclarations: FunctionDeclaration[] = [
   },
   {
     name: "yearOverYear",
-    description: "Comparacao ANO A ANO (YoY). Compara mesmos meses entre anos diferentes e totais anuais. Use para: 'comparar com ano passado', 'janeiro 2025 vs janeiro 2026', 'ano a ano', 'YoY', 'crescimento anual'.",
+    description: "Comparacao ANO A ANO (YoY). Compara mesmos meses entre anos diferentes e totais anuais. Quando start_date/end_date sao fornecidos, compara APENAS os meses dentro do periodo, permitindo comparar ex: Jan-Fev 2026 vs Jan-Fev 2025. Use para: 'comparar com ano passado', 'janeiro 2025 vs janeiro 2026', 'ano a ano', 'YoY', 'crescimento anual', 'analise completa de janeiro e fevereiro de 2026 em comparacao ao de 2025'.",
     parameters: {
       type: "object" as Type, properties: {
         status: { type: "string" as Type, description: "Filtrar por status" },
         marketplace: { type: "string" as Type, description: "Filtrar por marketplace" },
+        ...DATE_PARAMS,
       }
     },
   },
@@ -744,11 +745,41 @@ function formatFallback(fnName: string, result: unknown): string {
       }
 
       case "yearOverYear": {
-        const yearly = r.yearly_totals as Array<Record<string, unknown>>;
-        return "**Comparacao anual:**\n\n" +
+        const yearly = r.years as Array<Record<string, unknown>>;
+        const monthlyComp = r.monthly_comparison as Array<Record<string, unknown>> | undefined;
+        let text = "**Comparacao anual:**\n\n" +
           (yearly || []).map((y) => "- **" + y.year + ":** " + fBRL((y.revenue as number) || 0) +
-            " | " + fNum((y.orders as number) || 0) + " pedidos | TM: " + fBRL((y.avg_ticket as number) || 0)
+            " | " + fNum((y.orders as number) || 0) + " pedidos | TM: " + fBRL((y.avg_ticket as number) || 0) +
+            (y.growth_pct !== null && y.growth_pct !== undefined ? " | " + fPct(y.growth_pct as number) : "")
           ).join("\n");
+
+        if (monthlyComp && monthlyComp.length > 0) {
+          text += "\n\n**Comparacao mensal:**\n\n";
+          text += monthlyComp.map((mc) => {
+            const monthLabel = monthPT[(mc.month as string)] || (mc.month as string);
+            const years = mc.years as Array<Record<string, unknown>>;
+            const yLines = (years || []).map((y) =>
+              "  - **" + y.year + ":** " + fBRL((y.revenue as number) || 0) +
+              " | " + fNum((y.orders as number) || 0) + " ped. | TM " + fBRL((y.avg_ticket as number) || 0)
+            ).join("\n");
+            const growthInfo = mc.growth_pct !== null && mc.growth_pct !== undefined
+              ? " (" + fPct(mc.growth_pct as number) + ")" : "";
+            return "- **" + monthLabel + "**" + growthInfo + ":\n" + yLines;
+          }).join("\n");
+        }
+
+        // Chart
+        if (yearly && yearly.length >= 2) {
+          const chartBlock = "\n\n```chart\n" + JSON.stringify({
+            type: "bar",
+            title: "Comparacao Ano a Ano",
+            labels: yearly.map((y) => String(y.year)),
+            datasets: [{ label: "Faturamento", data: yearly.map((y) => Math.round((y.revenue as number) || 0)) }],
+            options: { currency: true },
+          }) + "\n```";
+          text += chartBlock;
+        }
+        return text;
       }
 
       case "seasonalityAnalysis": {
@@ -922,6 +953,8 @@ function calculateCost(inputTokens: number, outputTokens: number): number {
 }
 
 // ── Main Agent ──────────────────────────────────────────
+const MAX_FUNCTION_CALLS = 5;
+
 export async function processMessage(
   userMessage: string,
   conversationHistory: ChatMessage[],
@@ -934,92 +967,95 @@ export async function processMessage(
     const history = buildHistory(conversationHistory);
     const systemPrompt = await buildSystemPrompt(tenantId);
 
-    const response = await genai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: [...history, { role: "user", parts: [{ text: userMessage }] }],
-      config: { systemInstruction: systemPrompt, tools: [{ functionDeclarations }], temperature: 0.3, maxOutputTokens: 8192 },
-    });
+    // Build the initial conversation contents
+    const contents: Content[] = [...history, { role: "user", parts: [{ text: userMessage }] }];
+    let lastFnName: string | undefined;
 
-    // Track tokens from first call
-    if (response.usageMetadata) {
-      totalInputTokens += response.usageMetadata.promptTokenCount || 0;
-      totalOutputTokens += response.usageMetadata.candidatesTokenCount || 0;
-    }
+    // Multi-turn function calling loop — allows up to MAX_FUNCTION_CALLS
+    for (let turn = 0; turn <= MAX_FUNCTION_CALLS; turn++) {
+      const isLastTurn = turn === MAX_FUNCTION_CALLS;
 
-    const candidate = response.candidates?.[0];
-    if (!candidate?.content?.parts) {
+      const response = await genai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents,
+        config: {
+          systemInstruction: systemPrompt,
+          // On the last turn, don't offer tools so Gemini is forced to produce text
+          tools: isLastTurn ? undefined : [{ functionDeclarations }],
+          temperature: 0.3,
+          maxOutputTokens: 8192,
+        },
+      });
+
+      // Track tokens
+      if (response.usageMetadata) {
+        totalInputTokens += response.usageMetadata.promptTokenCount || 0;
+        totalOutputTokens += response.usageMetadata.candidatesTokenCount || 0;
+      }
+
+      const candidate = response.candidates?.[0];
+      if (!candidate?.content?.parts) {
+        return {
+          text: "Desculpe, nao consegui processar. Tente novamente.",
+          tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, totalTokens: totalInputTokens + totalOutputTokens, estimatedCostUSD: calculateCost(totalInputTokens, totalOutputTokens) },
+        };
+      }
+
+      // Check if Gemini wants to call a function
+      const fcPart = candidate.content.parts.find((p) => p.functionCall);
+
+      if (fcPart?.functionCall) {
+        const { name, args } = fcPart.functionCall;
+        lastFnName = name!;
+        console.log("[Agent] Fn:", name, JSON.stringify(args));
+
+        let fnResult: unknown;
+        try {
+          if (name === "executeSQLQuery" && args?.sql) {
+            fnResult = await executeAdHocSQL(args.sql as string, tenantId);
+          } else if (name && queryFunctions[name]) {
+            fnResult = await queryFunctions[name]({ ...args, _tenant_id: tenantId } as QueryParams);
+          } else {
+            fnResult = { error: "Funcao nao encontrada: " + name };
+          }
+        } catch (e) {
+          console.error("[Agent] Fn error:", e);
+          fnResult = { error: (e instanceof Error ? e.message : "erro") };
+        }
+
+        console.log("[Agent] Result:", JSON.stringify(fnResult).substring(0, 500));
+        const truncated = truncateForGemini(fnResult);
+
+        // Append function call + response to the conversation and continue loop
+        contents.push(
+          { role: "model", parts: [{ functionCall: { name: name!, args: args || {} } }] },
+          { role: "user", parts: [{ functionResponse: { name: name!, response: truncated } }] },
+        );
+        continue;
+      }
+
+      // No function call — Gemini returned text
+      const text = candidate.content.parts.map((p) => p.text).filter(Boolean).join("");
+      const tokenUsage: TokenUsage = {
+        inputTokens: totalInputTokens,
+        outputTokens: totalOutputTokens,
+        totalTokens: totalInputTokens + totalOutputTokens,
+        estimatedCostUSD: calculateCost(totalInputTokens, totalOutputTokens),
+      };
+
+      if (text && text.trim().length > 0) {
+        return { text, tokenUsage, suggestions: lastFnName ? SUGGESTIONS_MAP[lastFnName] : undefined };
+      }
       return {
-        text: "Desculpe, nao consegui processar. Tente novamente.",
-        tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, totalTokens: totalInputTokens + totalOutputTokens, estimatedCostUSD: calculateCost(totalInputTokens, totalOutputTokens) }
+        text: "Nao consegui gerar resposta. Reformule a pergunta.",
+        tokenUsage,
+        suggestions: lastFnName ? SUGGESTIONS_MAP[lastFnName] : undefined,
       };
     }
 
-    const fcPart = candidate.content.parts.find((p) => p.functionCall);
-
-    if (fcPart?.functionCall) {
-      const { name, args } = fcPart.functionCall;
-      console.log("[Agent] Fn:", name, JSON.stringify(args));
-
-      let fnResult: unknown;
-      try {
-        if (name === "executeSQLQuery" && args?.sql) {
-          fnResult = await executeAdHocSQL(args.sql as string, tenantId);
-        } else if (name && queryFunctions[name]) {
-          fnResult = await queryFunctions[name]({ ...args, _tenant_id: tenantId } as QueryParams);
-        } else {
-          fnResult = { error: "Funcao nao encontrada: " + name };
-        }
-      } catch (e) {
-        console.error("[Agent] Fn error:", e);
-        fnResult = { error: (e instanceof Error ? e.message : "erro") };
-      }
-
-      console.log("[Agent] Result:", JSON.stringify(fnResult).substring(0, 500));
-      const truncated = truncateForGemini(fnResult);
-
-      try {
-        const fmtResp = await genai.models.generateContent({
-          model: GEMINI_MODEL,
-          contents: [
-            ...history,
-            { role: "user", parts: [{ text: userMessage }] },
-            { role: "model", parts: [{ functionCall: { name: name!, args: args || {} } }] },
-            { role: "user", parts: [{ functionResponse: { name: name!, response: truncated } }] },
-          ],
-          config: { systemInstruction: systemPrompt, temperature: 0.3, maxOutputTokens: 8192 },
-        });
-
-        // Track tokens from second call
-        if (fmtResp.usageMetadata) {
-          totalInputTokens += fmtResp.usageMetadata.promptTokenCount || 0;
-          totalOutputTokens += fmtResp.usageMetadata.candidatesTokenCount || 0;
-        }
-
-        const text = fmtResp.candidates?.[0]?.content?.parts?.map((p) => p.text).filter(Boolean).join("");
-        const tokenUsage: TokenUsage = {
-          inputTokens: totalInputTokens,
-          outputTokens: totalOutputTokens,
-          totalTokens: totalInputTokens + totalOutputTokens,
-          estimatedCostUSD: calculateCost(totalInputTokens, totalOutputTokens),
-        };
-
-        if (text && text.trim().length > 0) return { text, tokenUsage, suggestions: SUGGESTIONS_MAP[name!] };
-        return { text: formatFallback(name!, fnResult), tokenUsage, suggestions: SUGGESTIONS_MAP[name!] };
-      } catch (fmtErr) {
-        console.error("[Agent] Format error:", fmtErr);
-        return {
-          text: formatFallback(name!, fnResult),
-          suggestions: SUGGESTIONS_MAP[name!],
-          tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, totalTokens: totalInputTokens + totalOutputTokens, estimatedCostUSD: calculateCost(totalInputTokens, totalOutputTokens) }
-        };
-      }
-    }
-
-    const text = candidate.content.parts.map((p) => p.text).filter(Boolean).join("");
-    return {
-      text: text || "Nao consegui gerar resposta. Reformule a pergunta.",
-      tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, totalTokens: totalInputTokens + totalOutputTokens, estimatedCostUSD: calculateCost(totalInputTokens, totalOutputTokens) }
-    };
+    // Should never reach here, but safety fallback
+    const tokenUsage: TokenUsage = { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, totalTokens: totalInputTokens + totalOutputTokens, estimatedCostUSD: calculateCost(totalInputTokens, totalOutputTokens) };
+    return { text: "Nao consegui gerar resposta. Reformule a pergunta.", tokenUsage };
   } catch (error) {
     console.error("[Agent] Fatal:", error);
     const tokenUsage: TokenUsage = { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, totalTokens: totalInputTokens + totalOutputTokens, estimatedCostUSD: calculateCost(totalInputTokens, totalOutputTokens) };
