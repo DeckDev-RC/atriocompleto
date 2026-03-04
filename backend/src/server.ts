@@ -17,6 +17,7 @@ import healthRoutes from "./routes/health";
 import auditRoutes from "./routes/audit";
 
 const app = express();
+app.set('trust proxy', 1); // Confia no proxy reverso do Easypanel/Traefik para o rate-limit funcionar
 
 // ── Security ────────────────────────────────────────────
 app.use(helmet());
