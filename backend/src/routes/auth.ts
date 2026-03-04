@@ -89,6 +89,24 @@ router.post("/login", authLimiter, async (req: Request, res: Response) => {
     const email = normalizeEmail(parsed.data.email);
     const { password } = parsed.data;
 
+    // --- DIAGNOSTIC LOGS ---
+    console.log(`[Diagnostic] Attempting login for email: "${email}" (length: ${email.length})`);
+    console.log(`[Diagnostic] Password length: ${password.length}`);
+    console.log(`[Diagnostic] Configured SUPABASE_URL: "${env.SUPABASE_URL}" (length: ${env.SUPABASE_URL.length})`);
+
+    // Quick connectivity test
+    try {
+      const { count, error: connError } = await supabaseAdmin.from("profiles").select("*", { count: 'exact', head: true }).limit(1);
+      if (connError) {
+        console.error("[Diagnostic] Database connectivity check failed:", connError);
+      } else {
+        console.log(`[Diagnostic] Database connectivity OK. Profiles found: ${count}`);
+      }
+    } catch (e) {
+      console.error("[Diagnostic] Database connectivity check threw error:", e);
+    }
+    // -----------------------
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
