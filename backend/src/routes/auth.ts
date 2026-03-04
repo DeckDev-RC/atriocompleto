@@ -95,6 +95,7 @@ router.post("/login", authLimiter, async (req: Request, res: Response) => {
     });
 
     if (error || !data.user || !data.session) {
+      console.error("[Auth] signInWithPassword error details:", error);
       res.status(401).json({
         success: false,
         error: error?.message === "Invalid login credentials"
