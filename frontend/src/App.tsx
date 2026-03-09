@@ -48,6 +48,8 @@ const PatternDiscoveryPage = lazyWithRetry(() => import('./pages/PatternDiscover
 const StrategicReportPage = lazyWithRetry(() => import('./pages/StrategicReportPage'));
 const CampaignRecommendationsPage = lazyWithRetry(() => import('./pages/CampaignRecommendationsPage'));
 const BenchmarkingPage = lazyWithRetry(() => import('./pages/BenchmarkingPage'));
+const WhatIfAnalysisPage = lazyWithRetry(() => import('./pages/Simulations/WhatIfAnalysis'));
+const InventoryOptimizationPage = lazyWithRetry(() => import('./pages/Simulations/InventoryOptimization'));
 
 function PageLoader() {
   return (
@@ -145,6 +147,16 @@ function AppRoutes() {
           <Route path="benchmarking" element={
             <ProtectedRoute permission="acessar_agente">
               <BenchmarkingPage />
+            </ProtectedRoute>
+          } />
+          <Route path="simulacoes" element={
+            <ProtectedRoute permission="acessar_agente">
+              <WhatIfAnalysisPage />
+            </ProtectedRoute>
+          } />
+          <Route path="simulacoes/inventory" element={
+            <ProtectedRoute permission="acessar_agente">
+              <InventoryOptimizationPage />
             </ProtectedRoute>
           } />
         </Route>

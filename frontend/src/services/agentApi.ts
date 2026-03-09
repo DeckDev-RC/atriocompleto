@@ -950,6 +950,63 @@ class AgentApiService {
   async getLatestIndustryAnalysis() {
     return this.request<any>('/api/benchmarking/industry/latest');
   }
+
+  // ══════════════════════════════════════════════════════
+  // SIMULATIONS (What-If Analysis)
+  // ══════════════════════════════════════════════════════
+
+  async getSimulationBaseline() {
+    return this.request<{
+      revenue: number;
+      orders: number;
+      avg_ticket: number;
+      sessions: number;
+      conversion_rate: number;
+      generated_at: string;
+    }>('/api/simulations/baseline');
+  }
+
+  async generateSimulationAnalysis(payload: { scenario_data: any; baseline: any; projected: any }) {
+    return this.request<any>('/api/simulations/analysis', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async getSavedSimulations() {
+    return this.request<any[]>('/api/simulations');
+  }
+
+  async saveSimulation(payload: { name: string; scenario_data: any; baseline_metrics: any; projected_metrics: any; ai_analysis?: any }) {
+    return this.request<any>('/api/simulations', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async deleteSimulation(id: string) {
+    return this.request(`/api/simulations/${id}`, { method: 'DELETE' });
+  }
+
+  // ══════════════════════════════════════════════════════
+  // INVENTORY SIMULATION (What-If Analysis)
+  // ══════════════════════════════════════════════════════
+
+  async runInventorySimulation(params: {
+    averageDemand: number;
+    demandStdDev: number;
+    leadTimeDays: number;
+    unitCost: number;
+    orderCost: number;
+    holdingCostPercent: number;
+    shortageCost: number;
+    serviceLevelTarget: number;
+  }) {
+    return this.request<any>('/api/inventory/run', {
+      method: 'POST',
+      body: JSON.stringify(params)
+    });
+  }
 }
 
 export const agentApi = new AgentApiService();
