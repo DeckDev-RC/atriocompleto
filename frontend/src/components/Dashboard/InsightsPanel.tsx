@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
 import { Sparkles, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import type { AutoInsight } from '../../types/insights';
 import { agentApi } from '../../services/agentApi';
@@ -87,12 +86,6 @@ export function InsightsPanel({ onSelectInsight }: InsightsPanelProps) {
                     <span className="flex h-5 items-center rounded-full bg-brand-primary/10 px-2.5 text-[10px] font-extrabold text-brand-primary uppercase tracking-wider">
                         IA Proativa
                     </span>
-                    <Link
-                        to="/insights/history"
-                        className="ml-auto text-[11px] font-bold text-brand-primary hover:underline uppercase tracking-tighter"
-                    >
-                        Ver Histórico
-                    </Link>
                 </div>
 
                 <div className="flex items-center gap-2">

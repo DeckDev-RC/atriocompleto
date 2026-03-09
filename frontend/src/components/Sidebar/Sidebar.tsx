@@ -7,6 +7,7 @@ import {
   Shield,
   Settings,
   Search,
+  Sparkles,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../../contexts/AppContext';
@@ -66,6 +67,7 @@ export function Sidebar() {
         {
           section: 'APPS',
           items: [
+            { icon: Sparkles, label: 'Insights', path: '/insights', permission: 'acessar_agente' },
             { icon: null, imageSrc: optimusSidebarIcon, label: 'Optimus', path: '/agente', permission: 'acessar_agente' },
             { icon: Search, label: 'Padrões', path: '/analytics/patterns', permission: 'acessar_agente' }
           ],

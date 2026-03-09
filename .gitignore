@@ -57,3 +57,13 @@ ehthumbs.db
 # ── Testes ──────────────────────────────────
 coverage/
 .nyc_output/
+
+# ── Temporários / Testes Manuais ────────────
+*_logs.txt
+docker_ps.txt
+pg_hba.txt
+*.xlsx
+generate_excel*.py
+*supabase_env*.json
+*pooler_env*.json
+*.bak

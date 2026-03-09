@@ -8,26 +8,30 @@ import { supabaseAdmin } from "../config/supabase";
  * NOW:    1-3 SQL queries with GROUP BY per function (~10-100 rows returned)
  *         ~50x fewer HTTP requests, ~100x less memory, ~10x faster
  *
- * FUNCTIONS:
- *  1. countOrders       — Count orders
- *  2. totalSales        — Total revenue
- *  3. avgTicket         — Average ticket
- *  4. ordersByStatus    — Distribution by status
- *  5. ordersByMarketplace — Sales by marketplace
- *  6. salesByMonth      — Monthly evolution
- *  7. salesByDayOfWeek  — Performance by day of week
- *  8. topDays           — Best/worst sales days
- *  9. cancellationRate  — Cancellation rate
- * 10. compareMarketplaces — Detailed marketplace comparison
- * 11. comparePeriods    — Period-over-period comparison
- * 12. salesByHour       — Distribution by hour
- * 13. salesForecast     — Revenue forecast
- * 14. executiveSummary  — Complete executive summary
- * 15. marketplaceGrowth — Monthly evolution per marketplace
- * 16. cancellationByMonth — Monthly cancellation evolution
- * 17. yearOverYear      — Year-over-year comparison
- * 18. seasonalityAnalysis — Seasonality patterns
- * 19. healthCheck       — Smart diagnostic with alerts
+ * FUNCTIONS (23):
+ *  1. countOrders          — Count orders
+ *  2. totalSales           — Total revenue
+ *  3. avgTicket            — Average ticket
+ *  4. ordersByStatus       — Distribution by status
+ *  5. ordersByMarketplace  — Sales by marketplace
+ *  6. salesByMonth         — Monthly evolution
+ *  7. salesByDayOfWeek     — Performance by day of week
+ *  8. topDays              — Best/worst sales days
+ *  9. cancellationRate     — Cancellation rate
+ * 10. compareMarketplaces  — Detailed marketplace comparison
+ * 11. comparePeriods       — Period-over-period comparison
+ * 12. salesByHour          — Distribution by hour
+ * 13. salesForecast        — Revenue forecast
+ * 14. executiveSummary     — Complete executive summary
+ * 15. marketplaceGrowth    — Monthly evolution per marketplace
+ * 16. cancellationByMonth  — Monthly cancellation evolution
+ * 17. yearOverYear         — Year-over-year comparison
+ * 18. seasonalityAnalysis  — Seasonality patterns
+ * 19. healthCheck          — Smart diagnostic with alerts
+ * 20. getRFMAnalysis       — RFM customer segmentation
+ * 21. marketBasketLite     — Market basket analysis (cross-sell)
+ * 22. getMetricCorrelation — Metric correlation analysis
+ * 23. getSmartSegments     — Smart customer segmentation (churn/upsell)
  */
 
 // ── Types ───────────────────────────────────────────────
@@ -82,6 +86,29 @@ function safeDate(dateStr: string): string {
 }
 
 /**
+ * Escapes a string value for safe use in SQL literals.
+ * - Escapes single quotes (SQL injection)
+ * - Escapes backslashes (PostgreSQL)
+ * - Strips LIKE wildcards (% and _) when used in LIKE clauses
+ */
+function escapeSQL(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "''");
+}
+
+function escapeLike(value: string): string {
+  return escapeSQL(value).replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
+/**
+ * Validates that a string only contains safe alphanumeric/space/accent characters.
+ * Rejects input with SQL meta-characters that shouldn't appear in status/marketplace names.
+ */
+function isSafeIdentifier(value: string): boolean {
+  // Allow letters (including accented), digits, spaces, hyphens, underscores, dots
+  return /^[\p{L}\p{N}\s\-_.,()]+$/u.test(value) && value.length <= 100;
+}
+
+/**
  * Builds WHERE clause fragments from params.
  * tenant_id is handled by the RPC function, not here.
  */
@@ -89,7 +116,7 @@ function buildWhere(params: QueryParams, opts: { includeStatus?: boolean; includ
   const { includeStatus = true, includeMarketplace = true } = opts;
   const clauses: string[] = ["1=1"];
 
-  // Date filter
+  // Date filter (already validated by safeDate)
   if (params.start_date && params.end_date) {
     const s = safeDate(params.start_date.replace(/[^0-9-]/g, "").substring(0, 10));
     const e = safeDate(params.end_date.replace(/[^0-9-]/g, "").substring(0, 10));
@@ -99,16 +126,20 @@ function buildWhere(params: QueryParams, opts: { includeStatus?: boolean; includ
     clauses.push(`order_date >= NOW() - INTERVAL '${n} days'`);
   }
 
-  // Status filter
+  // Status filter — validated + escaped
   if (includeStatus && params.status) {
-    const safe = params.status.replace(/'/g, "''");
-    clauses.push(`LOWER(status) = LOWER('${safe}')`);
+    if (!isSafeIdentifier(params.status)) {
+      throw new Error("Valor de status inválido");
+    }
+    clauses.push(`LOWER(status) = LOWER('${escapeSQL(params.status)}')`);
   }
 
-  // Marketplace filter
+  // Marketplace filter — validated + escaped (including LIKE wildcards)
   if (includeMarketplace && params.marketplace) {
-    const safe = params.marketplace.replace(/'/g, "''");
-    clauses.push(`LOWER(marketplace) LIKE LOWER('%${safe}%')`);
+    if (!isSafeIdentifier(params.marketplace)) {
+      throw new Error("Valor de marketplace inválido");
+    }
+    clauses.push(`LOWER(marketplace) LIKE LOWER('%${escapeLike(params.marketplace)}%')`);
   }
 
   return clauses.join(" AND ");

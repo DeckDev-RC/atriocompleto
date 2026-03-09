@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "../config/supabase";
 import { queryFunctions } from "./query-functions";
 import { genai, GEMINI_MODEL } from "../config/gemini";
+import { z } from "zod";
 
 export interface AutoInsight {
     id: string;
@@ -16,9 +17,86 @@ export interface AutoInsight {
     created_at: string;
 }
 
+// ── Zod schema for Gemini response validation ───────────
+const insightActionSchema = z.object({
+    label: z.string(),
+    action: z.string(),
+});
+
+const insightSchema = z.object({
+    category: z.enum(['vendas', 'clientes', 'estoque', 'financeiro', 'marketing', 'operacional']),
+    priority: z.enum(['critical', 'high', 'medium', 'low']),
+    title: z.string().min(1).max(200),
+    description: z.string().min(1).max(2000),
+    importance_score: z.number().min(0).max(100),
+    recommended_actions: z.array(insightActionSchema).max(5),
+    data_support: z.record(z.unknown()).optional().default({}),
+});
+
+const insightsArraySchema = z.array(insightSchema).max(20);
+
+// ── Retry with backoff (reusable) ───────────────────────
+async function callGeminiWithRetry<T>(
+    fn: () => Promise<T>,
+    label: string,
+    maxRetries = 3,
+): Promise<T> {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            return await fn();
+        } catch (error: any) {
+            const isRetryable =
+                error?.status === 429 ||
+                error?.status === 503 ||
+                error?.message?.includes("429") ||
+                error?.message?.includes("503") ||
+                error?.message?.includes("UNAVAILABLE");
+
+            if (!isRetryable || attempt === maxRetries - 1) throw error;
+
+            const delay = 1000 * Math.pow(2, attempt) + Math.random() * 500;
+            console.warn(`[${label}] Retry ${attempt + 1}/${maxRetries} after ${Math.round(delay)}ms`);
+            await new Promise((r) => setTimeout(r, delay));
+        }
+    }
+    throw new Error("Unreachable");
+}
+
+// ── Concurrency limiter ─────────────────────────────────
+async function runWithConcurrency<T>(
+    tasks: (() => Promise<T>)[],
+    concurrency: number,
+): Promise<PromiseSettledResult<T>[]> {
+    const results: PromiseSettledResult<T>[] = [];
+    const executing = new Set<Promise<void>>();
+
+    for (const task of tasks) {
+        const p = (async () => {
+            try {
+                const value = await task();
+                results.push({ status: "fulfilled", value });
+            } catch (reason) {
+                results.push({ status: "rejected", reason });
+            }
+        })();
+
+        executing.add(p);
+        p.finally(() => executing.delete(p));
+
+        if (executing.size >= concurrency) {
+            await Promise.race(executing);
+        }
+    }
+    await Promise.all(executing);
+    return results;
+}
+
+const INSIGHTS_CONCURRENCY = 3; // Process up to 3 tenants at once
+
 export class AutoInsightsService {
     /**
      * Runs the daily insight generation for all active tenants.
+     * Uses concurrency limiter to avoid overwhelming Gemini API.
      */
     static async generateAllDailyInsights() {
         console.log("[AutoInsights] Starting daily generation...");
@@ -33,19 +111,25 @@ export class AutoInsightsService {
             return;
         }
 
-        console.log(`[AutoInsights] Processing ${tenants.length} tenants...`);
+        console.log(`[AutoInsights] Processing ${tenants.length} tenants (concurrency: ${INSIGHTS_CONCURRENCY})...`);
 
-        for (const tenant of tenants) {
-            try {
-                await this.generateInsightsForTenant(tenant.id, tenant.name);
-                // ── Send Daily Summary Email ──────────────────────────
-                await this.sendDailySummary(tenant.id);
-            } catch (err) {
-                console.error(`[AutoInsights] Error for tenant ${tenant.name} (${tenant.id}):`, err);
+        const tasks = tenants.map((tenant) => async () => {
+            await this.generateInsightsForTenant(tenant.id, tenant.name);
+            await this.sendDailySummary(tenant.id);
+        });
+
+        const results = await runWithConcurrency(tasks, INSIGHTS_CONCURRENCY);
+
+        const succeeded = results.filter((r) => r.status === "fulfilled").length;
+        const failed = results.filter((r) => r.status === "rejected").length;
+
+        results.forEach((r, i) => {
+            if (r.status === "rejected") {
+                console.error(`[AutoInsights] Error for tenant ${tenants[i].name}:`, r.reason);
             }
-        }
+        });
 
-        console.log("[AutoInsights] Daily generation finished.");
+        console.log(`[AutoInsights] Daily generation finished. Success: ${succeeded}, Failed: ${failed}`);
     }
 
     /**
@@ -59,7 +143,7 @@ export class AutoInsightsService {
             queryFunctions.healthCheck({ _tenant_id: tenantId } as any),
             queryFunctions.getRFMAnalysis({ _tenant_id: tenantId } as any),
             queryFunctions.marketBasketLite({ _tenant_id: tenantId } as any),
-            queryFunctions.getMetricCorrelation({ _tenant_id: tenantId, period_days: 90 } as any), // Last 90 days for correlation
+            queryFunctions.getMetricCorrelation({ _tenant_id: tenantId, period_days: 90 } as any),
             queryFunctions.getSmartSegments({ _tenant_id: tenantId, limit: 10 } as any)
         ]);
 
@@ -94,49 +178,62 @@ export class AutoInsightsService {
       ]
     `;
 
-        const result = await genai.models.generateContent({
-            model: GEMINI_MODEL,
-            contents: [{ role: "user", parts: [{ text: prompt }] }]
-        });
+        const result = await callGeminiWithRetry(
+            () => genai.models.generateContent({
+                model: GEMINI_MODEL,
+                contents: [{ role: "user", parts: [{ text: prompt }] }]
+            }),
+            `AutoInsights:${tenantName}`
+        );
         const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
         // Remove markdown code blocks if present
         const cleanJson = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
 
         try {
-            const insights = JSON.parse(cleanJson);
+            const rawInsights = JSON.parse(cleanJson);
 
-            if (Array.isArray(insights)) {
-                // Delete existing insights for today to avoid duplicates if re-run
-                const today = new Date().toISOString().split('T')[0];
-                await supabaseAdmin
-                    .from("auto_insights")
-                    .delete()
-                    .eq("tenant_id", tenantId)
-                    .gte("created_at", `${today}T00:00:00Z`);
-
-                for (const insight of insights) {
-                    // 3. Save to database
-                    const { error: saveError } = await supabaseAdmin
-                        .from("auto_insights")
-                        .insert({
-                            tenant_id: tenantId,
-                            category: insight.category,
-                            priority: insight.priority,
-                            title: insight.title,
-                            description: insight.description,
-                            importance_score: insight.importance_score,
-                            recommended_actions: insight.recommended_actions,
-                            data_support: insight.data_support,
-                            status: 'new'
-                        });
-
-                    if (saveError) {
-                        console.error(`[AutoInsights] Error saving insight for ${tenantName}:`, saveError);
-                    }
-                }
-                console.log(`[AutoInsights] Generated ${insights.length} insights for ${tenantName}`);
+            // Validate with Zod
+            const parseResult = insightsArraySchema.safeParse(rawInsights);
+            if (!parseResult.success) {
+                console.error(`[AutoInsights] Zod validation failed for ${tenantName}:`, parseResult.error.flatten());
+                return;
             }
+
+            const insights = parseResult.data;
+
+            // Delete existing insights for today to avoid duplicates if re-run
+            const today = new Date().toISOString().split('T')[0];
+            await supabaseAdmin
+                .from("auto_insights")
+                .delete()
+                .eq("tenant_id", tenantId)
+                .gte("created_at", `${today}T00:00:00Z`);
+
+            // Batch insert instead of one-by-one
+            const insightRows = insights.map((insight) => ({
+                tenant_id: tenantId,
+                category: insight.category,
+                priority: insight.priority,
+                title: insight.title,
+                description: insight.description,
+                importance_score: insight.importance_score,
+                recommended_actions: insight.recommended_actions,
+                data_support: insight.data_support,
+                status: 'new' as const,
+            }));
+
+            if (insightRows.length > 0) {
+                const { error: saveError } = await supabaseAdmin
+                    .from("auto_insights")
+                    .insert(insightRows);
+
+                if (saveError) {
+                    console.error(`[AutoInsights] Error saving insights for ${tenantName}:`, saveError);
+                }
+            }
+
+            console.log(`[AutoInsights] Generated ${insights.length} insights for ${tenantName}`);
         } catch (parseError) {
             console.error(`[AutoInsights] Error parsing Gemini response for ${tenantName}:`, parseError);
         }
@@ -260,7 +357,6 @@ export class AutoInsightsService {
         });
 
         // 2. Mock or Implement specific logic
-        // In a real scenario, this would trigger external APIs, email services, etc.
         switch (action) {
             case 'enviar_email_vip':
                 return {

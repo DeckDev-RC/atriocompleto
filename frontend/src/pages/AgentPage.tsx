@@ -74,8 +74,12 @@ export function AgentPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length, loading]);
 
+  // Health check on mount + periodic re-check every 60s
   useEffect(() => {
-    agentApi.health().then((r) => setIsConnected(r.success));
+    const check = () => agentApi.health().then((r) => setIsConnected(r.success)).catch(() => setIsConnected(false));
+    check();
+    const interval = setInterval(check, 60_000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadConversations = useCallback(async (autoSelectFirst = false) => {
@@ -175,11 +179,12 @@ export function AgentPage() {
     }
   };
 
-  const handleExecuteAction = (action: AIAction) => {
+  const handleExecuteAction = async (action: AIAction) => {
     console.log('[AgentPage] Executing action:', action);
-    // Aqui poderíamos disparar navegação ou abrir modais específicos
-    // Ex: if (action.action === 'CREATE_PROMOTION') navigate('/promotions/new', { state: action.payload });
-    alert(`Ação solicitada: ${action.action}\nMotivo: ${action.reason}`);
+    // Dispatch to backend insight action endpoint if we have an insight context
+    // For now, send a follow-up message to the agent asking it to elaborate on the action
+    const followUp = `Quero executar a ação "${action.action}". ${action.reason}. Me dê mais detalhes sobre como proceder.`;
+    handleSend(followUp);
   };
 
   const handleChartClick = (label: string, value: number, chartTitle?: string) => {

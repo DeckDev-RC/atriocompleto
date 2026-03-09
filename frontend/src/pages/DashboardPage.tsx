@@ -16,11 +16,7 @@ import { OrderDistributionChart, MonthlyRevenueChart } from '../components/Chart
 import { SkeletonBanner, SkeletonCard } from '../components/Skeleton';
 import { useDashboard } from '../hooks/useDashboard';
 import { useAuth } from '../contexts/AuthContext';
-import { useBrandPrimaryColor, getBrandPrimaryWithOpacity } from '../hooks/useBrandPrimaryColor';
 import { useFormatting } from '../hooks/useFormatting';
-import { InsightsPanel } from '../components/Dashboard/InsightsPanel';
-import { InsightDetailModal } from '../components/Dashboard/InsightDetailModal';
-import type { AutoInsight } from '../types/insights';
 import { useState } from 'react';
 
 // ── Page ───────────────────────────────────────────
@@ -32,12 +28,6 @@ export function DashboardPage() {
   const hasTenant = !!user?.tenant_id;
   const { formatNumber: fmtNumber, formatCurrency: fmtCurrency, formatPercent: fmtPct } = useFormatting();
   const brandPrimaryColor = useBrandPrimaryColor();
-  const [selectedInsight, setSelectedInsight] = useState<AutoInsight | null>(null);
-
-  const handleStatusUpdate = (_id: string, _newStatus: string) => {
-    // Optional: local update of insights list if needed, 
-    // but the panel fetches fresh on mount. For now, just close modal.
-  };
 
   return (
     <div className="p-7 max-md:p-5 max-sm:p-4 min-w-0 overflow-x-hidden">
@@ -100,15 +90,6 @@ export function DashboardPage() {
             <Banner
               totalRevenue={data.banner.totalRevenue}
               channels={data.banner.channels}
-            />
-
-            <InsightsPanel onSelectInsight={setSelectedInsight} />
-
-            <InsightDetailModal
-              isOpen={!!selectedInsight}
-              insight={selectedInsight}
-              onClose={() => setSelectedInsight(null)}
-              onStatusUpdate={handleStatusUpdate}
             />
 
             {/* Grid 2×2: Distribuição de Pedidos e bloco de cards com mesma altura visual */}

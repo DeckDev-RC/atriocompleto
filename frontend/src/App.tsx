@@ -6,6 +6,7 @@ import { UserPreferencesProvider } from './contexts/UserPreferencesContext';
 import { ToastProvider } from './components/Toast';
 import { DashboardLayout } from './components/DashboardLayout';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 // ── Auto-reload handler for deployed chunks ─────────
 const lazyWithRetry = (componentImport: () => Promise<{ default: ComponentType<any> }>) =>
@@ -96,12 +97,16 @@ function AppRoutes() {
         <Route element={<DashboardLayout />}>
           <Route index element={
             <ProtectedRoute permission="visualizar_venda">
-              <DashboardPage />
+              <ErrorBoundary name="Dashboard">
+                <DashboardPage />
+              </ErrorBoundary>
             </ProtectedRoute>
           } />
           <Route path="agente" element={
             <ProtectedRoute permission="acessar_agente">
-              <AgentPage />
+              <ErrorBoundary name="Agent">
+                <AgentPage />
+              </ErrorBoundary>
             </ProtectedRoute>
           } />
           <Route path="configuracoes" element={
@@ -114,7 +119,7 @@ function AppRoutes() {
               <AdminPage />
             </ProtectedRoute>
           } />
-          <Route path="insights/history" element={
+          <Route path="insights" element={
             <ProtectedRoute permission="acessar_agente">
               <InsightsHistoryPage />
             </ProtectedRoute>
@@ -135,17 +140,19 @@ function AppRoutes() {
 
 function App() {
   return (
-    <BrowserRouter>
-      <AppProvider>
-        <AuthProvider>
-          <UserPreferencesProvider>
-            <ToastProvider>
-              <AppRoutes />
-            </ToastProvider>
-          </UserPreferencesProvider>
-        </AuthProvider>
-      </AppProvider>
-    </BrowserRouter>
+    <ErrorBoundary name="Root">
+      <BrowserRouter>
+        <AppProvider>
+          <AuthProvider>
+            <UserPreferencesProvider>
+              <ToastProvider>
+                <AppRoutes />
+              </ToastProvider>
+            </UserPreferencesProvider>
+          </AuthProvider>
+        </AppProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 

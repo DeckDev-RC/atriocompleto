@@ -9,6 +9,7 @@ import { useBrandPrimaryColor } from '../../hooks/useBrandPrimaryColor';
 import { useFormatting } from '../../hooks/useFormatting';
 import { InsightCard } from './InsightCard';
 import type { AIAction } from './InsightCard';
+import { ErrorBoundary } from '../ErrorBoundary';
 
 interface TokenUsage {
   inputTokens: number;
@@ -48,11 +49,20 @@ export function AgentMessage({ role, content, timestamp, isLoading, tokenUsage, 
           if (chartMatch) {
             const chartIndex = parseInt(chartMatch[1]);
             return charts[chartIndex] ? (
-              <AgentChart
+              <ErrorBoundary
                 key={`chart-${i}`}
-                data={charts[chartIndex] as ChartData}
-                onElementClick={onChartClick}
-              />
+                name="AgentChart"
+                fallback={
+                  <div className="rounded-xl border border-border bg-card/50 p-4 text-center text-[13px] text-muted">
+                    Erro ao renderizar o grafico.
+                  </div>
+                }
+              >
+                <AgentChart
+                  data={charts[chartIndex] as ChartData}
+                  onElementClick={onChartClick}
+                />
+              </ErrorBoundary>
             ) : null;
           }
           if (part.trim()) {

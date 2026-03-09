@@ -1,28 +1,37 @@
 import { genai, GEMINI_MODEL } from "../config/gemini";
 import { supabase, supabaseAdmin } from "../config/supabase";
+import { redis } from "../config/redis";
 import { queryFunctions, QueryParams, getDistinctValues } from "./query-functions";
 import { sanitizeSQL } from "../utils/sql-sanitizer";
 import { ChatMessage } from "../types";
 import type { Content, FunctionDeclaration, Type } from "@google/genai";
 import { DataContextService } from "./dataContext.service";
 
-// ── Cached metadata ─────────────────────────────────────
-let cachedMetadata: { statuses: string[]; marketplaces: string[] } | null = null;
-let metadataCachedAt = 0;
-const METADATA_TTL = 5 * 60 * 1000;
+// ── Cached metadata (Redis-backed) ──────────────────────
+const METADATA_CACHE_KEY = "agent:metadata";
+const METADATA_TTL_S = 300; // 5 minutes
 
-async function getMetadata(tenantId?: string) {
-  const now = Date.now();
-  if (cachedMetadata && now - metadataCachedAt < METADATA_TTL) return cachedMetadata;
+async function getMetadata(tenantId?: string): Promise<{ statuses: string[]; marketplaces: string[] }> {
   try {
-    cachedMetadata = await getDistinctValues(tenantId);
-    metadataCachedAt = now;
-    console.log("[Agent] Metadata:", JSON.stringify(cachedMetadata));
+    const cached = await redis.get(METADATA_CACHE_KEY);
+    if (cached) return JSON.parse(cached);
+  } catch (err) {
+    console.error("[Agent] Redis metadata read error:", err);
+  }
+
+  try {
+    const metadata = await getDistinctValues(tenantId);
+    console.log("[Agent] Metadata:", JSON.stringify(metadata));
+    try {
+      await redis.set(METADATA_CACHE_KEY, JSON.stringify(metadata), "EX", METADATA_TTL_S);
+    } catch (err) {
+      console.error("[Agent] Redis metadata write error:", err);
+    }
+    return metadata;
   } catch (err) {
     console.error("[Agent] Metadata error:", err);
-    if (!cachedMetadata) cachedMetadata = { statuses: [], marketplaces: [] };
+    return { statuses: [], marketplaces: [] };
   }
-  return cachedMetadata;
 }
 getMetadata().catch(() => { });
 
@@ -319,41 +328,6 @@ Nas respostas ao usuario, NUNCA mostre os valores brutos do banco. SEMPRE traduz
 - NUNCA use aspas em torno de valores traduzidos. Escreva "Pagos" e nao "\"paid\" (pagos)"
 - Se precisar mencionar o filtro usado, diga "somente pedidos pagos" e NAO "status paid" ou "status='paid'"
 
-## Funcoes Disponiveis (escolha a mais adequada)
-LEMBRE: para faturamento/vendas/receita, SEMPRE passe status="paid"
-
-BASICAS:
-- countOrders: contar pedidos
-- totalSales: faturamento total (use status="paid" para receita real)
-- avgTicket: ticket medio (com mediana, min, max)
-- ordersByStatus: distribuicao por status
-- ordersByMarketplace: vendas por canal (use status="paid" para faturamento)
-
-TEMPORAIS:
-- salesByMonth: evolucao mensal (use status="paid" para faturamento)
-- salesByDayOfWeek: performance por dia da semana
-- salesByHour: distribuicao por hora do dia
-- topDays: melhores/piores dias de venda
-
-ANALISE DE CANAIS:
-- compareMarketplaces: comparacao completa entre canais
-- marketplaceGrowth: evolucao mensal de cada marketplace (use status="paid" para faturamento)
-
-SAUDE DO NEGOCIO:
-- cancellationRate: taxa de cancelamento geral e por canal
-- cancellationByMonth: cancelamentos mes a mes com valor perdido
-- comparePeriods: comparar periodo atual vs anterior
-- yearOverYear: comparacao ano a ano (mesmo mes, anos diferentes)
-
-ESTRATEGICO:
-- executiveSummary: resumo executivo completo (dashboard de KPIs)
-- salesForecast: previsao de faturamento (media movel + tendencia)
-- seasonalityAnalysis: padroes sazonais e ciclos de venda
-- healthCheck: diagnostico rapido com alertas automaticos (faturamento, cancelamentos, ticket medio)
-
-ULTIMO RECURSO:
-- executeSQLQuery: SQL customizado
-
 ## REGRA PRINCIPAL — DADOS QUALIFICADOS (OBRIGATORIO EM TODA RESPOSTA)
 Voce SEMPRE deve qualificar os dados nas respostas. Isto e OBRIGATORIO:
 
@@ -463,9 +437,97 @@ REGRAS DE GRAFICOS:
 6. Para dados monetarios, use options.currency = true`;
 }
 
+// ── Circuit Breaker ─────────────────────────────────────
+const CIRCUIT_BREAKER = {
+  failures: 0,
+  lastFailure: 0,
+  threshold: 5,         // Open after 5 consecutive failures
+  resetTimeout: 60_000, // Try again after 1 minute
+  state: "closed" as "closed" | "open" | "half-open",
+};
+
+function checkCircuitBreaker(): void {
+  const now = Date.now();
+  if (CIRCUIT_BREAKER.state === "open") {
+    if (now - CIRCUIT_BREAKER.lastFailure > CIRCUIT_BREAKER.resetTimeout) {
+      CIRCUIT_BREAKER.state = "half-open";
+      console.log("[CircuitBreaker] Transitioning to half-open");
+    } else {
+      throw new Error("Servico temporariamente indisponivel. Tente em 1 minuto.");
+    }
+  }
+}
+
+function recordSuccess(): void {
+  CIRCUIT_BREAKER.failures = 0;
+  if (CIRCUIT_BREAKER.state !== "closed") {
+    CIRCUIT_BREAKER.state = "closed";
+    console.log("[CircuitBreaker] Circuit closed (recovered)");
+  }
+}
+
+function recordFailure(): void {
+  CIRCUIT_BREAKER.failures++;
+  CIRCUIT_BREAKER.lastFailure = Date.now();
+  if (CIRCUIT_BREAKER.failures >= CIRCUIT_BREAKER.threshold) {
+    CIRCUIT_BREAKER.state = "open";
+    console.error(`[CircuitBreaker] Circuit OPEN after ${CIRCUIT_BREAKER.failures} failures`);
+  }
+}
+
+// ── Retry with Exponential Backoff ──────────────────────
+const MAX_RETRIES = 3;
+const INITIAL_DELAY_MS = 1000;
+
+async function callWithRetry<T>(
+  fn: () => Promise<T>,
+  label: string
+): Promise<T> {
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      const isRetryable =
+        error?.status === 429 ||
+        error?.status === 503 ||
+        error?.message?.includes("429") ||
+        error?.message?.includes("503") ||
+        error?.message?.includes("UNAVAILABLE") ||
+        error?.message?.includes("RESOURCE_EXHAUSTED");
+
+      if (!isRetryable || attempt === MAX_RETRIES - 1) throw error;
+
+      const delay = INITIAL_DELAY_MS * Math.pow(2, attempt) + Math.random() * 500;
+      console.warn(`[${label}] Retry ${attempt + 1}/${MAX_RETRIES} after ${Math.round(delay)}ms`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  throw new Error("Unreachable");
+}
+
 // ── Helpers ─────────────────────────────────────────────
+
+// Rough token estimate: ~4 chars per token for Portuguese
+const MAX_HISTORY_CHARS = 40_000; // ~10k tokens reserved for history
+
 function buildHistory(messages: ChatMessage[]): Content[] {
-  return messages.map((msg) => ({
+  // Truncate from the oldest messages if total exceeds budget
+  let totalChars = 0;
+  const budgetMessages: ChatMessage[] = [];
+
+  // Walk backwards (most recent first) to keep the freshest context
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msgChars = messages[i].content.length;
+    if (totalChars + msgChars > MAX_HISTORY_CHARS) break;
+    totalChars += msgChars;
+    budgetMessages.unshift(messages[i]);
+  }
+
+  if (budgetMessages.length < messages.length) {
+    console.log(`[Agent] History truncated: ${messages.length} → ${budgetMessages.length} messages (${totalChars} chars)`);
+  }
+
+  return budgetMessages.map((msg) => ({
     role: msg.role === "user" ? "user" : "model",
     parts: [{ text: msg.content }],
   }));
@@ -987,6 +1049,8 @@ export async function processMessage(
   let totalOutputTokens = 0;
 
   try {
+    checkCircuitBreaker();
+
     const history = buildHistory(conversationHistory);
     let systemPrompt = await buildSystemPrompt(tenantId);
 
@@ -1005,17 +1069,20 @@ export async function processMessage(
     for (let turn = 0; turn <= MAX_FUNCTION_CALLS; turn++) {
       const isLastTurn = turn === MAX_FUNCTION_CALLS;
 
-      const response = await genai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents,
-        config: {
-          systemInstruction: systemPrompt,
-          // On the last turn, don't offer tools so Gemini is forced to produce text
-          tools: isLastTurn ? undefined : [{ functionDeclarations }],
-          temperature: 0.3,
-          maxOutputTokens: 8192,
-        },
-      });
+      const response = await callWithRetry(
+        () => genai.models.generateContent({
+          model: GEMINI_MODEL,
+          contents,
+          config: {
+            systemInstruction: systemPrompt,
+            // On the last turn, don't offer tools so Gemini is forced to produce text
+            tools: isLastTurn ? undefined : [{ functionDeclarations }],
+            temperature: 0.3,
+            maxOutputTokens: 8192,
+          },
+        }),
+        "Agent"
+      );
 
       // Track tokens
       if (response.usageMetadata) {
@@ -1074,8 +1141,10 @@ export async function processMessage(
       };
 
       if (text && text.trim().length > 0) {
+        recordSuccess();
         return { text, tokenUsage, suggestions: lastFnName ? SUGGESTIONS_MAP[lastFnName] : undefined };
       }
+      recordSuccess();
       return {
         text: "Nao consegui gerar resposta. Reformule a pergunta.",
         tokenUsage,
@@ -1084,11 +1153,14 @@ export async function processMessage(
     }
 
     // Should never reach here, but safety fallback
+    recordSuccess();
     const tokenUsage: TokenUsage = { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, totalTokens: totalInputTokens + totalOutputTokens, estimatedCostUSD: calculateCost(totalInputTokens, totalOutputTokens) };
     return { text: "Nao consegui gerar resposta. Reformule a pergunta.", tokenUsage };
   } catch (error) {
+    recordFailure();
     console.error("[Agent] Fatal:", error);
     const tokenUsage: TokenUsage = { inputTokens: totalInputTokens, outputTokens: totalOutputTokens, totalTokens: totalInputTokens + totalOutputTokens, estimatedCostUSD: calculateCost(totalInputTokens, totalOutputTokens) };
+    if (error instanceof Error && error.message.includes("Servico temporariamente")) return { text: (error as Error).message, tokenUsage };
     if (error instanceof Error && error.message.includes("429")) return { text: "Servico sobrecarregado. Tente em segundos.", tokenUsage };
     return { text: "Erro ao processar. Tente novamente.", tokenUsage };
   }
@@ -1104,6 +1176,8 @@ export async function* processMessageStream(
   let totalOutputTokens = 0;
 
   try {
+    checkCircuitBreaker();
+
     const history = buildHistory(conversationHistory);
     let systemPrompt = await buildSystemPrompt(tenantId);
 
@@ -1114,11 +1188,14 @@ export async function* processMessageStream(
       systemPrompt = `${systemPrompt}\n\n${summaryText}`;
     }
 
-    const result = await genai.models.generateContentStream({
-      model: GEMINI_MODEL,
-      contents: [...history, { role: "user", parts: [{ text: userMessage }] }],
-      config: { systemInstruction: systemPrompt, tools: [{ functionDeclarations }], temperature: 0.3, maxOutputTokens: 8192 },
-    });
+    const result = await callWithRetry(
+      () => genai.models.generateContentStream({
+        model: GEMINI_MODEL,
+        contents: [...history, { role: "user", parts: [{ text: userMessage }] }],
+        config: { systemInstruction: systemPrompt, tools: [{ functionDeclarations }], temperature: 0.3, maxOutputTokens: 8192 },
+      }),
+      "AgentStream"
+    );
 
     let functionCall: { name: string; args: any } | null = null;
 
@@ -1161,16 +1238,19 @@ export async function* processMessageStream(
 
       const truncated = truncateForGemini(fnResult);
 
-      const finalResult = await genai.models.generateContentStream({
-        model: GEMINI_MODEL,
-        contents: [
-          ...history,
-          { role: "user", parts: [{ text: userMessage }] },
-          { role: "model", parts: [{ functionCall: { name: name!, args: args || {} } }] },
-          { role: "user", parts: [{ functionResponse: { name: name!, response: truncated } }] },
-        ],
-        config: { systemInstruction: systemPrompt, temperature: 0.3, maxOutputTokens: 8192 },
-      });
+      const finalResult = await callWithRetry(
+        () => genai.models.generateContentStream({
+          model: GEMINI_MODEL,
+          contents: [
+            ...history,
+            { role: "user", parts: [{ text: userMessage }] },
+            { role: "model", parts: [{ functionCall: { name: name!, args: args || {} } }] },
+            { role: "user", parts: [{ functionResponse: { name: name!, response: truncated } }] },
+          ],
+          config: { systemInstruction: systemPrompt, temperature: 0.3, maxOutputTokens: 8192 },
+        }),
+        "AgentStream"
+      );
 
       for await (const chunk of finalResult) {
         if (chunk.usageMetadata) {
@@ -1181,6 +1261,7 @@ export async function* processMessageStream(
         if (text) yield { type: "text", content: text };
       }
 
+      recordSuccess();
       yield {
         type: "done",
         tokenUsage: {
@@ -1192,6 +1273,7 @@ export async function* processMessageStream(
         suggestions: SUGGESTIONS_MAP[name]
       };
     } else {
+      recordSuccess();
       yield {
         type: "done",
         tokenUsage: {
@@ -1203,8 +1285,12 @@ export async function* processMessageStream(
       };
     }
   } catch (error) {
+    recordFailure();
     console.error("[AgentStream] Fatal:", error);
-    yield { type: "error", content: "Erro ao processar mensagem." };
+    const msg = error instanceof Error && error.message.includes("Servico temporariamente")
+      ? error.message
+      : "Erro ao processar mensagem.";
+    yield { type: "error", content: msg };
   }
 }
 

@@ -6,6 +6,7 @@ import { InsightDetailModal } from '../components/Dashboard/InsightDetailModal';
 import { ChevronLeft, Filter, Search, Sparkles, Download } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useBrandPrimaryColor } from '../hooks/useBrandPrimaryColor';
+import { InsightsPanel } from '../components/Dashboard/InsightsPanel';
 
 const InsightsHistoryPage: React.FC = () => {
     const navigate = useNavigate();
@@ -109,10 +110,16 @@ const InsightsHistoryPage: React.FC = () => {
                                 IA Proativa
                             </span>
                         </div>
-                        <h1 className="text-2xl font-bold text-primary tracking-tight">Histórico de Insights</h1>
-                        <p className="text-muted text-sm font-medium">Reveja todas as análises e recomendações passadas da IA.</p>
+                        <h1 className="text-2xl font-bold text-primary tracking-tight">Insights Automáticos</h1>
+                        <p className="text-muted text-sm font-medium">Reveja todas as análises e recomendações da IA.</p>
                     </div>
                 </div>
+            </div>
+
+            <InsightsPanel onSelectInsight={setSelectedInsight} />
+
+            <div className="flex items-center gap-2 mb-4">
+                <h2 className="text-lg font-bold text-primary tracking-tight">Histórico Completo</h2>
             </div>
 
             {/* Filters Bar */}

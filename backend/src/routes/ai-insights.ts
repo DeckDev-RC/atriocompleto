@@ -12,19 +12,43 @@ import {
 import { ChatMessage } from "../types";
 import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/rbac";
-import { aiLimiter } from "../middleware/rate-limit";
+import { aiLimiter, aiReadLimiter } from "../middleware/rate-limit";
 import { AutoInsightsService } from "../services/autoInsights.service";
+import { supabaseAdmin } from "../config/supabase";
+
+// ── Async token usage logger (fire-and-forget) ─────────
+function logTokenUsage(
+  userId: string,
+  tenantId: string | null,
+  conversationId: string,
+  tokenUsage: { inputTokens: number; outputTokens: number; totalTokens: number; estimatedCostUSD: number },
+) {
+  supabaseAdmin
+    .from("token_usage_logs")
+    .insert({
+      user_id: userId,
+      tenant_id: tenantId,
+      conversation_id: conversationId,
+      input_tokens: tokenUsage.inputTokens,
+      output_tokens: tokenUsage.outputTokens,
+      total_tokens: tokenUsage.totalTokens,
+      estimated_cost_usd: tokenUsage.estimatedCostUSD,
+    })
+    .then(({ error }) => {
+      if (error) console.error("[TokenUsage] Log error:", error.message);
+    });
+}
 
 const router = Router();
 
-// All chat routes require authentication + acessar_agente permission
+// All routes require authentication + acessar_agente permission
 router.use(requireAuth);
 router.use(requirePermission('acessar_agente'));
-router.use(aiLimiter);
+// NOTE: rate limiters are applied per-route below (chat=expensive, read=cheap)
 
 // ── GET /api/chat/health-check ──────────────────────────
 // Executa healthCheck diretamente sem Gemini — rápido e sem custo de tokens
-router.get("/health-check", async (req: Request, res: Response) => {
+router.get("/health-check", aiReadLimiter, async (req: Request, res: Response) => {
   try {
     const tenantId = req.user!.tenant_id;
     if (!tenantId) {
@@ -126,6 +150,8 @@ const handleMessage = async (req: Request, res: Response) => {
         } else if (event.type === "done") {
           tokenUsage = event.tokenUsage;
           suggestions = event.suggestions || [];
+          // Persist token usage (fire-and-forget)
+          if (tokenUsage) logTokenUsage(userId, tenantId, conversation.id, tokenUsage);
           res.write(`data: ${JSON.stringify({ type: "done", conversation_id: conversation.id, tokenUsage, suggestions })}\n\n`);
         } else if (event.type === "error") {
           res.write(`data: ${JSON.stringify({ type: "error", content: event.content })}\n\n`);
@@ -161,6 +187,9 @@ const handleMessage = async (req: Request, res: Response) => {
     };
     await addMessage(conversation.id, assistantMsg);
 
+    // Persist token usage (fire-and-forget)
+    logTokenUsage(userId, tenantId, conversation.id, aiResult.tokenUsage);
+
     res.json({
       success: true,
       data: {
@@ -184,11 +213,11 @@ const handleMessage = async (req: Request, res: Response) => {
   }
 };
 
-router.post("/message", handleMessage);
-router.post("/analyze", handleMessage);
+router.post("/message", aiLimiter, handleMessage);
+router.post("/analyze", aiLimiter, handleMessage);
 
 // ── GET /api/chat/history ───────────────────────────────
-router.get("/history", async (req: Request, res: Response) => {
+router.get("/history", aiReadLimiter, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const tenantId = req.user!.tenant_id;
@@ -249,7 +278,7 @@ router.delete("/:id", async (req: Request, res: Response) => {
 
 // ── GET /api/ai/daily-insights ──────────────────────────
 // Retorna os insights gerados proativamente pela IA
-router.get("/daily-insights", async (req: Request, res: Response) => {
+router.get("/daily-insights", aiReadLimiter, async (req: Request, res: Response) => {
   try {
     const tenantId = req.user!.tenant_id;
     if (!tenantId) {
@@ -285,7 +314,7 @@ router.patch("/insights/:id", async (req: Request, res: Response) => {
 
 // ── GET /api/ai/insights/history ────────────────────────
 // Retorna o historico de insights com filtros e paginacao
-router.get("/insights/history", async (req: Request, res: Response) => {
+router.get("/insights/history", aiReadLimiter, async (req: Request, res: Response) => {
   try {
     const tenantId = req.user!.tenant_id;
     if (!tenantId) return res.status(403).json({ success: false, error: "Acesso negado." });
@@ -326,7 +355,7 @@ router.post("/insights/:id/action", async (req: Request, res: Response) => {
  * GET /api/ai/patterns
  * Returns correlation and patterns data.
  */
-router.get('/patterns', async (req: any, res: any) => {
+router.get('/patterns', aiReadLimiter, async (req: any, res: any) => {
   try {
     const tenantId = req.user.tenant_id;
     const period_days = parseInt(req.query.days as string) || 30;
@@ -370,7 +399,7 @@ router.get('/patterns', async (req: any, res: any) => {
  * GET /api/ai/segments
  * Returns smart segments (Churn/Upsell).
  */
-router.get('/segments', async (req: any, res: any) => {
+router.get('/segments', aiReadLimiter, async (req: any, res: any) => {
   try {
     const tenantId = req.user.tenant_id;
     const result = await queryFunctions.getSmartSegments({ _tenant_id: tenantId, limit: 20 } as any);

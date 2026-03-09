@@ -2,31 +2,15 @@ import { useState, useRef, useEffect } from 'react';
 import { Filter, ChevronDown, Check } from 'lucide-react';
 import { useBrandPrimaryColor, getBrandPrimaryWithOpacity } from '../../hooks/useBrandPrimaryColor';
 import { agentApi } from '../../services/agentApi';
+import { translateStatus } from '../../utils/translations';
 
 interface StatusFilterProps {
     value: string; // 'all' or specific status
     onChange: (status: string) => void;
 }
 
-const STATUS_TRANSLATIONS: Record<string, string> = {
-    pending: 'Pendente',
-    paid: 'Pago',
-    shipped: 'Enviado',
-    delivered: 'Entregue',
-    cancelled: 'Cancelado',
-    processing: 'Processando',
-    refunded: 'Reembolsado',
-    failed: 'Falhou',
-    partially_refunded: 'Reembolso Parcial',
-    pending_payment: 'Pagamento Pendente',
-    pending_shipment: 'Envio Pendente',
-    'pending processing': 'Processamento Pendente',
-    'pending shipment': 'Envio Pendente',
-};
-
 function formatStatus(status: string): string {
-    const lower = status.toLowerCase();
-    return STATUS_TRANSLATIONS[lower] || status.charAt(0).toUpperCase() + status.slice(1);
+    return translateStatus(status);
 }
 
 export function StatusFilter({ value, onChange }: StatusFilterProps) {

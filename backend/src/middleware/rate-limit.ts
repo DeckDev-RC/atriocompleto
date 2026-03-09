@@ -122,7 +122,23 @@ export const publicApiLimiter = rateLimit({
     handler: handleViolation
 });
 
-// 5. AI Insights Limiter (Configurable per Tenant)
+// 5. AI Read-Only Limiter (cheap endpoints: insights, patterns, segments, history)
+export const aiReadLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    limit: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: isWhitelisted,
+    keyGenerator: (req: Request) => (req as any).user?.id || req.ip || "unknown",
+    store: new RedisStore({
+        sendCommand: (async (...args: string[]) => redis.call(args[0], ...args.slice(1))) as any,
+        prefix: "ratelimit:ai-read:",
+    }),
+    message: { success: false, error: "Muitas requisições de leitura. Tente novamente em breve." },
+    handler: handleViolation
+});
+
+// 6. AI Chat Limiter (expensive: Gemini calls, configurable per Tenant)
 export const aiLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour window
     limit: async (req: Request) => {

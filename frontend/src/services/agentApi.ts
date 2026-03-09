@@ -414,69 +414,61 @@ class AgentApiService {
   // CHAT
   // ══════════════════════════════════════════════════════
 
-  async sendMessage(message: string, conversationId?: string) {
-    return this.request<{
-      message: string;
-      conversation_id: string;
-      suggestions?: string[];
-      tokenUsage?: {
-        inputTokens: number;
-        outputTokens: number;
-        totalTokens: number;
-        estimatedCostUSD: number;
-      };
-    }>('/api/ai/analyze', {
-      method: 'POST',
-      body: JSON.stringify({ message, conversation_id: conversationId }),
-    });
-  }
-
   async *sendMessageStream(message: string, conversationId?: string) {
     const baseUrl = AGENT_API_URL.endsWith('/') ? AGENT_API_URL.slice(0, -1) : AGENT_API_URL;
     const url = `${baseUrl}/api/ai/analyze`;
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.token}`,
-        'Accept': 'text/event-stream',
-      },
-      body: JSON.stringify({ message, conversation_id: conversationId, stream: true }),
-    });
+    // AbortController with 2-minute timeout for the entire stream
+    const controller = new AbortController();
+    const streamTimeout = setTimeout(() => controller.abort(), 120_000);
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Erro de conexão' }));
-      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-    }
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.token}`,
+          'Accept': 'text/event-stream',
+        },
+        body: JSON.stringify({ message, conversation_id: conversationId, stream: true }),
+        signal: controller.signal,
+      });
 
-    const reader = response.body?.getReader();
-    if (!reader) return;
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Erro de conexão' }));
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
 
-    const decoder = new TextDecoder();
-    let buffer = '';
+      const reader = response.body?.getReader();
+      if (!reader) return;
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n\n');
-      buffer = lines.pop() || '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      for (const line of lines) {
-        if (line.trim().startsWith('data: ')) {
-          try {
-            const jsonStr = line.trim().substring(6);
-            if (jsonStr) {
-              const data = JSON.parse(jsonStr);
-              yield data;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.trim().startsWith('data: ')) {
+            try {
+              const jsonStr = line.trim().substring(6);
+              if (jsonStr) {
+                const data = JSON.parse(jsonStr);
+                yield data;
+              }
+            } catch (e) {
+              console.error('[agentApi] Error parsing SSE data:', e, 'Line:', line);
             }
-          } catch (e) {
-            console.error('[agentApi] Error parsing SSE data:', e, 'Line:', line);
           }
         }
       }
+    } finally {
+      clearTimeout(streamTimeout);
     }
   }
 

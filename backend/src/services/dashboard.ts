@@ -104,6 +104,7 @@ async function runSQL<T>(sql: string): Promise<T[]> {
 
 const cache = new Map<string, { data: DashboardAggregated; ts: number }>();
 const CACHE_TTL = 60_000; // 1 minuto
+const CACHE_MAX_SIZE = 500; // prevent unbounded growth
 
 function getCached(key: string): DashboardAggregated | null {
   const entry = cache.get(key);
@@ -111,6 +112,23 @@ function getCached(key: string): DashboardAggregated | null {
   cache.delete(key);
   return null;
 }
+
+function setCache(key: string, data: DashboardAggregated): void {
+  if (cache.size >= CACHE_MAX_SIZE) {
+    // Evict oldest entry (Map preserves insertion order)
+    const firstKey = cache.keys().next().value;
+    if (firstKey) cache.delete(firstKey);
+  }
+  cache.set(key, { data, ts: Date.now() });
+}
+
+// Periodic cleanup of expired entries
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of cache.entries()) {
+    if (now - entry.ts > CACHE_TTL) cache.delete(key);
+  }
+}, 30_000);
 
 // ── Main ───────────────────────────────────────────
 
@@ -123,8 +141,10 @@ export async function fetchDashboardAggregated(
   if (cached) return cached;
 
   const dw = buildDateWhere(params);
-  const tw = tenantId ? `AND tenant_id = '${tenantId}'` : "";
-  const sw = params.status ? `AND LOWER(status) = '${params.status.toLowerCase().replace(/'/g, "''")}'` : "";
+  const tw = tenantId ? `AND tenant_id = '${tenantId.replace(/[^a-f0-9-]/gi, "")}'` : "";
+  const sw = params.status
+    ? `AND LOWER(status) = LOWER('${params.status.replace(/\\/g, "\\\\").replace(/'/g, "''").replace(/[%_]/g, "")}')`
+    : "";
 
   // 3 queries agregadas em paralelo (~100 rows total)
   const [overviewRows, mktRows, monthlyRows] = await Promise.all([
@@ -171,7 +191,7 @@ export async function fetchDashboardAggregated(
   ]);
 
   const result = processResults(overviewRows, mktRows, monthlyRows);
-  cache.set(cacheKey, { data: result, ts: Date.now() });
+  setCache(cacheKey, result);
   return result;
 }
 

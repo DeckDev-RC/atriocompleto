@@ -14,18 +14,14 @@ export class DataContextService {
      */
     static async getQuickSummary(tenantId: string): Promise<QuickSummary> {
         try {
-            // Ajuste de fuso horário para GMT-3 (Brasil)
-            const now = new Date();
-            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-
+            // Use SQL CURRENT_DATE instead of JS dates to avoid timezone drift
             const { data, error } = await supabaseAdmin.rpc("execute_readonly_query", {
                 p_tenant_id: tenantId,
-                query_text: `SELECT 
-            COALESCE(SUM(total_amount) FILTER (WHERE order_date >= '${todayStart}'), 0)::float AS today_revenue,
-            COUNT(*) FILTER (WHERE order_date >= '${todayStart}')::int AS today_orders,
-            COALESCE(SUM(total_amount) FILTER (WHERE order_date >= '${monthStart}'), 0)::float AS month_revenue,
-            COUNT(*) FILTER (WHERE order_date >= '${monthStart}')::int AS month_orders,
+                query_text: `SELECT
+            COALESCE(SUM(total_amount) FILTER (WHERE order_date >= CURRENT_DATE), 0)::float AS today_revenue,
+            COUNT(*) FILTER (WHERE order_date >= CURRENT_DATE)::int AS today_orders,
+            COALESCE(SUM(total_amount) FILTER (WHERE order_date >= DATE_TRUNC('month', CURRENT_DATE)), 0)::float AS month_revenue,
+            COUNT(*) FILTER (WHERE order_date >= DATE_TRUNC('month', CURRENT_DATE))::int AS month_orders,
             COUNT(*) FILTER (WHERE LOWER(status) IN ('pending', 'processing', 'awaiting_payment'))::int AS pending_orders
           FROM orders
         `

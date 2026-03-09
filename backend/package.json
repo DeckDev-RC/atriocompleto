@@ -8,6 +8,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "lint": "eslint src/",
+    "test": "tsx --test src/__tests__/**/*.test.ts",
     "test:rate-limit": "tsx scripts/test-rate-limit.ts",
     "test:unblock": "tsx scripts/unblock-dev.ts"
   },
@@ -29,7 +30,6 @@
     "nodemailer": "^8.0.1",
     "qrcode": "^1.5.4",
     "rate-limit-redis": "^4.3.1",
-    "redis": "^5.11.0",
     "speakeasy": "^2.0.0",
     "zod": "^3.24.0"
   },

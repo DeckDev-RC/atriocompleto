@@ -228,7 +228,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const sseUrl = `${apiUrl}/api/user/events?token=${encodeURIComponent(token)}`;
 
     let eventSource: EventSource | null = null;
-    let reconnectTimeout: any = null;
 
     const setupSSE = () => {
       try {
@@ -268,7 +267,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, 5 * 60 * 1000);
 
     return () => {
-      if (reconnectTimeout) clearTimeout(reconnectTimeout);
       if (eventSource) {
 
         eventSource.close();
