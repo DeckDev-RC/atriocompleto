@@ -10,6 +10,7 @@ import {
   Sparkles,
   Target,
   Megaphone,
+  BarChart3,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../../contexts/AppContext';
@@ -74,6 +75,7 @@ export function Sidebar() {
             { icon: Search, label: 'Padrões', path: '/analytics/patterns', permission: 'acessar_agente' },
             { icon: Target, label: 'Estratégia', path: '/estrategia', permission: 'acessar_agente' },
             { icon: Megaphone, label: 'Campanhas', path: '/campanhas', permission: 'acessar_agente' },
+            { icon: BarChart3, label: 'Benchmarking', path: '/benchmarking', permission: 'acessar_agente' },
           ],
         },
       ]

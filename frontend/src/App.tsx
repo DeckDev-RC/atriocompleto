@@ -47,6 +47,7 @@ const InsightsHistoryPage = lazyWithRetry(() => import('./pages/InsightsHistoryP
 const PatternDiscoveryPage = lazyWithRetry(() => import('./pages/PatternDiscoveryPage'));
 const StrategicReportPage = lazyWithRetry(() => import('./pages/StrategicReportPage'));
 const CampaignRecommendationsPage = lazyWithRetry(() => import('./pages/CampaignRecommendationsPage'));
+const BenchmarkingPage = lazyWithRetry(() => import('./pages/BenchmarkingPage'));
 
 function PageLoader() {
   return (
@@ -139,6 +140,11 @@ function AppRoutes() {
           <Route path="campanhas" element={
             <ProtectedRoute permission="acessar_agente">
               <CampaignRecommendationsPage />
+            </ProtectedRoute>
+          } />
+          <Route path="benchmarking" element={
+            <ProtectedRoute permission="acessar_agente">
+              <BenchmarkingPage />
             </ProtectedRoute>
           } />
         </Route>

@@ -16,6 +16,7 @@ import aiInsightsRoutes from "./routes/ai-insights";
 import dashboardRoutes from "./routes/dashboard";
 import healthRoutes from "./routes/health";
 import auditRoutes from "./routes/audit";
+import benchmarkingRoutes from "./routes/benchmarking";
 
 const app = express();
 app.set('trust proxy', 1); // Confia no proxy reverso do Easypanel/Traefik para o rate-limit funcionar
@@ -81,6 +82,7 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/ai", aiInsightsRoutes);
 app.use("/api/chat", aiInsightsRoutes); // Backward compatibility
 app.use("/api/audit-logs", auditRoutes);
+app.use("/api/benchmarking", benchmarkingRoutes);
 
 // ── Error Handler ───────────────────────────────────────
 app.use(errorHandler);

@@ -844,6 +844,112 @@ class AgentApiService {
       body: JSON.stringify({ status }),
     });
   }
+
+  // ══════════════════════════════════════════════════════
+  // BENCHMARKING
+  // ══════════════════════════════════════════════════════
+
+  async getCompetitors() {
+    return this.request<any[]>('/api/benchmarking/competitors');
+  }
+
+  async createCompetitor(data: { name: string; website_url?: string; category?: string; region?: string; notes?: string }) {
+    return this.request<any>('/api/benchmarking/competitors', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateCompetitor(id: string, data: Record<string, unknown>) {
+    return this.request<any>(`/api/benchmarking/competitors/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteCompetitor(id: string) {
+    return this.request(`/api/benchmarking/competitors/${id}`, { method: 'DELETE' });
+  }
+
+  async getCompetitorProducts(competitorId: string) {
+    return this.request<any[]>(`/api/benchmarking/competitors/${competitorId}/products`);
+  }
+
+  async addCompetitorProduct(competitorId: string, data: { product_name: string; your_product_name?: string; current_price?: number; your_price?: number }) {
+    return this.request<any>(`/api/benchmarking/competitors/${competitorId}/products`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateCompetitorProduct(productId: string, data: Record<string, unknown>) {
+    return this.request<any>(`/api/benchmarking/products/${productId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteCompetitorProduct(productId: string) {
+    return this.request(`/api/benchmarking/products/${productId}`, { method: 'DELETE' });
+  }
+
+  async getProductPriceHistory(productId: string) {
+    return this.request<any[]>(`/api/benchmarking/products/${productId}/price-history`);
+  }
+
+  async getBenchmarkingComparison() {
+    return this.request<{ products: any[]; summary: any }>('/api/benchmarking/comparison');
+  }
+
+  async getBenchmarkingAlerts() {
+    return this.request<any[]>('/api/benchmarking/alerts');
+  }
+
+  async generateBenchmarkingSWOT() {
+    return this.request<any>('/api/benchmarking/swot', { method: 'POST' });
+  }
+
+  async getLatestBenchmarkingSWOT() {
+    return this.request<any>('/api/benchmarking/swot');
+  }
+
+  // ══════════════════════════════════════════════════════
+  // INDUSTRY BENCHMARKING (Sector Comparison)
+  // ══════════════════════════════════════════════════════
+
+  async getIndustryComparison() {
+    return this.request<{
+      size: {
+        tier: string;
+        label: string;
+        annual_revenue: number;
+        thresholds: Array<{ tier: string; label: string; max: number | null }>;
+      };
+      comparisons: Array<{
+        metric_key: string;
+        metric_label: string;
+        unit: string;
+        tenant_value: number;
+        benchmark_value: number;
+        percentile_25: number;
+        percentile_75: number;
+        gap_pct: number;
+        status: 'above' | 'at_range' | 'below';
+        source: string;
+      }>;
+      generated_at: string;
+    }>('/api/benchmarking/industry');
+  }
+
+  async generateIndustryAnalysis() {
+    return this.request<any>('/api/benchmarking/industry/analysis', {
+      method: 'POST',
+    });
+  }
+
+  async getLatestIndustryAnalysis() {
+    return this.request<any>('/api/benchmarking/industry/latest');
+  }
 }
 
 export const agentApi = new AgentApiService();
