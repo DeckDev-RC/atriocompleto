@@ -45,6 +45,8 @@ const ResetPasswordPage = lazyWithRetry(() => import('./pages/ResetPasswordPage'
 const VerifyEmailPage = lazyWithRetry(() => import('./pages/VerifyEmailPage').then(m => ({ default: m.VerifyEmailPage })));
 const InsightsHistoryPage = lazyWithRetry(() => import('./pages/InsightsHistoryPage'));
 const PatternDiscoveryPage = lazyWithRetry(() => import('./pages/PatternDiscoveryPage'));
+const StrategicReportPage = lazyWithRetry(() => import('./pages/StrategicReportPage'));
+const CampaignRecommendationsPage = lazyWithRetry(() => import('./pages/CampaignRecommendationsPage'));
 
 function PageLoader() {
   return (
@@ -127,6 +129,16 @@ function AppRoutes() {
           <Route path="analytics/patterns" element={
             <ProtectedRoute permission="acessar_agente">
               <PatternDiscoveryPage />
+            </ProtectedRoute>
+          } />
+          <Route path="estrategia" element={
+            <ProtectedRoute permission="acessar_agente">
+              <StrategicReportPage />
+            </ProtectedRoute>
+          } />
+          <Route path="campanhas" element={
+            <ProtectedRoute permission="acessar_agente">
+              <CampaignRecommendationsPage />
             </ProtectedRoute>
           } />
         </Route>

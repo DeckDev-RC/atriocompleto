@@ -1,4 +1,31 @@
 import { supabaseAdmin } from "../config/supabase";
+import { redis } from "../config/redis";
+
+// ── Redis Cache Helper ──────────────────────────────────
+const CACHE_TTL_SECONDS = 3600; // 1 hour
+
+async function withCache<T>(key: string, fn: () => Promise<T>, ttl = CACHE_TTL_SECONDS): Promise<T> {
+  try {
+    const cached = await redis.get(key);
+    if (cached) {
+      console.log(`[Cache] HIT ${key}`);
+      return JSON.parse(cached) as T;
+    }
+  } catch (err) {
+    console.warn(`[Cache] Read error for ${key}:`, err);
+  }
+
+  console.log(`[Cache] MISS ${key}`);
+  const result = await fn();
+
+  try {
+    await redis.set(key, JSON.stringify(result), "EX", ttl);
+  } catch (err) {
+    console.warn(`[Cache] Write error for ${key}:`, err);
+  }
+
+  return result;
+}
 
 /**
  * Query Functions — SQL-Aggregated Analytics for E-Commerce
@@ -1246,130 +1273,192 @@ export async function healthCheck(_params: QueryParams) {
 }
 
 /**
- * 20. getRFMAnalysis — Behavioral Segmentation
+ * 20. getRFMAnalysis — Behavioral Segmentation (cached 1h)
  * Calculates Recency, Frequency, and Monetary value per customer.
  */
 async function getRFMAnalysis(params: QueryParams): Promise<unknown> {
   const tenantId = params._tenant_id;
-  const where = buildWhere(params, { includeStatus: false });
+  const cacheKey = `patterns:${tenantId}:rfm`;
 
-  const sql = `
-    WITH recent_orders AS (
-      SELECT o.id, o.tenant_id, o.total_amount, o.order_date, o.external_order_id, o.marketplace
-      FROM public.orders o
-      WHERE ${where} AND o.status = 'paid' AND o.tenant_id = '${tenantId}'::uuid
-    ),
-    customer_orders AS (
-      SELECT 
-        o.id as order_id,
-        o.tenant_id,
-        o.total_amount,
-        o.order_date,
-        COALESCE(
-          ml.raw_json->'buyer'->>'id',
-          sh.raw_json->>'buyer_username',
-          bg.raw_json->>'nome',
-          sn.raw_json->>'orderNo'
-        ) as customer_id,
-        COALESCE(
-          ml.raw_json->'buyer'->>'nickname',
-          sh.raw_json->>'buyer_username',
-          bg.raw_json->>'nome',
-          'Cliente Shein'
-        ) as customer_name
-      FROM recent_orders o
-      LEFT JOIN public.ml_raw_orders ml ON o.external_order_id = ml.id AND o.marketplace = 'ml' AND ml.tenant_id = '${tenantId}'::uuid
-      LEFT JOIN public.bagy_raw_orders bg ON o.external_order_id = bg.id AND o.marketplace = 'bagy' AND bg.tenant_id = '${tenantId}'::uuid
-      LEFT JOIN public.shopee_raw_orders sh ON o.external_order_id = sh.id AND o.marketplace = 'shopee' AND sh.tenant_id = '${tenantId}'::uuid
-      LEFT JOIN public.shein_raw_orders sn ON o.external_order_id = sn.id AND o.marketplace = 'shein' AND sn.tenant_id = '${tenantId}'::uuid
-    ),
-    rfm_metrics AS (
+  return withCache(cacheKey, async () => {
+    const where = buildWhere(params, { includeStatus: false });
+    const sql = `
+      WITH recent_orders AS (
+        SELECT o.id, o.tenant_id, o.total_amount, o.order_date, o.external_order_id, o.marketplace
+        FROM public.orders o
+        WHERE ${where} AND o.status = 'paid' AND o.tenant_id = '${tenantId}'::uuid
+      ),
+      customer_orders AS (
+        SELECT 
+          o.id as order_id,
+          o.tenant_id,
+          o.total_amount,
+          o.order_date,
+          COALESCE(
+            ml.raw_json->'buyer'->>'id',
+            sh.raw_json->>'buyer_username',
+            bg.raw_json->>'nome',
+            sn.raw_json->>'orderNo'
+          ) as customer_id,
+          COALESCE(
+            ml.raw_json->'buyer'->>'nickname',
+            sh.raw_json->>'buyer_username',
+            bg.raw_json->>'nome',
+            'Cliente Shein'
+          ) as customer_name
+        FROM recent_orders o
+        LEFT JOIN public.ml_raw_orders ml ON o.external_order_id = ml.id AND o.marketplace = 'ml' AND ml.tenant_id = '${tenantId}'::uuid
+        LEFT JOIN public.bagy_raw_orders bg ON o.external_order_id = bg.id AND o.marketplace = 'bagy' AND bg.tenant_id = '${tenantId}'::uuid
+        LEFT JOIN public.shopee_raw_orders sh ON o.external_order_id = sh.id AND o.marketplace = 'shopee' AND sh.tenant_id = '${tenantId}'::uuid
+        LEFT JOIN public.shein_raw_orders sn ON o.external_order_id = sn.id AND o.marketplace = 'shein' AND sn.tenant_id = '${tenantId}'::uuid
+      ),
+      rfm_metrics AS (
+        SELECT 
+          customer_id,
+          MAX(customer_name) as customer_name,
+          EXTRACT(DAY FROM (NOW() - MAX(order_date))) as recency,
+          COUNT(order_id) as frequency,
+          SUM(total_amount) as monetary
+        FROM customer_orders
+        WHERE customer_id IS NOT NULL
+        GROUP BY customer_id
+      ),
+      rfm_scores AS (
+        SELECT 
+          *,
+          NTILE(4) OVER (ORDER BY recency DESC) as r_score,
+          NTILE(4) OVER (ORDER BY frequency ASC) as f_score,
+          NTILE(4) OVER (ORDER BY monetary ASC) as m_score
+        FROM rfm_metrics
+      )
       SELECT 
         customer_id,
-        MAX(customer_name) as customer_name,
-        EXTRACT(DAY FROM (NOW() - MAX(order_date))) as recency,
-        COUNT(order_id) as frequency,
-        SUM(total_amount) as monetary
-      FROM customer_orders
-      WHERE customer_id IS NOT NULL
-      GROUP BY customer_id
-    ),
-    rfm_scores AS (
-      SELECT 
-        *,
-        NTILE(4) OVER (ORDER BY recency DESC) as r_score,
-        NTILE(4) OVER (ORDER BY frequency ASC) as f_score,
-        NTILE(4) OVER (ORDER BY monetary ASC) as m_score
-      FROM rfm_metrics
-    )
-    SELECT 
-      customer_id,
-      customer_name,
-      recency,
-      frequency,
-      monetary,
-      (r_score + f_score + m_score) as total_score,
-      CASE 
-        WHEN (r_score + f_score + m_score) >= 10 THEN 'VIP / Campeão'
-        WHEN (r_score + f_score + m_score) >= 7 THEN 'Fiel'
-        WHEN (r_score + f_score) >= 6 THEN 'Promissor'
-        WHEN r_score <= 2 THEN 'Em Risco / Hibernando'
-        ELSE 'Regular'
-      END as segment
-    FROM rfm_scores
-    ORDER BY monetary DESC
-    LIMIT 100
-  `;
-
-  const data = await runSQL(sql, null);
-  return { data };
+        customer_name,
+        recency,
+        frequency,
+        monetary,
+        (r_score + f_score + m_score) as total_score,
+        CASE 
+          WHEN (r_score + f_score + m_score) >= 10 THEN 'VIP / Campeão'
+          WHEN (r_score + f_score + m_score) >= 7 THEN 'Fiel'
+          WHEN (r_score + f_score) >= 6 THEN 'Promissor'
+          WHEN r_score <= 2 THEN 'Em Risco / Hibernando'
+          ELSE 'Regular'
+        END as segment
+      FROM rfm_scores
+      ORDER BY monetary DESC
+      LIMIT 100
+    `;
+    const data = await runSQL(sql, null);
+    return { data };
+  });
 }
 
 /**
- * 21. marketBasketLite — Product Correlation
+ * 21. marketBasketLite — Product Correlation (cached 1h)
  * Identifies products that are frequently bought together.
  */
 async function marketBasketLite(params: QueryParams): Promise<unknown> {
   const tenantId = params._tenant_id;
   if (!tenantId) return { data: [] };
+  const cacheKey = `patterns:${tenantId}:basket`;
 
-  const where = buildWhere(params);
+  return withCache(cacheKey, async () => {
+    const where = buildWhere(params);
+    const sql = `
+      WITH recent_orders AS (
+        SELECT external_order_id, marketplace, tenant_id 
+        FROM public.orders 
+        WHERE ${where} AND tenant_id = '${tenantId}'::uuid
+      ),
+      order_items AS (
+        SELECT r.external_order_id as order_id, r.tenant_id, jsonb_array_elements(ml.raw_json->'order_items')->'item'->>'title' as product_name 
+        FROM recent_orders r JOIN public.ml_raw_orders ml ON r.external_order_id = ml.id WHERE r.marketplace = 'ml' AND ml.tenant_id = '${tenantId}'::uuid
+        UNION ALL
+        SELECT r.external_order_id as order_id, r.tenant_id, jsonb_array_elements(sh.raw_json->'item_list')->>'item_name' as product_name 
+        FROM recent_orders r JOIN public.shopee_raw_orders sh ON r.external_order_id = sh.id WHERE r.marketplace = 'shopee' AND sh.tenant_id = '${tenantId}'::uuid
+        UNION ALL
+        SELECT r.external_order_id as order_id, r.tenant_id, jsonb_array_elements(sn.raw_json->'orderGoodsInfoList')->>'goodsTitle' as product_name 
+        FROM recent_orders r JOIN public.shein_raw_orders sn ON r.external_order_id = sn.id WHERE r.marketplace = 'shein' AND sn.tenant_id = '${tenantId}'::uuid
+      ),
+      product_pairs AS (
+        SELECT a.product_name as product_a, b.product_name as product_b, COUNT(*) as frequency
+        FROM order_items a
+        JOIN order_items b ON a.order_id = b.order_id AND a.product_name < b.product_name
+        GROUP BY 1, 2
+      )
+      SELECT product_a, product_b, frequency
+      FROM product_pairs
+      WHERE frequency > 1
+      ORDER BY frequency DESC
+      LIMIT 20
+    `;
+    const data = await runSQL(sql, null);
+    return { data };
+  });
+}
 
-  // Optimization: Filter orders by date/tenant FIRST, then join with raw tables
-  const sql = `
-    WITH recent_orders AS (
-      SELECT external_order_id, marketplace, tenant_id 
-      FROM public.orders 
-      WHERE ${where} AND tenant_id = '${tenantId}'::uuid
-    ),
-    order_items AS (
-      SELECT r.external_order_id as order_id, r.tenant_id, jsonb_array_elements(ml.raw_json->'order_items')->'item'->>'title' as product_name 
-      FROM recent_orders r JOIN public.ml_raw_orders ml ON r.external_order_id = ml.id WHERE r.marketplace = 'ml' AND ml.tenant_id = '${tenantId}'::uuid
-      UNION ALL
-      SELECT r.external_order_id as order_id, r.tenant_id, jsonb_array_elements(sh.raw_json->'item_list')->>'item_name' as product_name 
-      FROM recent_orders r JOIN public.shopee_raw_orders sh ON r.external_order_id = sh.id WHERE r.marketplace = 'shopee' AND sh.tenant_id = '${tenantId}'::uuid
-      UNION ALL
-      SELECT r.external_order_id as order_id, r.tenant_id, jsonb_array_elements(bg.raw_json->'order_items')->>'name' as product_name 
-      FROM recent_orders r JOIN public.bagy_raw_orders bg ON r.external_order_id = bg.id WHERE r.marketplace = 'bagy' AND bg.tenant_id = '${tenantId}'::uuid
-      UNION ALL
-      SELECT r.external_order_id as order_id, r.tenant_id, jsonb_array_elements(sn.raw_json->'orderGoodsInfoList')->>'goodsTitle' as product_name 
-      FROM recent_orders r JOIN public.shein_raw_orders sn ON r.external_order_id = sn.id WHERE r.marketplace = 'shein' AND sn.tenant_id = '${tenantId}'::uuid
-    ),
-    product_pairs AS (
-      SELECT a.product_name as product_a, b.product_name as product_b, COUNT(*) as frequency
-      FROM order_items a
-      JOIN order_items b ON a.order_id = b.order_id AND a.product_name < b.product_name
-      GROUP BY 1, 2
-    )
-    SELECT product_a, product_b, frequency
-    FROM product_pairs
-    WHERE frequency > 1
-    ORDER BY frequency DESC
-    LIMIT 20
-  `;
+/**
+ * 22. topProducts — Top Products by Sales Volume & Revenue (cached 1h)
+ * Extracts individual product ranking from ML, Shopee, and Shein raw JSONs.
+ */
+async function topProducts(params: QueryParams): Promise<unknown> {
+  const tenantId = params._tenant_id;
+  if (!tenantId) return { data: [] };
+  const cacheKey = `patterns:${tenantId}:topProducts`;
 
-  const data = await runSQL(sql, null);
-  return { data };
+  return withCache(cacheKey, async () => {
+    const where = buildWhere(params);
+    const sql = `
+      WITH recent_orders AS (
+        SELECT external_order_id, marketplace
+        FROM public.orders
+        WHERE ${where} AND tenant_id = '${tenantId}'::uuid
+      ),
+      all_items AS (
+        SELECT
+          jsonb_array_elements(ml.raw_json->'order_items')->'item'->>'title' as product_name,
+          jsonb_array_elements(ml.raw_json->'order_items')->'item'->>'seller_sku' as sku,
+          (jsonb_array_elements(ml.raw_json->'order_items')->>'unit_price')::float as unit_price,
+          (jsonb_array_elements(ml.raw_json->'order_items')->>'quantity')::int as qty,
+          'ml' as source
+        FROM recent_orders r
+        JOIN public.ml_raw_orders ml ON r.external_order_id = ml.id AND r.marketplace = 'ml' AND ml.tenant_id = '${tenantId}'::uuid
+        UNION ALL
+        SELECT
+          jsonb_array_elements(sh.raw_json->'item_list')->>'item_name' as product_name,
+          jsonb_array_elements(sh.raw_json->'item_list')->>'item_sku' as sku,
+          (jsonb_array_elements(sh.raw_json->'item_list')->>'model_discounted_price')::float as unit_price,
+          (jsonb_array_elements(sh.raw_json->'item_list')->>'model_quantity_purchased')::int as qty,
+          'shopee' as source
+        FROM recent_orders r
+        JOIN public.shopee_raw_orders sh ON r.external_order_id = sh.id AND r.marketplace = 'shopee' AND sh.tenant_id = '${tenantId}'::uuid
+        UNION ALL
+        SELECT
+          jsonb_array_elements(sn.raw_json->'orderGoodsInfoList')->>'goodsTitle' as product_name,
+          jsonb_array_elements(sn.raw_json->'orderGoodsInfoList')->>'sellerSku' as sku,
+          (jsonb_array_elements(sn.raw_json->'orderGoodsInfoList')->>'sellerCurrencyPrice')::float as unit_price,
+          1 as qty,
+          'shein' as source
+        FROM recent_orders r
+        JOIN public.shein_raw_orders sn ON r.external_order_id = sn.id AND r.marketplace = 'shein' AND sn.tenant_id = '${tenantId}'::uuid
+      )
+      SELECT
+        product_name,
+        MAX(sku) as sku,
+        SUM(qty)::int as total_sold,
+        ROUND(SUM(unit_price * qty)::numeric, 2)::float as total_revenue,
+        ROUND(AVG(unit_price)::numeric, 2)::float as avg_price,
+        COUNT(*)::int as order_count
+      FROM all_items
+      WHERE product_name IS NOT NULL
+      GROUP BY product_name
+      ORDER BY total_sold DESC
+      LIMIT 20
+    `;
+    const data = await runSQL(sql, null);
+    return { data };
+  });
 }
 
 // ── Advanced Analytics: Patterns & Segments ────────────────────────
@@ -1531,6 +1620,110 @@ export async function getSmartSegments(params: QueryParams) {
   };
 }
 
+/**
+ * 23. bcgMatrix — BCG Matrix (Product Portfolio Analysis, cached 1h)
+ * Classifies products into Star, Cash Cow, Question Mark, Dog based on
+ * YoY revenue growth (Y axis) and relative market share (X axis).
+ */
+async function bcgMatrix(params: QueryParams): Promise<unknown> {
+  const tenantId = params._tenant_id;
+  if (!tenantId) return { data: [], quadrants: { stars: 0, cash_cows: 0, question_marks: 0, dogs: 0 } };
+  const cacheKey = `patterns:${tenantId}:bcg`;
+
+  return withCache(cacheKey, async () => {
+    const sql = `
+      WITH all_items AS (
+        SELECT
+          jsonb_array_elements(ml.raw_json->'order_items')->'item'->>'title' as product_name,
+          (jsonb_array_elements(ml.raw_json->'order_items')->>'unit_price')::float *
+          (jsonb_array_elements(ml.raw_json->'order_items')->>'quantity')::int as line_total,
+          o.order_date
+        FROM public.orders o
+        JOIN public.ml_raw_orders ml ON o.external_order_id = ml.id AND o.marketplace = 'ml' AND ml.tenant_id = '${tenantId}'::uuid
+        WHERE o.tenant_id = '${tenantId}'::uuid AND o.status = 'paid'
+        UNION ALL
+        SELECT
+          jsonb_array_elements(sh.raw_json->'item_list')->>'item_name' as product_name,
+          (jsonb_array_elements(sh.raw_json->'item_list')->>'model_discounted_price')::float *
+          (jsonb_array_elements(sh.raw_json->'item_list')->>'model_quantity_purchased')::int as line_total,
+          o.order_date
+        FROM public.orders o
+        JOIN public.shopee_raw_orders sh ON o.external_order_id = sh.id AND o.marketplace = 'shopee' AND sh.tenant_id = '${tenantId}'::uuid
+        WHERE o.tenant_id = '${tenantId}'::uuid AND o.status = 'paid'
+        UNION ALL
+        SELECT
+          jsonb_array_elements(sn.raw_json->'orderGoodsInfoList')->>'goodsTitle' as product_name,
+          (jsonb_array_elements(sn.raw_json->'orderGoodsInfoList')->>'sellerCurrencyPrice')::float as line_total,
+          o.order_date
+        FROM public.orders o
+        JOIN public.shein_raw_orders sn ON o.external_order_id = sn.id AND o.marketplace = 'shein' AND sn.tenant_id = '${tenantId}'::uuid
+        WHERE o.tenant_id = '${tenantId}'::uuid AND o.status = 'paid'
+      ),
+      period_sales AS (
+        SELECT
+          product_name,
+          SUM(CASE WHEN order_date >= NOW() - INTERVAL '6 months' THEN line_total ELSE 0 END) as recent_revenue,
+          SUM(CASE WHEN order_date >= NOW() - INTERVAL '12 months' AND order_date < NOW() - INTERVAL '6 months' THEN line_total ELSE 0 END) as previous_revenue,
+          SUM(line_total) as total_revenue
+        FROM all_items
+        WHERE product_name IS NOT NULL
+          AND order_date >= NOW() - INTERVAL '12 months'
+        GROUP BY product_name
+        HAVING SUM(line_total) > 0
+      ),
+      grand_total AS (
+        SELECT SUM(total_revenue) as overall FROM period_sales
+      )
+      SELECT
+        p.product_name,
+        ROUND(p.recent_revenue::numeric, 2)::float as recent_revenue,
+        ROUND(p.previous_revenue::numeric, 2)::float as previous_revenue,
+        ROUND(p.total_revenue::numeric, 2)::float as total_revenue,
+        CASE WHEN g.overall > 0 THEN ROUND((p.total_revenue / g.overall * 100)::numeric, 2)::float ELSE 0 END as market_share,
+        CASE WHEN p.previous_revenue > 0 THEN ROUND(((p.recent_revenue - p.previous_revenue) / p.previous_revenue * 100)::numeric, 1)::float ELSE
+          CASE WHEN p.recent_revenue > 0 THEN 100.0 ELSE 0.0 END
+        END as growth_pct
+      FROM period_sales p, grand_total g
+      ORDER BY p.total_revenue DESC
+      LIMIT 30
+    `;
+    const rows = await runSQL<{
+      product_name: string;
+      recent_revenue: number;
+      previous_revenue: number;
+      total_revenue: number;
+      market_share: number;
+      growth_pct: number;
+    }>(sql, null);
+
+    // Median growth and share to define quadrant thresholds
+    const growths = rows.map(r => r.growth_pct).sort((a, b) => a - b);
+    const shares = rows.map(r => r.market_share).sort((a, b) => a - b);
+    const medianGrowth = growths.length > 0 ? growths[Math.floor(growths.length / 2)] : 0;
+    const medianShare = shares.length > 0 ? shares[Math.floor(shares.length / 2)] : 0;
+
+    const classified = rows.map(r => {
+      const highGrowth = r.growth_pct >= medianGrowth;
+      const highShare = r.market_share >= medianShare;
+      let quadrant: 'star' | 'cash_cow' | 'question_mark' | 'dog';
+      if (highGrowth && highShare) quadrant = 'star';
+      else if (!highGrowth && highShare) quadrant = 'cash_cow';
+      else if (highGrowth && !highShare) quadrant = 'question_mark';
+      else quadrant = 'dog';
+      return { ...r, quadrant };
+    });
+
+    const quadrants = {
+      stars: classified.filter(p => p.quadrant === 'star').length,
+      cash_cows: classified.filter(p => p.quadrant === 'cash_cow').length,
+      question_marks: classified.filter(p => p.quadrant === 'question_mark').length,
+      dogs: classified.filter(p => p.quadrant === 'dog').length,
+    };
+
+    return { data: classified, quadrants, thresholds: { medianGrowth: rnd(medianGrowth), medianShare: rnd(medianShare) } };
+  });
+}
+
 // ── Function Registry ───────────────────────────────────
 export const queryFunctions: Record<string, (params: QueryParams) => Promise<unknown>> = {
   countOrders,
@@ -1554,6 +1747,8 @@ export const queryFunctions: Record<string, (params: QueryParams) => Promise<unk
   healthCheck,
   getRFMAnalysis,
   marketBasketLite,
+  topProducts,
   getMetricCorrelation,
   getSmartSegments,
+  bcgMatrix,
 };

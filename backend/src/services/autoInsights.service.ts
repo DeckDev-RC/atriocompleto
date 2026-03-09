@@ -139,27 +139,38 @@ export class AutoInsightsService {
         console.log(`[AutoInsights] Analyzing tenant: ${tenantName}`);
 
         // 1. Get Analysis data
-        const [healthData, rfmData, basketData, correlationData, segmentsData] = await Promise.all([
+        const [healthData, rfmData, basketData, correlationData, segmentsData, topProductsData] = await Promise.all([
             queryFunctions.healthCheck({ _tenant_id: tenantId } as any),
             queryFunctions.getRFMAnalysis({ _tenant_id: tenantId } as any),
             queryFunctions.marketBasketLite({ _tenant_id: tenantId } as any),
             queryFunctions.getMetricCorrelation({ _tenant_id: tenantId, period_days: 90 } as any),
-            queryFunctions.getSmartSegments({ _tenant_id: tenantId, limit: 10 } as any)
+            queryFunctions.getSmartSegments({ _tenant_id: tenantId, limit: 10 } as any),
+            queryFunctions.topProducts({ _tenant_id: tenantId } as any)
         ]);
 
         // 2. Prepare prompt for Gemini
         const prompt = `
+      Você é um analista de e-commerce sênior. Analise os dados abaixo e gere insights acionáveis.
+
+      DADOS DO NEGÓCIO:
+      - Diagnóstico de saúde: ${JSON.stringify(healthData, null, 2)}
       - Segmentação RFM: ${JSON.stringify(rfmData, null, 2)}
-      - Correlação de Produtos: ${JSON.stringify(basketData, null, 2)}
+      - Produtos comprados juntos (Cross-sell): ${JSON.stringify(basketData, null, 2)}
+      - Correlação de métricas: ${JSON.stringify(correlationData, null, 2)}
+      - Segmentos inteligentes (churn/upsell): ${JSON.stringify(segmentsData, null, 2)}
+      - Top produtos por volume: ${JSON.stringify(topProductsData, null, 2)}
 
       DIRETRIZES:
       1. Identifique anomalias, oportunidades ou riscos críticos usando os Z-scores fornecidos.
       2. Categorize cada insight em: vendas, clientes, estoque, financeiro, marketing ou operacional.
       3. Defina a prioridade: critical (Z > 3), high (Z > 2), medium ou low.
       4. Atribua um Importance Score (0-100) baseado no impacto financeiro e urgência.
-      5. Sugira 2-3 ações PRÁTICAS e ESPECÍFICAS. Cada ação deve ter um "label" (texto do botão) e um "action_slug" (ex: enviar_email_vip, criar_cupom, marcar_estoque).
+      5. Sugira 2-3 ações PRÁTICAS e ESPECÍFICAS. Cada ação deve ter um "label" (texto do botão) e um "action_slug".
       6. Use uma linguagem profissional, executiva e clara (Português Brasileiro).
       7. O título deve ser curto e impactante. A descrição deve ter 2-3 parágrafos curtos.
+      8. CROSS-SELL: Se houver pares de produtos comprados juntos, sugira criação de kits/combos com eles.
+      9. PRODUTOS ESTRELA: Identifique produtos com alto volume/receita e sugira ações de destaque ou reposição.
+      10. Explique o PORQUÊ de cada insight (ex: "Porque 73% dos pedidos com X também incluem Y").
 
       RETORNE APENAS UM ARRAY JSON VÁLIDO no seguinte formato:
       [

@@ -279,3 +279,114 @@ export async function sendDailyInsightsSummary(params: {
     html,
   });
 }
+
+export async function sendWeeklyStrategicReport(params: {
+  to: string;
+  fullName?: string | null;
+  report: any;
+}): Promise<void> {
+  await ensureTransportReady();
+
+  const greeting = params.fullName?.trim() ? `Oi ${params.fullName.trim()},` : "Oi,";
+  const reportData = params.report.report_data || {};
+  const actions = (params.report.actions || []).slice(0, 5);
+  const periodStart = params.report.period_start || "";
+  const periodEnd = params.report.period_end || "";
+
+  const subject = `📋 Relatório Estratégico Semanal — ${periodStart} a ${periodEnd}`;
+
+  const categoryColors: Record<string, string> = {
+    investimento: "#22c55e",
+    descontinuacao: "#ef4444",
+    promocao: "#f97316",
+    retencao: "#3b82f6",
+    otimizacao: "#8b5cf6",
+  };
+
+  const categoryLabels: Record<string, string> = {
+    investimento: "💰 Investimento",
+    descontinuacao: "🗑️ Descontinuação",
+    promocao: "🏷️ Promoção",
+    retencao: "🤝 Retenção",
+    otimizacao: "⚙️ Otimização",
+  };
+
+  const actionsHtml = actions
+    .map((a: any) => {
+      const color = categoryColors[a.category] || "#64748b";
+      return `
+      <div style="margin-bottom: 16px; padding: 14px; border-left: 4px solid ${color}; background: #f8fafc; border-radius: 4px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <strong style="color: #1e293b; font-size: 15px;">${escapeHtml(a.title)}</strong>
+          <span style="font-size: 11px; color: ${color}; font-weight: bold;">${categoryLabels[a.category] || a.category}</span>
+        </div>
+        <p style="color: #475569; font-size: 13px; margin: 6px 0;">${escapeHtml(a.description)}</p>
+        <div style="display: flex; gap: 12px; font-size: 11px; color: #94a3b8; margin-top: 6px;">
+          <span>Impacto: <strong style="color: #1e293b;">${a.impact_score}/10</strong></span>
+          <span>Facilidade: <strong style="color: #1e293b;">${a.ease_score}/10</strong></span>
+          <span>Score: <strong style="color: ${color};">${a.priority_score}</strong></span>
+        </div>
+      </div>
+    `;
+    })
+    .join("");
+
+  const opportunitiesHtml = (reportData.opportunities || [])
+    .map((o: string) => `<li style="margin: 4px 0; color: #475569; font-size: 13px;">🟢 ${escapeHtml(o)}</li>`)
+    .join("");
+
+  const risksHtml = (reportData.risks || [])
+    .map((r: string) => `<li style="margin: 4px 0; color: #475569; font-size: 13px;">🔴 ${escapeHtml(r)}</li>`)
+    .join("");
+
+  const html = `
+    <div style="font-family: sans-serif; max-width: 640px; margin: 0 auto; color: #1e293b; padding: 24px; border: 1px solid #e2e8f0; border-radius: 10px;">
+      <h2 style="color: #0f172a; margin-bottom: 4px;">📋 Relatório Estratégico Semanal</h2>
+      <p style="font-size: 13px; color: #94a3b8; margin-top: 0;">${periodStart} — ${periodEnd}</p>
+      
+      <p style="font-size: 15px; line-height: 1.6;">${escapeHtml(greeting)}</p>
+      
+      <div style="background: #f1f5f9; padding: 16px; border-radius: 8px; margin: 20px 0;">
+        <h3 style="margin-top: 0; font-size: 14px; color: #0f172a;">📝 Resumo Executivo</h3>
+        <p style="color: #475569; font-size: 13px; line-height: 1.6;">${escapeHtml(reportData.executive_summary || "")}</p>
+      </div>
+
+      ${actions.length > 0 ? `
+        <h3 style="font-size: 14px; color: #0f172a; margin-top: 24px;">🎯 Top ${actions.length} Ações Recomendadas</h3>
+        ${actionsHtml}
+      ` : ""}
+
+      <div style="display: flex; gap: 16px; margin-top: 24px;">
+        ${opportunitiesHtml ? `
+          <div style="flex: 1;">
+            <h4 style="font-size: 13px; color: #0f172a;">Oportunidades</h4>
+            <ul style="padding-left: 0; list-style: none;">${opportunitiesHtml}</ul>
+          </div>
+        ` : ""}
+        ${risksHtml ? `
+          <div style="flex: 1;">
+            <h4 style="font-size: 13px; color: #0f172a;">Riscos</h4>
+            <ul style="padding-left: 0; list-style: none;">${risksHtml}</ul>
+          </div>
+        ` : ""}
+      </div>
+
+      <div style="margin-top: 32px; padding: 20px; text-align: center; background: #f1f5f9; border-radius: 8px;">
+        <p style="margin-bottom: 16px; font-size: 14px; color: #475569;">Ver relatório completo com Matriz BCG e todas as ações:</p>
+        <a href="${env.FRONTEND_URL}/estrategia" style="display: inline-block; padding: 12px 24px; background-color: #000000; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600;">Abrir Painel Estratégico</a>
+      </div>
+      
+      <p style="font-size: 11px; color: #94a3b8; margin-top: 24px; text-align: center;">
+        Relatório gerado automaticamente pela IA Átrio às ${new Date().toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo" })}.
+      </p>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: env.SMTP_FROM,
+    to: params.to,
+    subject,
+    html,
+  });
+}
+

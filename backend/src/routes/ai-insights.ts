@@ -360,10 +360,11 @@ router.get('/patterns', aiReadLimiter, async (req: any, res: any) => {
     const tenantId = req.user.tenant_id;
     const period_days = parseInt(req.query.days as string) || 30;
 
-    const [rfmRaw, correlationRaw, basketRaw] = await Promise.all([
+    const [rfmRaw, correlationRaw, basketRaw, topProductsRaw] = await Promise.all([
       queryFunctions.getRFMAnalysis({ _tenant_id: tenantId } as any),
       queryFunctions.getMetricCorrelation({ _tenant_id: tenantId, period_days } as any),
-      queryFunctions.marketBasketLite({ _tenant_id: tenantId, limit: 10 } as any)
+      queryFunctions.marketBasketLite({ _tenant_id: tenantId, limit: 10 } as any),
+      queryFunctions.topProducts({ _tenant_id: tenantId } as any)
     ]);
 
     // Transform RFM
@@ -384,9 +385,12 @@ router.get('/patterns', aiReadLimiter, async (req: any, res: any) => {
       frequency: p.frequency
     }));
 
+    // Top Products
+    const top_products = (topProductsRaw as any).data || [];
+
     res.json({
       success: true,
-      data: { rfm, correlation: correlationRaw, basket }
+      data: { rfm, correlation: correlationRaw, basket, top_products }
     });
   } catch (error) {
     console.error("Erro ao buscar padrões:", error);
@@ -411,4 +415,146 @@ router.get('/segments', aiReadLimiter, async (req: any, res: any) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════
+// STRATEGIC REPORTS
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * GET /api/ai/strategic-report
+ * Returns the latest strategic report + fresh BCG data for the scatter plot.
+ */
+router.get('/strategic-report', aiReadLimiter, async (req: any, res: any) => {
+  try {
+    const tenantId = req.user.tenant_id;
+    if (!tenantId) {
+      return res.status(403).json({ success: false, error: "Empresa não vinculada." });
+    }
+
+    const { StrategicReportService } = await import("../services/strategicReport.service");
+
+    const [report, bcgData] = await Promise.all([
+      StrategicReportService.getLatest(tenantId),
+      queryFunctions.bcgMatrix({ _tenant_id: tenantId } as any),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        report,
+        bcg: bcgData,
+      },
+    });
+  } catch (error: any) {
+    console.error("Erro ao buscar relatório estratégico:", error);
+    res.status(500).json({ success: false, error: "Erro interno" });
+  }
+});
+
+/**
+ * POST /api/ai/strategic-report/generate
+ * Generates a new strategic report on demand (uses Gemini).
+ */
+router.post('/strategic-report/generate', aiLimiter, async (req: any, res: any) => {
+  try {
+    const tenantId = req.user.tenant_id;
+    if (!tenantId) {
+      return res.status(403).json({ success: false, error: "Empresa não vinculada." });
+    }
+
+    // Get tenant name
+    const { data: tenant } = await supabaseAdmin
+      .from("tenants")
+      .select("name")
+      .eq("id", tenantId)
+      .single();
+
+    const { StrategicReportService } = await import("../services/strategicReport.service");
+    const result = await StrategicReportService.generateForTenant(tenantId, tenant?.name || "Tenant");
+
+    if (!result) {
+      return res.status(500).json({ success: false, error: "Não foi possível gerar o relatório." });
+    }
+
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error("Erro ao gerar relatório estratégico:", error);
+    res.status(500).json({ success: false, error: error.message || "Erro interno" });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// CAMPAIGN RECOMMENDATIONS
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * POST /api/ai/campaign-recommendations/generate
+ * Generates personalized campaign recommendations per customer segment.
+ */
+router.post('/campaign-recommendations/generate', aiLimiter, async (req: any, res: any) => {
+  try {
+    const tenantId = req.user.tenant_id;
+    if (!tenantId) {
+      return res.status(403).json({ success: false, error: "Empresa não vinculada." });
+    }
+
+    const { CampaignRecommendationsService } = await import("../services/campaignRecommendations.service");
+    const result = await CampaignRecommendationsService.generateForTenant(tenantId);
+
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error("Erro ao gerar recomendações de campanha:", error);
+    res.status(500).json({ success: false, error: error.message || "Erro interno" });
+  }
+});
+
+/**
+ * GET /api/ai/campaign-recommendations
+ * Returns latest recommendation + history list.
+ */
+router.get('/campaign-recommendations', aiReadLimiter, async (req: any, res: any) => {
+  try {
+    const tenantId = req.user.tenant_id;
+    if (!tenantId) {
+      return res.status(403).json({ success: false, error: "Empresa não vinculada." });
+    }
+
+    const { CampaignRecommendationsService } = await import("../services/campaignRecommendations.service");
+    const [latest, history] = await Promise.all([
+      CampaignRecommendationsService.getLatest(tenantId),
+      CampaignRecommendationsService.getHistory(tenantId),
+    ]);
+
+    res.json({ success: true, data: { latest, history } });
+  } catch (error: any) {
+    console.error("Erro ao buscar recomendações de campanha:", error);
+    res.status(500).json({ success: false, error: "Erro interno" });
+  }
+});
+
+/**
+ * PATCH /api/ai/campaign-recommendations/:id/status
+ * Updates recommendation status (approved/dismissed).
+ */
+router.patch('/campaign-recommendations/:id/status', async (req: any, res: any) => {
+  try {
+    const id = req.params.id;
+    const { status } = req.body;
+    const tenantId = req.user.tenant_id;
+
+    if (!tenantId) return res.status(403).json({ success: false, error: "Acesso negado." });
+    if (!status || !['generated', 'approved', 'dismissed'].includes(status)) {
+      return res.status(400).json({ success: false, error: "Status inválido. Use: generated, approved, dismissed." });
+    }
+
+    const { CampaignRecommendationsService } = await import("../services/campaignRecommendations.service");
+    const result = await CampaignRecommendationsService.updateStatus(id, tenantId, status);
+
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error("Erro ao atualizar status de recomendação:", error);
+    res.status(500).json({ success: false, error: error.message || "Erro interno" });
+  }
+});
+
 export default router;
+

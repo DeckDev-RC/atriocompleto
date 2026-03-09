@@ -8,6 +8,8 @@ import {
   Settings,
   Search,
   Sparkles,
+  Target,
+  Megaphone,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../../contexts/AppContext';
@@ -69,7 +71,9 @@ export function Sidebar() {
           items: [
             { icon: Sparkles, label: 'Insights', path: '/insights', permission: 'acessar_agente' },
             { icon: null, imageSrc: optimusSidebarIcon, label: 'Optimus', path: '/agente', permission: 'acessar_agente' },
-            { icon: Search, label: 'Padrões', path: '/analytics/patterns', permission: 'acessar_agente' }
+            { icon: Search, label: 'Padrões', path: '/analytics/patterns', permission: 'acessar_agente' },
+            { icon: Target, label: 'Estratégia', path: '/estrategia', permission: 'acessar_agente' },
+            { icon: Megaphone, label: 'Campanhas', path: '/campanhas', permission: 'acessar_agente' },
           ],
         },
       ]

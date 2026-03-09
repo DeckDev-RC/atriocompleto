@@ -803,6 +803,47 @@ class AgentApiService {
       };
     }>(`/api/ai/segments`);
   }
+
+  // ══════════════════════════════════════════════════════
+  // STRATEGIC REPORT
+  // ══════════════════════════════════════════════════════
+
+  async getStrategicReport() {
+    return this.request<{
+      report: any;
+      bcg: any;
+    }>('/api/ai/strategic-report');
+  }
+
+  async generateStrategicReport() {
+    return this.request<any>('/api/ai/strategic-report/generate', {
+      method: 'POST',
+    });
+  }
+
+  // ══════════════════════════════════════════════════════
+  // CAMPAIGN RECOMMENDATIONS
+  // ══════════════════════════════════════════════════════
+
+  async getCampaignRecommendations() {
+    return this.request<{
+      latest: any;
+      history: any[];
+    }>('/api/ai/campaign-recommendations');
+  }
+
+  async generateCampaignRecommendations() {
+    return this.request<any>('/api/ai/campaign-recommendations/generate', {
+      method: 'POST',
+    });
+  }
+
+  async updateCampaignRecommendationStatus(id: string, status: 'generated' | 'approved' | 'dismissed') {
+    return this.request<any>(`/api/ai/campaign-recommendations/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+  }
 }
 
 export const agentApi = new AgentApiService();
