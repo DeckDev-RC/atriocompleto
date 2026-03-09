@@ -136,7 +136,7 @@ export function AgentMessage({ role, content, timestamp, isLoading, tokenUsage, 
             ))}
           </div>
         ) : (
-          <div className="text-[14px] leading-[1.7] text-primary wrap-break-word agent-message-content">
+          <div className="text-[14px] leading-[1.7] text-primary wrap-break-word agent-message-content" style={{ wordBreak: 'break-word' }}>
             {renderContent()}
 
             {tokenUsage && !isUser && (
@@ -179,12 +179,12 @@ function MarkdownBlock({ text }: { text: string }) {
           </strong>
         ),
         code: ({ children }) => (
-          <code className="bg-border/40 dark:bg-[rgba(255,255,255,0.06)] px-1.5 py-0.5 rounded-[5px] text-[13px] font-mono text-success">
+          <code className="bg-border/40 dark:bg-[rgba(255,255,255,0.06)] px-1.5 py-0.5 rounded-[5px] text-[13px] font-mono text-success wrap-break-word">
             {children}
           </code>
         ),
         pre: ({ children }) => (
-          <pre className="bg-body/80 dark:bg-[rgba(0,0,0,0.3)] p-4 rounded-xl overflow-auto my-3 text-[13px] font-mono border border-border">
+          <pre className="bg-body/80 dark:bg-[rgba(0,0,0,0.3)] p-4 rounded-xl overflow-x-auto my-3 text-[13px] font-mono border border-border">
             {children}
           </pre>
         ),

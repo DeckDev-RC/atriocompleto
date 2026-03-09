@@ -56,6 +56,17 @@ export async function addMessage(conversationId: string, message: ChatMessage): 
   }
 }
 
+export async function updateConversationTitle(conversationId: string, title: string): Promise<void> {
+  const { error } = await supabase
+    .from("conversations")
+    .update({ title, updated_at: new Date().toISOString() })
+    .eq("id", conversationId);
+
+  if (error) {
+    console.error(`Erro ao atualizar titulo da conversa: ${error.message}`);
+  }
+}
+
 export async function getConversationHistory(userId: string): Promise<Conversation[]> {
   const { data, error } = await supabase
     .from("conversations")
@@ -84,7 +95,7 @@ export async function clearConversation(conversationId: string, userId: string):
 }
 
 export async function startNewConversation(userId: string, tenantId?: string): Promise<Conversation> {
-  const insertData: Record<string, unknown> = { user_id: userId, messages: [] };
+  const insertData: Record<string, unknown> = { user_id: userId, messages: [], title: "Nova Conversa" };
   if (tenantId) insertData.tenant_id = tenantId;
 
   const { data, error } = await supabase

@@ -61,6 +61,7 @@ export function AgentPage() {
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevCollapsedRef = useRef(sidebarCollapsed);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Colapsar sidebar ao entrar no agente, restaurar ao sair
   useEffect(() => {
@@ -124,10 +125,15 @@ export function AgentPage() {
     let fullText = '';
     let lastAction: AIAction | undefined;
 
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
     try {
-      const stream = agentApi.sendMessageStream(message, conversationId || undefined);
+      const stream = agentApi.sendMessageStream(message, conversationId || undefined, abortController.signal);
 
       for await (const chunk of stream) {
+        if (abortController.signal.aborted) throw new Error('AbortError');
+        
         if (chunk.type === 'text') {
           fullText += chunk.content;
           setMessages((prev) => {
@@ -166,16 +172,34 @@ export function AgentPage() {
       }
     } catch (err: any) {
       console.error('[AgentPage] Stream error:', err);
-      setMessages((prev) => {
-        const newMessages = [...prev];
-        const last = newMessages[newMessages.length - 1];
-        if (last && last.role === 'assistant') {
-          last.content = err.message || 'Erro ao processar mensagem. Tente novamente.';
-        }
-        return newMessages;
-      });
+      if (err.message === 'AbortError' || err.name === 'AbortError') {
+        setMessages((prev) => {
+          const newMessages = [...prev];
+          const last = newMessages[newMessages.length - 1];
+          if (last && last.role === 'assistant') {
+             last.content = last.content + '\n\n*(Geração interrompida)*';
+          }
+          return newMessages;
+        });
+      } else {
+        setMessages((prev) => {
+          const newMessages = [...prev];
+          const last = newMessages[newMessages.length - 1];
+          if (last && last.role === 'assistant') {
+            last.content = err.message || 'Erro ao processar mensagem. Tente novamente.';
+          }
+          return newMessages;
+        });
+      }
     } finally {
+      abortControllerRef.current = null;
       setLoading(false);
+    }
+  };
+
+  const handleStop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
     }
   };
 
@@ -383,7 +407,7 @@ export function AgentPage() {
         </div>
 
         {/* Input */}
-        <AgentInput onSend={handleSend} disabled={loading || !hasTenant} />
+        <AgentInput onSend={handleSend} disabled={loading || !hasTenant} onStop={handleStop} />
       </div>
     </div>
   );

@@ -493,7 +493,10 @@ async function callWithRetry<T>(
         error?.message?.includes("429") ||
         error?.message?.includes("503") ||
         error?.message?.includes("UNAVAILABLE") ||
-        error?.message?.includes("RESOURCE_EXHAUSTED");
+        error?.message?.includes("RESOURCE_EXHAUSTED") ||
+        error?.message?.includes("fetch failed") ||
+        error?.message?.includes("ECONNRESET") ||
+        error?.message?.includes("ETIMEDOUT");
 
       if (!isRetryable || attempt === MAX_RETRIES - 1) throw error;
 
@@ -511,12 +514,12 @@ async function callWithRetry<T>(
 const MAX_HISTORY_CHARS = 40_000; // ~10k tokens reserved for history
 
 function buildHistory(messages: ChatMessage[]): Content[] {
-  // Truncate from the oldest messages if total exceeds budget
+  // Truncate from the oldest messages to keep max 10 messages and respect character limit
   let totalChars = 0;
   const budgetMessages: ChatMessage[] = [];
 
-  // Walk backwards (most recent first) to keep the freshest context
-  for (let i = messages.length - 1; i >= 0; i--) {
+  // Walk backwards (most recent first) to keep the freshest context, max 10
+  for (let i = messages.length - 1; i >= Math.max(0, messages.length - 10); i--) {
     const msgChars = messages[i].content.length;
     if (totalChars + msgChars > MAX_HISTORY_CHARS) break;
     totalChars += msgChars;

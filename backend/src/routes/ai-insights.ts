@@ -8,6 +8,7 @@ import {
   getConversationHistory,
   clearConversation,
   startNewConversation,
+  updateConversationTitle,
 } from "../services/conversation";
 import { ChatMessage } from "../types";
 import { requireAuth } from "../middleware/auth";
@@ -80,7 +81,7 @@ router.get("/health-check", aiReadLimiter, async (req: Request, res: Response) =
 
 // ── POST /api/chat/message ──────────────────────────────
 const messageSchema = z.object({
-  message: z.string().min(1).max(2000),
+  message: z.string().min(1).max(1000), // Adjusted to 1000 per requirements
   conversation_id: z.string().uuid().optional(),
   stream: z.boolean().optional(), // Added for explicit stream request
 });
@@ -138,6 +139,25 @@ const handleMessage = async (req: Request, res: Response) => {
       let fullText = "";
       let tokenUsage: any = null;
       let suggestions: string[] = [];
+
+      // Spam Prevention (Check if the last 3 user messages are identical to the current one)
+      const recentUserMsgs = history.filter(m => m.role === "user").slice(-3);
+      if (recentUserMsgs.length >= 3 && recentUserMsgs.every(m => m.content === message)) {
+        res.write(`data: ${JSON.stringify({ type: "error", content: "Muitas mensagens repetidas ignoradas. Por favor, formule uma nova pergunta." })}\n\n`);
+        res.end();
+        return;
+      }
+
+      // Auto-title generation async (if new conversation)
+      if (history.length === 0 && message.trim().length > 3) {
+        processMessage(`Gere um título super curto de no máximo 4 palavras para resumir o seguinte assunto: "${message}". Responda APENAS o título, sem aspas, Markdown ou pontuação final.`, [], tenantId || undefined)
+          .then((titleResult) => {
+            if (titleResult.text && titleResult.text.length < 50) {
+               updateConversationTitle(conversation.id, titleResult.text.trim());
+            }
+          })
+          .catch(e => console.error("Error auto-titling:", e));
+      }
 
       const stream = processMessageStream(message, history, tenantId || undefined);
 

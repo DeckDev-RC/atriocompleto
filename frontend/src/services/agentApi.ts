@@ -414,13 +414,18 @@ class AgentApiService {
   // CHAT
   // ══════════════════════════════════════════════════════
 
-  async *sendMessageStream(message: string, conversationId?: string) {
+  async *sendMessageStream(message: string, conversationId?: string, signal?: AbortSignal) {
     const baseUrl = AGENT_API_URL.endsWith('/') ? AGENT_API_URL.slice(0, -1) : AGENT_API_URL;
     const url = `${baseUrl}/api/ai/analyze`;
 
     // AbortController with 2-minute timeout for the entire stream
     const controller = new AbortController();
     const streamTimeout = setTimeout(() => controller.abort(), 120_000);
+
+    // If external signal aborts, abort our internal controller
+    if (signal) {
+      signal.addEventListener('abort', () => controller.abort());
+    }
 
     try {
       const response = await fetch(url, {

@@ -7,6 +7,7 @@ interface Conversation {
   messages: Array<{ role: string; content: string; timestamp: string }>;
   created_at: string;
   updated_at: string;
+  title?: string;
 }
 
 interface AgentHistoryProps {
@@ -38,6 +39,7 @@ export function AgentHistory({
   };
 
   const getPreview = (conv: Conversation) => {
+    if (conv.title) return conv.title;
     const firstUserMsg = conv.messages.find((m) => m.role === 'user');
     if (!firstUserMsg) return 'Nova conversa';
     const text = firstUserMsg.content;
@@ -90,6 +92,10 @@ export function AgentHistory({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full rounded-xl border border-border bg-body/40 dark:bg-[rgba(255,255,255,0.03)] py-2 pl-8 pr-3 text-[12px] text-primary placeholder:text-muted outline-none transition-all duration-200"
+            style={{
+              ['--focus-border' as any]: brandPrimaryColor ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.3) : 'color-mix(in srgb, var(--color-brand-primary) 30%, transparent)',
+              ['--focus-shadow' as any]: brandPrimaryColor ? `0 0 0 2px ${getBrandPrimaryWithOpacity(brandPrimaryColor, 0.08)}` : '0 0 0 2px color-mix(in srgb, var(--color-brand-primary) 8%, transparent)',
+            }}
             onFocus={(e) => {
               if (brandPrimaryColor) {
                 e.currentTarget.style.borderColor = getBrandPrimaryWithOpacity(brandPrimaryColor, 0.3);
@@ -112,7 +118,7 @@ export function AgentHistory({
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <MessageSquare size={24} className="text-muted mb-2" strokeWidth={1.5} />
-            <p className="text-[12px] text-muted">Nenhuma conversa</p>
+            <p className="text-[12px] text-muted">Nenhuma conversa encontrada</p>
           </div>
         ) : (
           <div className="flex flex-col gap-0.5">

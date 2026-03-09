@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, type FormEvent, type KeyboardEvent } from 'react';
-import { SendHorizontal, Loader2, Mic, MicOff } from 'lucide-react';
+import { SendHorizontal, Mic, MicOff } from 'lucide-react';
 import { useBrandPrimaryColor } from '../../hooks/useBrandPrimaryColor';
 
 // ── Web Speech API types ────────────────────────────────
@@ -45,12 +45,23 @@ declare global {
 interface AgentInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
+  onStop?: () => void;
 }
 
-export function AgentInput({ onSend, disabled }: AgentInputProps) {
+const MAX_CHARS = 1000;
+const SLASH_COMMANDS = [
+  { command: '/clear', description: 'Limpar a conversa atual e iniciar uma nova' },
+  { command: '/help', description: 'Aprender o que eu posso perguntar' },
+  { command: '/feedback', description: 'Enviar um feedback ou reportar um erro' }
+];
+
+export function AgentInput({ onSend, disabled, onStop }: AgentInputProps) {
   const [message, setMessage] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [interimText, setInterimText] = useState('');
+  const [showSlashCommands, setShowSlashCommands] = useState(false);
+  const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -148,7 +159,7 @@ export function AgentInput({ onSend, disabled }: AgentInputProps) {
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     const trimmed = message.trim();
-    if (!trimmed || disabled) return;
+    if (!trimmed || disabled || message.length > MAX_CHARS) return;
     if (isListening) {
       recognitionRef.current?.stop();
       setIsListening(false);
@@ -156,13 +167,55 @@ export function AgentInput({ onSend, disabled }: AgentInputProps) {
     }
     onSend(trimmed);
     setMessage('');
+    setShowSlashCommands(false);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
+    if (showSlashCommands) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedCommandIndex((prev) => (prev + 1) % SLASH_COMMANDS.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedCommandIndex((prev) => (prev - 1 + SLASH_COMMANDS.length) % SLASH_COMMANDS.length);
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        executeCommand(SLASH_COMMANDS[selectedCommandIndex]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        setShowSlashCommands(false);
+        return;
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
+    }
+  };
+
+  const executeCommand = (cmd: { command: string, description: string }) => {
+    onSend(cmd.command);
+    setMessage('');
+    setShowSlashCommands(false);
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
+  };
+
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setMessage(val);
+    setInterimText('');
+    if (val === '/') {
+      setShowSlashCommands(true);
+      setSelectedCommandIndex(0);
+    } else {
+      setShowSlashCommands(false);
     }
   };
 
@@ -300,7 +353,7 @@ export function AgentInput({ onSend, disabled }: AgentInputProps) {
     <form onSubmit={handleSubmit} className="shrink-0 border-t border-border p-4 max-sm:p-3">
       <div className="mx-auto max-w-[960px] lg:px-4">
         <div
-          className={`flex items-end gap-2 rounded-2xl border p-3 transition-all duration-300 ${isListening
+          className={`relative flex items-end gap-2 rounded-2xl border p-3 transition-all duration-300 ${isListening
               ? 'border-danger/40 shadow-[0_0_20px_rgba(255,69,58,0.1)] bg-card'
               : 'border-border bg-card shadow-soft hover:shadow-soft-hover dark:shadow-dark-card dark:hover:shadow-dark-hover'
             }`}
@@ -344,7 +397,7 @@ export function AgentInput({ onSend, disabled }: AgentInputProps) {
             <textarea
               ref={textareaRef}
               value={displayValue}
-              onChange={(e) => { setMessage(e.target.value); setInterimText(''); }}
+              onChange={handleTextChange}
               onKeyDown={handleKeyDown}
               onInput={handleInput}
               placeholder="Pergunte ao Optimus..."
@@ -355,8 +408,29 @@ export function AgentInput({ onSend, disabled }: AgentInputProps) {
             />
           )}
 
+          {/* Slash Commands Dropdown */}
+          {showSlashCommands && (
+            <div className="absolute bottom-full left-0 mb-2 w-64 rounded-xl border border-border bg-card p-2 shadow-lg z-50 animate-in slide-in-from-bottom-2 fade-in">
+              <div className="mb-1 px-2 text-[11px] font-semibold text-muted uppercase tracking-wider">Comandos</div>
+              {SLASH_COMMANDS.map((cmd, i) => (
+                <button
+                  key={cmd.command}
+                  type="button"
+                  onClick={() => executeCommand(cmd)}
+                  className={`w-full flex flex-col items-start rounded-lg px-3 py-2 text-left transition-colors ${
+                    i === selectedCommandIndex ? 'bg-muted/10' : 'hover:bg-muted/5'
+                  }`}
+                  onMouseEnter={() => setSelectedCommandIndex(i)}
+                >
+                  <span className="text-[13px] font-medium text-primary">{cmd.command}</span>
+                  <span className="text-[11px] text-muted">{cmd.description}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Voice button */}
-          {speechSupported && (
+          {speechSupported && !onStop && (
             <button
               type="button"
               onClick={toggleVoice}
@@ -391,29 +465,41 @@ export function AgentInput({ onSend, disabled }: AgentInputProps) {
             </button>
           )}
 
-          {/* Send button */}
-          <button
-            type="submit"
-            disabled={!message.trim() || disabled}
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-200 ${message.trim() && !disabled
-                ? 'text-white shadow-sm hover:shadow-md active:scale-90'
-                : 'bg-border/50 dark:bg-[rgba(255,255,255,0.05)] text-muted cursor-not-allowed'
-              }`}
-            style={message.trim() && !disabled ? {
-              backgroundColor: brandPrimaryColor || 'var(--color-brand-primary)',
-            } : undefined}
-          >
-            {disabled ? (
-              <Loader2 size={16} strokeWidth={2.2} style={{ animation: 'spin 1s linear infinite' }} />
-            ) : (
+          {/* Stop / Send button */}
+          {onStop && disabled ? (
+            <button
+               type="button"
+               onClick={onStop}
+               title="Parar geração"
+               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-danger text-white hover:bg-danger/80 transition-colors active:scale-90"
+            >
+               <div className="h-3 w-3 rounded-[2px] bg-white" />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!message.trim() || disabled || message.length > MAX_CHARS}
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-200 ${message.trim() && !disabled && message.length <= MAX_CHARS
+                  ? 'text-white shadow-sm hover:shadow-md active:scale-90'
+                  : 'bg-border/50 dark:bg-[rgba(255,255,255,0.05)] text-muted cursor-not-allowed'
+                }`}
+              style={message.trim() && !disabled && message.length <= MAX_CHARS ? {
+                backgroundColor: brandPrimaryColor || 'var(--color-brand-primary)',
+              } : undefined}
+            >
               <SendHorizontal size={16} strokeWidth={2.2} />
-            )}
-          </button>
+            </button>
+          )}
         </div>
 
-        <p className="mt-2 text-center text-[10px] text-muted">
-          Optimus pode cometer erros. Verifique informações importantes.
-        </p>
+        <div className="mt-2 flex items-center justify-between px-1">
+          <p className="text-[10px] text-muted">
+            Optimus pode cometer erros. Verifique informações importantes.
+          </p>
+          <p className={`text-[10px] font-medium ${message.length > MAX_CHARS ? 'text-danger' : 'text-muted/60'}`}>
+            {message.length} / {MAX_CHARS}
+          </p>
+        </div>
       </div>
     </form>
   );
