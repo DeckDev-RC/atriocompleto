@@ -224,794 +224,938 @@ export async function getDistinctValues(tenantId?: string | null) {
 
 // ── 1. countOrders ──────────────────────────────────────
 export async function countOrders(params: QueryParams) {
-  const w = buildWhere(params);
-  const tid = params._tenant_id;
+  const _tid = params._tenant_id || 'system';
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:countOrders:${Math.abs(hash)}`;
 
-  // Single query: total + breakdown by status
-  const rows = await runSQL<{ status: string; cnt: number }>(`
-    SELECT LOWER(status) AS status, COUNT(*)::int AS cnt
-    FROM orders WHERE ${w}
-    GROUP BY LOWER(status)
-  `, tid);
+  return withCache(cacheKey, async () => {
+    const w = buildWhere(params);
+      const tid = params._tenant_id;
 
-  const total = rows.reduce((s, r) => s + r.cnt, 0);
-  const byStatus: Record<string, number> | undefined = !params.status
-    ? Object.fromEntries(rows.map(r => [r.status || "unknown", r.cnt]))
-    : undefined;
+      // Single query: total + breakdown by status
+      const rows = await runSQL<{ status: string; cnt: number }>(`
+        SELECT LOWER(status) AS status, COUNT(*)::int AS cnt
+        FROM orders WHERE ${w}
+        GROUP BY LOWER(status)
+      `, tid);
 
-  return {
-    total,
-    by_status: byStatus,
-    filters: { status: params.status, marketplace: params.marketplace, period: fmtPeriod(params) },
-  };
+      const total = rows.reduce((s, r) => s + r.cnt, 0);
+      const byStatus: Record<string, number> | undefined = !params.status
+        ? Object.fromEntries(rows.map(r => [r.status || "unknown", r.cnt]))
+        : undefined;
+
+      return {
+        total,
+        by_status: byStatus,
+        filters: { status: params.status, marketplace: params.marketplace, period: fmtPeriod(params) },
+      };
+  });
 }
 
 // ── 2. totalSales ───────────────────────────────────────
 export async function totalSales(params: QueryParams) {
-  const w = buildWhere(params);
-  const tid = params._tenant_id;
+  const _tid = params._tenant_id || 'system';
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:totalSales:${Math.abs(hash)}`;
 
-  const rows = await runSQL<{ status: string; cnt: number; total: number }>(`
-    SELECT LOWER(status) AS status, COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
-    FROM orders WHERE ${w}
-    GROUP BY LOWER(status)
-  `, tid);
+  return withCache(cacheKey, async () => {
+    const w = buildWhere(params);
+      const tid = params._tenant_id;
 
-  const grandTotal = rows.reduce((s, r) => s + r.total, 0);
-  const grandCount = rows.reduce((s, r) => s + r.cnt, 0);
+      const rows = await runSQL<{ status: string; cnt: number; total: number }>(`
+        SELECT LOWER(status) AS status, COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
+        FROM orders WHERE ${w}
+        GROUP BY LOWER(status)
+      `, tid);
 
-  let byStatus: Record<string, { count: number; total: number }> | undefined;
-  if (!params.status) {
-    byStatus = {};
-    rows.forEach(r => { byStatus![r.status || "unknown"] = { count: r.cnt, total: rnd(r.total) }; });
-  }
+      const grandTotal = rows.reduce((s, r) => s + r.total, 0);
+      const grandCount = rows.reduce((s, r) => s + r.cnt, 0);
 
-  return {
-    total_sales: rnd(grandTotal),
-    order_count: grandCount,
-    by_status: byStatus,
-    filters: { status: params.status, marketplace: params.marketplace, period: fmtPeriod(params) },
-  };
+      let byStatus: Record<string, { count: number; total: number }> | undefined;
+      if (!params.status) {
+        byStatus = {};
+        rows.forEach(r => { byStatus![r.status || "unknown"] = { count: r.cnt, total: rnd(r.total) }; });
+      }
+
+      return {
+        total_sales: rnd(grandTotal),
+        order_count: grandCount,
+        by_status: byStatus,
+        filters: { status: params.status, marketplace: params.marketplace, period: fmtPeriod(params) },
+      };
+  });
 }
 
 // ── 3. avgTicket ────────────────────────────────────────
 export async function avgTicket(params: QueryParams) {
-  const w = buildWhere(params);
-  const tid = params._tenant_id;
+  const _tid = params._tenant_id || 'system';
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:avgTicket:${Math.abs(hash)}`;
 
-  const rows = await runSQL<{ cnt: number; total: number; avg: number }>(`
-    SELECT COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total,
-           COALESCE(AVG(total_amount), 0)::float AS avg
-    FROM orders WHERE ${w}
-  `, tid);
+  return withCache(cacheKey, async () => {
+    const w = buildWhere(params);
+      const tid = params._tenant_id;
 
-  const r = rows[0] || { cnt: 0, total: 0, avg: 0 };
-  return {
-    avg_ticket: rnd(r.avg),
-    order_count: r.cnt,
-    total_sales: rnd(r.total),
-    filters: { status: params.status, marketplace: params.marketplace, period: fmtPeriod(params) },
-  };
+      const rows = await runSQL<{ cnt: number; total: number; avg: number }>(`
+        SELECT COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total,
+               COALESCE(AVG(total_amount), 0)::float AS avg
+        FROM orders WHERE ${w}
+      `, tid);
+
+      const r = rows[0] || { cnt: 0, total: 0, avg: 0 };
+      return {
+        avg_ticket: rnd(r.avg),
+        order_count: r.cnt,
+        total_sales: rnd(r.total),
+        filters: { status: params.status, marketplace: params.marketplace, period: fmtPeriod(params) },
+      };
+  });
 }
 
 // ── 4. ordersByStatus ───────────────────────────────────
 export async function ordersByStatus(params: QueryParams) {
-  const w = buildWhere(params, { includeStatus: false });
-  const tid = params._tenant_id;
+  const _tid = params._tenant_id || 'system';
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:ordersByStatus:${Math.abs(hash)}`;
 
-  const rows = await runSQL<{ status: string; cnt: number; total: number }>(`
-    SELECT LOWER(status) AS status, COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
-    FROM orders WHERE ${w}
-    GROUP BY LOWER(status) ORDER BY cnt DESC
-  `, tid);
+  return withCache(cacheKey, async () => {
+    const w = buildWhere(params, { includeStatus: false });
+      const tid = params._tenant_id;
 
-  const grand = rows.reduce((s, r) => s + r.cnt, 0);
-  const statuses = Object.fromEntries(rows.map(r => [
-    r.status || "unknown",
-    { count: r.cnt, total: rnd(r.total), pct: grand > 0 ? rnd((r.cnt / grand) * 100) : 0 },
-  ]));
+      const rows = await runSQL<{ status: string; cnt: number; total: number }>(`
+        SELECT LOWER(status) AS status, COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
+        FROM orders WHERE ${w}
+        GROUP BY LOWER(status) ORDER BY cnt DESC
+      `, tid);
 
-  return {
-    statuses,
-    total_orders: grand,
-    filters: { marketplace: params.marketplace, period: fmtPeriod(params) },
-  };
+      const grand = rows.reduce((s, r) => s + r.cnt, 0);
+      const statuses = Object.fromEntries(rows.map(r => [
+        r.status || "unknown",
+        { count: r.cnt, total: rnd(r.total), pct: grand > 0 ? rnd((r.cnt / grand) * 100) : 0 },
+      ]));
+
+      return {
+        statuses,
+        total_orders: grand,
+        filters: { marketplace: params.marketplace, period: fmtPeriod(params) },
+      };
+  });
 }
 
 // ── 5. ordersByMarketplace ──────────────────────────────
 export async function ordersByMarketplace(params: QueryParams) {
-  const w = buildWhere(params, { includeMarketplace: false });
-  const tid = params._tenant_id;
+  const _tid = params._tenant_id || 'system';
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:ordersByMarketplace:${Math.abs(hash)}`;
 
-  // Marketplace × Status aggregation
-  const rows = await runSQL<{ marketplace: string; status: string; cnt: number; total: number }>(`
-    SELECT marketplace, LOWER(status) AS status, COUNT(*)::int AS cnt,
-           COALESCE(SUM(total_amount), 0)::float AS total
-    FROM orders WHERE ${w}
-    GROUP BY marketplace, LOWER(status)
-    ORDER BY marketplace
-  `, tid);
+  return withCache(cacheKey, async () => {
+    const w = buildWhere(params, { includeMarketplace: false });
+      const tid = params._tenant_id;
 
-  const grouped: Record<string, { count: number; total: number; by_status: Record<string, { count: number; total: number }> }> = {};
-  rows.forEach(r => {
-    const m = r.marketplace || "desconhecido";
-    if (!grouped[m]) grouped[m] = { count: 0, total: 0, by_status: {} };
-    grouped[m].count += r.cnt;
-    grouped[m].total += r.total;
-    if (!params.status) {
-      grouped[m].by_status[r.status || "unknown"] = { count: r.cnt, total: rnd(r.total) };
-    }
+      // Marketplace × Status aggregation
+      const rows = await runSQL<{ marketplace: string; status: string; cnt: number; total: number }>(`
+        SELECT marketplace, LOWER(status) AS status, COUNT(*)::int AS cnt,
+               COALESCE(SUM(total_amount), 0)::float AS total
+        FROM orders WHERE ${w}
+        GROUP BY marketplace, LOWER(status)
+        ORDER BY marketplace
+      `, tid);
+
+      const grouped: Record<string, { count: number; total: number; by_status: Record<string, { count: number; total: number }> }> = {};
+      rows.forEach(r => {
+        const m = r.marketplace || "desconhecido";
+        if (!grouped[m]) grouped[m] = { count: 0, total: 0, by_status: {} };
+        grouped[m].count += r.cnt;
+        grouped[m].total += r.total;
+        if (!params.status) {
+          grouped[m].by_status[r.status || "unknown"] = { count: r.cnt, total: rnd(r.total) };
+        }
+      });
+
+      for (const k of Object.keys(grouped)) grouped[k].total = rnd(grouped[k].total);
+
+      let globalByStatus: Record<string, { count: number; total: number }> | undefined;
+      if (!params.status) {
+        globalByStatus = {};
+        rows.forEach(r => {
+          const s = r.status || "unknown";
+          if (!globalByStatus![s]) globalByStatus![s] = { count: 0, total: 0 };
+          globalByStatus![s].count += r.cnt;
+          globalByStatus![s].total += r.total;
+        });
+        for (const s of Object.keys(globalByStatus)) globalByStatus[s].total = rnd(globalByStatus[s].total);
+      }
+
+      const totalOrders = Object.values(grouped).reduce((s, g) => s + g.count, 0);
+      return {
+        marketplaces: grouped,
+        total_orders: totalOrders,
+        by_status: globalByStatus,
+        filters: { status: params.status, period: fmtPeriod(params) },
+      };
   });
-
-  for (const k of Object.keys(grouped)) grouped[k].total = rnd(grouped[k].total);
-
-  let globalByStatus: Record<string, { count: number; total: number }> | undefined;
-  if (!params.status) {
-    globalByStatus = {};
-    rows.forEach(r => {
-      const s = r.status || "unknown";
-      if (!globalByStatus![s]) globalByStatus![s] = { count: 0, total: 0 };
-      globalByStatus![s].count += r.cnt;
-      globalByStatus![s].total += r.total;
-    });
-    for (const s of Object.keys(globalByStatus)) globalByStatus[s].total = rnd(globalByStatus[s].total);
-  }
-
-  const totalOrders = Object.values(grouped).reduce((s, g) => s + g.count, 0);
-  return {
-    marketplaces: grouped,
-    total_orders: totalOrders,
-    by_status: globalByStatus,
-    filters: { status: params.status, period: fmtPeriod(params) },
-  };
 }
 
 // ── 6. salesByMonth ─────────────────────────────────────
 export async function salesByMonth(params: QueryParams) {
-  const w = buildWhere(params);
-  const tid = params._tenant_id;
+  const _tid = params._tenant_id || 'system';
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:salesByMonth:${Math.abs(hash)}`;
 
-  // status breakdown per month if no status filter
-  const statusCol = !params.status ? ", LOWER(status) AS status" : "";
-  const statusGroup = !params.status ? ", LOWER(status)" : "";
+  return withCache(cacheKey, async () => {
+    const w = buildWhere(params);
+      const tid = params._tenant_id;
 
-  const rows = await runSQL<{ month: string; status?: string; cnt: number; total: number; avg: number }>(`
-    SELECT TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM') AS month
-           ${statusCol},
-           COUNT(*)::int AS cnt,
-           COALESCE(SUM(total_amount), 0)::float AS total,
-           COALESCE(AVG(total_amount), 0)::float AS avg
-    FROM orders WHERE ${w}
-    GROUP BY month ${statusGroup}
-    ORDER BY month
-  `, tid);
+      // status breakdown per month if no status filter
+      const statusCol = !params.status ? ", LOWER(status) AS status" : "";
+      const statusGroup = !params.status ? ", LOWER(status)" : "";
 
-  // Aggregate into months
-  const monthMap: Record<string, {
-    count: number; total: number; avgTicket: number;
-    by_status?: Record<string, { count: number; total: number }>;
-  }> = {};
+      const rows = await runSQL<{ month: string; status?: string; cnt: number; total: number; avg: number }>(`
+        SELECT TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM') AS month
+               ${statusCol},
+               COUNT(*)::int AS cnt,
+               COALESCE(SUM(total_amount), 0)::float AS total,
+               COALESCE(AVG(total_amount), 0)::float AS avg
+        FROM orders WHERE ${w}
+        GROUP BY month ${statusGroup}
+        ORDER BY month
+      `, tid);
 
-  rows.forEach(r => {
-    if (!monthMap[r.month]) monthMap[r.month] = { count: 0, total: 0, avgTicket: 0, by_status: !params.status ? {} : undefined };
-    monthMap[r.month].count += r.cnt;
-    monthMap[r.month].total += r.total;
-    if (!params.status && r.status) {
-      monthMap[r.month].by_status![r.status] = { count: r.cnt, total: rnd(r.total) };
-    }
+      // Aggregate into months
+      const monthMap: Record<string, {
+        count: number; total: number; avgTicket: number;
+        by_status?: Record<string, { count: number; total: number }>;
+      }> = {};
+
+      rows.forEach(r => {
+        if (!monthMap[r.month]) monthMap[r.month] = { count: 0, total: 0, avgTicket: 0, by_status: !params.status ? {} : undefined };
+        monthMap[r.month].count += r.cnt;
+        monthMap[r.month].total += r.total;
+        if (!params.status && r.status) {
+          monthMap[r.month].by_status![r.status] = { count: r.cnt, total: rnd(r.total) };
+        }
+      });
+
+      // Calculate avgTicket per month
+      for (const m of Object.values(monthMap)) {
+        m.avgTicket = m.count > 0 ? rnd(m.total / m.count) : 0;
+        m.total = rnd(m.total);
+      }
+
+      const sortedKeys = Object.keys(monthMap).sort();
+      const months = sortedKeys.map((month, i) => ({
+        month,
+        count: monthMap[month].count,
+        total: monthMap[month].total,
+        avg_ticket: monthMap[month].avgTicket,
+        by_status: monthMap[month].by_status,
+        growth_pct: i > 0 && monthMap[sortedKeys[i - 1]].total > 0
+          ? rnd(((monthMap[month].total - monthMap[sortedKeys[i - 1]].total) / monthMap[sortedKeys[i - 1]].total) * 100)
+          : null,
+      }));
+
+      const grandTotal = months.reduce((s, m) => s + m.total, 0);
+      const grandCount = months.reduce((s, m) => s + m.count, 0);
+
+      // Global by_status
+      let globalByStatus: Record<string, { count: number; total: number }> | undefined;
+      if (!params.status) {
+        globalByStatus = {};
+        rows.forEach(r => {
+          const s = r.status || "unknown";
+          if (!globalByStatus![s]) globalByStatus![s] = { count: 0, total: 0 };
+          globalByStatus![s].count += r.cnt;
+          globalByStatus![s].total += r.total;
+        });
+        for (const s of Object.keys(globalByStatus)) globalByStatus[s].total = rnd(globalByStatus[s].total);
+      }
+
+      return {
+        months,
+        grand_total: rnd(grandTotal),
+        grand_count: grandCount,
+        by_status: globalByStatus,
+        best_month: months.length > 0 ? months.reduce((b, m) => m.total > b.total ? m : b, months[0]) : null,
+        worst_month: months.length > 0 ? months.reduce((w, m) => m.total < w.total ? m : w, months[0]) : null,
+        filters: { status: params.status, marketplace: params.marketplace, period: fmtPeriod(params) },
+      };
   });
-
-  // Calculate avgTicket per month
-  for (const m of Object.values(monthMap)) {
-    m.avgTicket = m.count > 0 ? rnd(m.total / m.count) : 0;
-    m.total = rnd(m.total);
-  }
-
-  const sortedKeys = Object.keys(monthMap).sort();
-  const months = sortedKeys.map((month, i) => ({
-    month,
-    count: monthMap[month].count,
-    total: monthMap[month].total,
-    avg_ticket: monthMap[month].avgTicket,
-    by_status: monthMap[month].by_status,
-    growth_pct: i > 0 && monthMap[sortedKeys[i - 1]].total > 0
-      ? rnd(((monthMap[month].total - monthMap[sortedKeys[i - 1]].total) / monthMap[sortedKeys[i - 1]].total) * 100)
-      : null,
-  }));
-
-  const grandTotal = months.reduce((s, m) => s + m.total, 0);
-  const grandCount = months.reduce((s, m) => s + m.count, 0);
-
-  // Global by_status
-  let globalByStatus: Record<string, { count: number; total: number }> | undefined;
-  if (!params.status) {
-    globalByStatus = {};
-    rows.forEach(r => {
-      const s = r.status || "unknown";
-      if (!globalByStatus![s]) globalByStatus![s] = { count: 0, total: 0 };
-      globalByStatus![s].count += r.cnt;
-      globalByStatus![s].total += r.total;
-    });
-    for (const s of Object.keys(globalByStatus)) globalByStatus[s].total = rnd(globalByStatus[s].total);
-  }
-
-  return {
-    months,
-    grand_total: rnd(grandTotal),
-    grand_count: grandCount,
-    by_status: globalByStatus,
-    best_month: months.length > 0 ? months.reduce((b, m) => m.total > b.total ? m : b, months[0]) : null,
-    worst_month: months.length > 0 ? months.reduce((w, m) => m.total < w.total ? m : w, months[0]) : null,
-    filters: { status: params.status, marketplace: params.marketplace, period: fmtPeriod(params) },
-  };
 }
 
 // ── 7. salesByDayOfWeek ─────────────────────────────────
 export async function salesByDayOfWeek(params: QueryParams) {
-  const w = buildWhere(params);
-  const tid = params._tenant_id;
+  const _tid = params._tenant_id || 'system';
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:salesByDayOfWeek:${Math.abs(hash)}`;
 
-  const rows = await runSQL<{ dow: number; cnt: number; total: number }>(`
-    SELECT EXTRACT(DOW FROM order_date AT TIME ZONE 'America/Sao_Paulo')::int AS dow,
-           COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
-    FROM orders WHERE ${w}
-    GROUP BY dow ORDER BY dow
-  `, tid);
+  return withCache(cacheKey, async () => {
+    const w = buildWhere(params);
+      const tid = params._tenant_id;
 
-  const dayNames = ["Domingo", "Segunda", "Terca", "Quarta", "Quinta", "Sexta", "Sabado"];
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const r = rows.find(r => r.dow === i);
-    return {
-      name: dayNames[i],
-      count: r?.cnt || 0,
-      total: rnd(r?.total || 0),
-      avg_ticket: r && r.cnt > 0 ? rnd(r.total / r.cnt) : 0,
-    };
+      const rows = await runSQL<{ dow: number; cnt: number; total: number }>(`
+        SELECT EXTRACT(DOW FROM order_date AT TIME ZONE 'America/Sao_Paulo')::int AS dow,
+               COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
+        FROM orders WHERE ${w}
+        GROUP BY dow ORDER BY dow
+      `, tid);
+
+      const dayNames = ["Domingo", "Segunda", "Terca", "Quarta", "Quinta", "Sexta", "Sabado"];
+      const days = Array.from({ length: 7 }, (_, i) => {
+        const r = rows.find(r => r.dow === i);
+        return {
+          name: dayNames[i],
+          count: r?.cnt || 0,
+          total: rnd(r?.total || 0),
+          avg_ticket: r && r.cnt > 0 ? rnd(r.total / r.cnt) : 0,
+        };
+      });
+
+      const totalOrders = days.reduce((s, d) => s + d.count, 0);
+      return {
+        days,
+        best_day: days.reduce((b, d) => d.total > b.total ? d : b, days[0]),
+        worst_day: days.reduce((w, d) => d.total < w.total ? d : w, days[0]),
+        total_orders: totalOrders,
+        filters: { status: params.status, marketplace: params.marketplace, period: fmtPeriod(params) },
+      };
   });
-
-  const totalOrders = days.reduce((s, d) => s + d.count, 0);
-  return {
-    days,
-    best_day: days.reduce((b, d) => d.total > b.total ? d : b, days[0]),
-    worst_day: days.reduce((w, d) => d.total < w.total ? d : w, days[0]),
-    total_orders: totalOrders,
-    filters: { status: params.status, marketplace: params.marketplace, period: fmtPeriod(params) },
-  };
 }
 
 // ── 8. topDays ──────────────────────────────────────────
 export async function topDays(params: QueryParams) {
-  const w = buildWhere(params);
-  const tid = params._tenant_id;
-  const limit = params.limit || 10;
-  const isWorst = params.order === "worst";
+  const _tid = params._tenant_id || 'system';
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:topDays:${Math.abs(hash)}`;
 
-  const [byRevenue, byVolume] = await Promise.all([
-    runSQL<{ day: string; cnt: number; total: number }>(`
-      SELECT TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD') AS day,
-             COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
-      FROM orders WHERE ${w}
-      GROUP BY day ORDER BY total ${isWorst ? 'ASC' : 'DESC'} LIMIT ${limit}
-    `, tid),
-    runSQL<{ day: string; cnt: number; total: number }>(`
-      SELECT TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD') AS day,
-             COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
-      FROM orders WHERE ${w}
-      GROUP BY day ORDER BY cnt ${isWorst ? 'ASC' : 'DESC'} LIMIT ${limit}
-    `, tid),
-  ]);
+  return withCache(cacheKey, async () => {
+    const w = buildWhere(params);
+      const tid = params._tenant_id;
+      const limit = params.limit || 10;
+      const isWorst = params.order === "worst";
 
-  return {
-    by_revenue: byRevenue.map(r => ({ date: r.day, count: r.cnt, total: rnd(r.total) })),
-    by_volume: byVolume.map(r => ({ date: r.day, count: r.cnt, total: rnd(r.total) })),
-    type: isWorst ? "piores" : "melhores",
-    limit,
-    filters: { status: params.status, marketplace: params.marketplace, period: fmtPeriod(params) },
-  };
+      const [byRevenue, byVolume] = await Promise.all([
+        runSQL<{ day: string; cnt: number; total: number }>(`
+          SELECT TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD') AS day,
+                 COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
+          FROM orders WHERE ${w}
+          GROUP BY day ORDER BY total ${isWorst ? 'ASC' : 'DESC'} LIMIT ${limit}
+        `, tid),
+        runSQL<{ day: string; cnt: number; total: number }>(`
+          SELECT TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD') AS day,
+                 COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
+          FROM orders WHERE ${w}
+          GROUP BY day ORDER BY cnt ${isWorst ? 'ASC' : 'DESC'} LIMIT ${limit}
+        `, tid),
+      ]);
+
+      return {
+        by_revenue: byRevenue.map(r => ({ date: r.day, count: r.cnt, total: rnd(r.total) })),
+        by_volume: byVolume.map(r => ({ date: r.day, count: r.cnt, total: rnd(r.total) })),
+        type: isWorst ? "piores" : "melhores",
+        limit,
+        filters: { status: params.status, marketplace: params.marketplace, period: fmtPeriod(params) },
+      };
+  });
 }
 
 // ── 9. cancellationRate ─────────────────────────────────
 export async function cancellationRate(params: QueryParams) {
-  const w = buildWhere(params, { includeStatus: false });
-  const tid = params._tenant_id;
+  const _tid = params._tenant_id || 'system';
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:cancellationRate:${Math.abs(hash)}`;
 
-  // Overall + by marketplace in one query
-  const rows = await runSQL<{ marketplace: string; status: string; cnt: number; total: number }>(`
-    SELECT marketplace, LOWER(status) AS status, COUNT(*)::int AS cnt,
-           COALESCE(SUM(total_amount), 0)::float AS total
-    FROM orders WHERE ${w}
-    GROUP BY marketplace, LOWER(status)
-  `, tid);
+  return withCache(cacheKey, async () => {
+    const w = buildWhere(params, { includeStatus: false });
+      const tid = params._tenant_id;
 
-  let grandTotal = 0, cancelledOrders = 0, cancelledAmount = 0, paidOrders = 0, paidAmount = 0;
-  const byMkt: Record<string, { total: number; cancelled: number; rate: number }> = {};
+      // Overall + by marketplace in one query
+      const rows = await runSQL<{ marketplace: string; status: string; cnt: number; total: number }>(`
+        SELECT marketplace, LOWER(status) AS status, COUNT(*)::int AS cnt,
+               COALESCE(SUM(total_amount), 0)::float AS total
+        FROM orders WHERE ${w}
+        GROUP BY marketplace, LOWER(status)
+      `, tid);
 
-  rows.forEach(r => {
-    const m = r.marketplace || "desconhecido";
-    if (!byMkt[m]) byMkt[m] = { total: 0, cancelled: 0, rate: 0 };
-    byMkt[m].total += r.cnt;
-    grandTotal += r.cnt;
+      let grandTotal = 0, cancelledOrders = 0, cancelledAmount = 0, paidOrders = 0, paidAmount = 0;
+      const byMkt: Record<string, { total: number; cancelled: number; rate: number }> = {};
 
-    if (r.status === "cancelled") { cancelledOrders += r.cnt; cancelledAmount += r.total; byMkt[m].cancelled += r.cnt; }
-    if (r.status === "paid") { paidOrders += r.cnt; paidAmount += r.total; }
+      rows.forEach(r => {
+        const m = r.marketplace || "desconhecido";
+        if (!byMkt[m]) byMkt[m] = { total: 0, cancelled: 0, rate: 0 };
+        byMkt[m].total += r.cnt;
+        grandTotal += r.cnt;
+
+        if (r.status === "cancelled") { cancelledOrders += r.cnt; cancelledAmount += r.total; byMkt[m].cancelled += r.cnt; }
+        if (r.status === "paid") { paidOrders += r.cnt; paidAmount += r.total; }
+      });
+
+      for (const k of Object.keys(byMkt)) {
+        byMkt[k].rate = byMkt[k].total > 0 ? rnd((byMkt[k].cancelled / byMkt[k].total) * 100) : 0;
+      }
+
+      return {
+        total_orders: grandTotal,
+        cancelled_orders: cancelledOrders,
+        cancellation_rate: grandTotal > 0 ? rnd((cancelledOrders / grandTotal) * 100) : 0,
+        cancelled_amount: rnd(cancelledAmount),
+        paid_orders: paidOrders,
+        paid_amount: rnd(paidAmount),
+        by_marketplace: byMkt,
+        filters: { marketplace: params.marketplace, period: fmtPeriod(params) },
+      };
   });
-
-  for (const k of Object.keys(byMkt)) {
-    byMkt[k].rate = byMkt[k].total > 0 ? rnd((byMkt[k].cancelled / byMkt[k].total) * 100) : 0;
-  }
-
-  return {
-    total_orders: grandTotal,
-    cancelled_orders: cancelledOrders,
-    cancellation_rate: grandTotal > 0 ? rnd((cancelledOrders / grandTotal) * 100) : 0,
-    cancelled_amount: rnd(cancelledAmount),
-    paid_orders: paidOrders,
-    paid_amount: rnd(paidAmount),
-    by_marketplace: byMkt,
-    filters: { marketplace: params.marketplace, period: fmtPeriod(params) },
-  };
 }
 
 // ── 10. compareMarketplaces ─────────────────────────────
 export async function compareMarketplaces(params: QueryParams) {
-  const w = buildWhere(params, { includeMarketplace: false, includeStatus: false });
-  const tid = params._tenant_id;
+  const _tid = params._tenant_id || 'system';
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:compareMarketplaces:${Math.abs(hash)}`;
 
-  const rows = await runSQL<{ marketplace: string; status: string; cnt: number; total: number }>(`
-    SELECT marketplace, LOWER(status) AS status, COUNT(*)::int AS cnt,
-           COALESCE(SUM(total_amount), 0)::float AS total
-    FROM orders WHERE ${w}
-    GROUP BY marketplace, LOWER(status)
-  `, tid);
+  return withCache(cacheKey, async () => {
+    const w = buildWhere(params, { includeMarketplace: false, includeStatus: false });
+      const tid = params._tenant_id;
 
-  const mktData: Record<string, { count: number; total: number; paid: number; cancelled: number; paid_amount: number }> = {};
-  rows.forEach(r => {
-    const m = r.marketplace || "desconhecido";
-    if (!mktData[m]) mktData[m] = { count: 0, total: 0, paid: 0, cancelled: 0, paid_amount: 0 };
-    mktData[m].count += r.cnt;
-    mktData[m].total += r.total;
-    if (r.status === "paid") { mktData[m].paid += r.cnt; mktData[m].paid_amount += r.total; }
-    if (r.status === "cancelled") mktData[m].cancelled += r.cnt;
+      const rows = await runSQL<{ marketplace: string; status: string; cnt: number; total: number }>(`
+        SELECT marketplace, LOWER(status) AS status, COUNT(*)::int AS cnt,
+               COALESCE(SUM(total_amount), 0)::float AS total
+        FROM orders WHERE ${w}
+        GROUP BY marketplace, LOWER(status)
+      `, tid);
+
+      const mktData: Record<string, { count: number; total: number; paid: number; cancelled: number; paid_amount: number }> = {};
+      rows.forEach(r => {
+        const m = r.marketplace || "desconhecido";
+        if (!mktData[m]) mktData[m] = { count: 0, total: 0, paid: 0, cancelled: 0, paid_amount: 0 };
+        mktData[m].count += r.cnt;
+        mktData[m].total += r.total;
+        if (r.status === "paid") { mktData[m].paid += r.cnt; mktData[m].paid_amount += r.total; }
+        if (r.status === "cancelled") mktData[m].cancelled += r.cnt;
+      });
+
+      const grandTotal = Object.values(mktData).reduce((s, d) => s + d.total, 0);
+      const comparison = Object.entries(mktData)
+        .sort(([, a], [, b]) => b.total - a.total)
+        .map(([name, d]) => ({
+          marketplace: name,
+          orders: d.count,
+          revenue: rnd(d.total),
+          revenue_share: grandTotal > 0 ? rnd((d.total / grandTotal) * 100) : 0,
+          avg_ticket: d.count > 0 ? rnd(d.total / d.count) : 0,
+          paid_orders: d.paid,
+          cancelled_orders: d.cancelled,
+          cancellation_rate: d.count > 0 ? rnd((d.cancelled / d.count) * 100) : 0,
+          conversion_rate: d.count > 0 ? rnd((d.paid / d.count) * 100) : 0,
+        }));
+
+      return {
+        comparison,
+        total_orders: Object.values(mktData).reduce((s, d) => s + d.count, 0),
+        total_revenue: rnd(grandTotal),
+        filters: { period: fmtPeriod(params) },
+      };
   });
-
-  const grandTotal = Object.values(mktData).reduce((s, d) => s + d.total, 0);
-  const comparison = Object.entries(mktData)
-    .sort(([, a], [, b]) => b.total - a.total)
-    .map(([name, d]) => ({
-      marketplace: name,
-      orders: d.count,
-      revenue: rnd(d.total),
-      revenue_share: grandTotal > 0 ? rnd((d.total / grandTotal) * 100) : 0,
-      avg_ticket: d.count > 0 ? rnd(d.total / d.count) : 0,
-      paid_orders: d.paid,
-      cancelled_orders: d.cancelled,
-      cancellation_rate: d.count > 0 ? rnd((d.cancelled / d.count) * 100) : 0,
-      conversion_rate: d.count > 0 ? rnd((d.paid / d.count) * 100) : 0,
-    }));
-
-  return {
-    comparison,
-    total_orders: Object.values(mktData).reduce((s, d) => s + d.count, 0),
-    total_revenue: rnd(grandTotal),
-    filters: { period: fmtPeriod(params) },
-  };
 }
 
 // ── 11. comparePeriods ──────────────────────────────────
 export async function comparePeriods(params: QueryParams) {
-  if (!params.start_date || !params.end_date) {
-    if (!params.period_days) return { error: "Especifique um periodo para comparacao (start_date/end_date ou period_days)" };
-  }
+  const _tid = params._tenant_id || 'system';
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:comparePeriods:${Math.abs(hash)}`;
 
-  const tid = params._tenant_id;
-  const wCurrent = buildWhere(params);
+  return withCache(cacheKey, async () => {
+    if (!params.start_date || !params.end_date) {
+        if (!params.period_days) return { error: "Especifique um periodo para comparacao (start_date/end_date ou period_days)" };
+      }
 
-  // Calculate previous period
-  let prevStart: string, prevEnd: string;
-  if (params.start_date && params.end_date) {
-    const s = new Date(params.start_date);
-    const e = new Date(params.end_date);
-    const diffMs = e.getTime() - s.getTime();
-    const pe = new Date(s.getTime() - 86400000); // day before current start
-    const ps = new Date(pe.getTime() - diffMs);
-    prevStart = ps.toISOString().substring(0, 10);
-    prevEnd = pe.toISOString().substring(0, 10);
-  } else {
-    const days = params.period_days!;
-    prevStart = `NOW() - INTERVAL '${days * 2} days'`;
-    prevEnd = `NOW() - INTERVAL '${days} days'`;
-  }
+      const tid = params._tenant_id;
+      const wCurrent = buildWhere(params);
 
-  const statusFilter = params.status ? `AND LOWER(status) = LOWER('${params.status.replace(/'/g, "''")}')` : "";
-  const mktFilter = params.marketplace ? `AND LOWER(marketplace) LIKE LOWER('%${params.marketplace.replace(/'/g, "''")}%')` : "";
+      // Calculate previous period
+      let prevStart: string, prevEnd: string;
+      if (params.start_date && params.end_date) {
+        const s = new Date(params.start_date);
+        const e = new Date(params.end_date);
+        const diffMs = e.getTime() - s.getTime();
+        const pe = new Date(s.getTime() - 86400000); // day before current start
+        const ps = new Date(pe.getTime() - diffMs);
+        prevStart = ps.toISOString().substring(0, 10);
+        prevEnd = pe.toISOString().substring(0, 10);
+      } else {
+        const days = params.period_days!;
+        prevStart = `NOW() - INTERVAL '${days * 2} days'`;
+        prevEnd = `NOW() - INTERVAL '${days} days'`;
+      }
 
-  const wPrev = params.start_date
-    ? `order_date >= '${prevStart}T00:00:00-03:00' AND order_date <= '${prevEnd}T23:59:59-03:00' ${statusFilter} ${mktFilter}`
-    : `order_date >= ${prevStart} AND order_date < ${prevEnd} ${statusFilter} ${mktFilter}`;
+      const statusFilter = params.status ? `AND LOWER(status) = LOWER('${params.status.replace(/'/g, "''")}')` : "";
+      const mktFilter = params.marketplace ? `AND LOWER(marketplace) LIKE LOWER('%${params.marketplace.replace(/'/g, "''")}%')` : "";
 
-  const metricsSQL = (where: string) => `
-    SELECT COUNT(*)::int AS orders,
-           COALESCE(SUM(total_amount), 0)::float AS revenue,
-           COALESCE(AVG(total_amount), 0)::float AS avg_ticket,
-           COUNT(*) FILTER (WHERE LOWER(status) = 'paid')::int AS paid_orders,
-           COALESCE(SUM(total_amount) FILTER (WHERE LOWER(status) = 'paid'), 0)::float AS paid_revenue
-    FROM orders WHERE ${where}
-  `;
+      const wPrev = params.start_date
+        ? `order_date >= '${prevStart}T00:00:00-03:00' AND order_date <= '${prevEnd}T23:59:59-03:00' ${statusFilter} ${mktFilter}`
+        : `order_date >= ${prevStart} AND order_date < ${prevEnd} ${statusFilter} ${mktFilter}`;
 
-  const [currentRows, prevRows] = await Promise.all([
-    runSQL<{ orders: number; revenue: number; avg_ticket: number; paid_orders: number; paid_revenue: number }>(metricsSQL(wCurrent), tid),
-    runSQL<{ orders: number; revenue: number; avg_ticket: number; paid_orders: number; paid_revenue: number }>(metricsSQL(`1=1 AND ${wPrev}`), tid),
-  ]);
+      const metricsSQL = (where: string) => `
+        SELECT COUNT(*)::int AS orders,
+               COALESCE(SUM(total_amount), 0)::float AS revenue,
+               COALESCE(AVG(total_amount), 0)::float AS avg_ticket,
+               COUNT(*) FILTER (WHERE LOWER(status) = 'paid')::int AS paid_orders,
+               COALESCE(SUM(total_amount) FILTER (WHERE LOWER(status) = 'paid'), 0)::float AS paid_revenue
+        FROM orders WHERE ${where}
+      `;
 
-  const current = currentRows[0] || { orders: 0, revenue: 0, avg_ticket: 0, paid_orders: 0, paid_revenue: 0 };
-  const previous = prevRows[0] || { orders: 0, revenue: 0, avg_ticket: 0, paid_orders: 0, paid_revenue: 0 };
+      const [currentRows, prevRows] = await Promise.all([
+        runSQL<{ orders: number; revenue: number; avg_ticket: number; paid_orders: number; paid_revenue: number }>(metricsSQL(wCurrent), tid),
+        runSQL<{ orders: number; revenue: number; avg_ticket: number; paid_orders: number; paid_revenue: number }>(metricsSQL(`1=1 AND ${wPrev}`), tid),
+      ]);
 
-  const pctChange = (curr: number, prev: number) => prev > 0 ? rnd(((curr - prev) / prev) * 100) : null;
+      const current = currentRows[0] || { orders: 0, revenue: 0, avg_ticket: 0, paid_orders: 0, paid_revenue: 0 };
+      const previous = prevRows[0] || { orders: 0, revenue: 0, avg_ticket: 0, paid_orders: 0, paid_revenue: 0 };
 
-  return {
-    current_period: { start: params.start_date || "", end: params.end_date || "", ...{ orders: current.orders, revenue: rnd(current.revenue), avg_ticket: rnd(current.avg_ticket), paid_orders: current.paid_orders, paid_revenue: rnd(current.paid_revenue) } },
-    previous_period: { start: prevStart, end: prevEnd, ...{ orders: previous.orders, revenue: rnd(previous.revenue), avg_ticket: rnd(previous.avg_ticket), paid_orders: previous.paid_orders, paid_revenue: rnd(previous.paid_revenue) } },
-    changes: {
-      orders: pctChange(current.orders, previous.orders),
-      revenue: pctChange(current.revenue, previous.revenue),
-      avg_ticket: pctChange(current.avg_ticket, previous.avg_ticket),
-      paid_orders: pctChange(current.paid_orders, previous.paid_orders),
-    },
-    filters: { status: params.status, marketplace: params.marketplace },
-  };
+      const pctChange = (curr: number, prev: number) => prev > 0 ? rnd(((curr - prev) / prev) * 100) : null;
+
+      return {
+        current_period: { start: params.start_date || "", end: params.end_date || "", ...{ orders: current.orders, revenue: rnd(current.revenue), avg_ticket: rnd(current.avg_ticket), paid_orders: current.paid_orders, paid_revenue: rnd(current.paid_revenue) } },
+        previous_period: { start: prevStart, end: prevEnd, ...{ orders: previous.orders, revenue: rnd(previous.revenue), avg_ticket: rnd(previous.avg_ticket), paid_orders: previous.paid_orders, paid_revenue: rnd(previous.paid_revenue) } },
+        changes: {
+          orders: pctChange(current.orders, previous.orders),
+          revenue: pctChange(current.revenue, previous.revenue),
+          avg_ticket: pctChange(current.avg_ticket, previous.avg_ticket),
+          paid_orders: pctChange(current.paid_orders, previous.paid_orders),
+        },
+        filters: { status: params.status, marketplace: params.marketplace },
+      };
+  });
 }
 
 // ── 12. salesByHour ─────────────────────────────────────
 export async function salesByHour(params: QueryParams) {
-  const w = buildWhere(params);
-  const tid = params._tenant_id;
+  const _tid = params._tenant_id || 'system';
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:salesByHour:${Math.abs(hash)}`;
 
-  const rows = await runSQL<{ hour: number; cnt: number; total: number }>(`
-    SELECT EXTRACT(HOUR FROM order_date AT TIME ZONE 'America/Sao_Paulo')::int AS hour,
-           COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
-    FROM orders WHERE ${w}
-    GROUP BY hour ORDER BY hour
-  `, tid);
+  return withCache(cacheKey, async () => {
+    const w = buildWhere(params);
+      const tid = params._tenant_id;
 
-  const hours = Array.from({ length: 24 }, (_, i) => {
-    const r = rows.find(r => r.hour === i);
-    return {
-      hour: i,
-      label: `${String(i).padStart(2, "0")}:00`,
-      count: r?.cnt || 0,
-      total: rnd(r?.total || 0),
-      avg_ticket: r && r.cnt > 0 ? rnd(r.total / r.cnt) : 0,
-    };
+      const rows = await runSQL<{ hour: number; cnt: number; total: number }>(`
+        SELECT EXTRACT(HOUR FROM order_date AT TIME ZONE 'America/Sao_Paulo')::int AS hour,
+               COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
+        FROM orders WHERE ${w}
+        GROUP BY hour ORDER BY hour
+      `, tid);
+
+      const hours = Array.from({ length: 24 }, (_, i) => {
+        const r = rows.find(r => r.hour === i);
+        return {
+          hour: i,
+          label: `${String(i).padStart(2, "0")}:00`,
+          count: r?.cnt || 0,
+          total: rnd(r?.total || 0),
+          avg_ticket: r && r.cnt > 0 ? rnd(r.total / r.cnt) : 0,
+        };
+      });
+
+      const peak = hours.reduce((b, h) => h.count > b.count ? h : b, hours[0]);
+      return {
+        hours,
+        peak_hour: peak,
+        total_orders: hours.reduce((s, h) => s + h.count, 0),
+        filters: { status: params.status, marketplace: params.marketplace, period: fmtPeriod(params) },
+      };
   });
-
-  const peak = hours.reduce((b, h) => h.count > b.count ? h : b, hours[0]);
-  return {
-    hours,
-    peak_hour: peak,
-    total_orders: hours.reduce((s, h) => s + h.count, 0),
-    filters: { status: params.status, marketplace: params.marketplace, period: fmtPeriod(params) },
-  };
 }
 
 // ── 13. salesForecast ───────────────────────────────────
 export async function salesForecast(params: QueryParams) {
-  const w = buildWhere(params, { includeStatus: false });
-  const tid = params._tenant_id;
+  const _tid = params._tenant_id || 'system';
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:salesForecast:${Math.abs(hash)}`;
 
-  const rows = await runSQL<{ month: string; cnt: number; total: number }>(`
-    SELECT TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM') AS month,
-           COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
-    FROM orders WHERE ${w}
-    GROUP BY month ORDER BY month
-  `, tid);
+  return withCache(cacheKey, async () => {
+    const w = buildWhere(params, { includeStatus: false });
+      const tid = params._tenant_id;
 
-  if (rows.length < 3) return { error: "Dados insuficientes para previsao. Necessario pelo menos 3 meses." };
+      const rows = await runSQL<{ month: string; cnt: number; total: number }>(`
+        SELECT TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM') AS month,
+               COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
+        FROM orders WHERE ${w}
+        GROUP BY month ORDER BY month
+      `, tid);
 
-  const months = rows.map((r, i) => ({ month: r.month, index: i, revenue: r.total, orders: r.cnt }));
-  const n = months.length;
+      if (rows.length < 3) return { error: "Dados insuficientes para previsao. Necessario pelo menos 3 meses." };
 
-  // Moving average (3 months)
-  const movingAvg3 = (months[n - 1].revenue + months[n - 2].revenue + months[n - 3].revenue) / 3;
+      const months = rows.map((r, i) => ({ month: r.month, index: i, revenue: r.total, orders: r.cnt }));
+      const n = months.length;
 
-  // Linear regression
-  const sumX = months.reduce((s, m) => s + m.index, 0);
-  const sumY = months.reduce((s, m) => s + m.revenue, 0);
-  const sumXY = months.reduce((s, m) => s + m.index * m.revenue, 0);
-  const sumX2 = months.reduce((s, m) => s + m.index * m.index, 0);
-  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-  const intercept = (sumY - slope * sumX) / n;
-  const linearForecast = intercept + slope * n;
-  const forecast = movingAvg3 * 0.7 + linearForecast * 0.3;
+      // Moving average (3 months)
+      const movingAvg3 = (months[n - 1].revenue + months[n - 2].revenue + months[n - 3].revenue) / 3;
 
-  const avgRevenue = sumY / n;
-  const trend = slope > avgRevenue * 0.02 ? "crescimento" : slope < -avgRevenue * 0.02 ? "queda" : "estavel";
+      // Linear regression
+      const sumX = months.reduce((s, m) => s + m.index, 0);
+      const sumY = months.reduce((s, m) => s + m.revenue, 0);
+      const sumXY = months.reduce((s, m) => s + m.index * m.revenue, 0);
+      const sumX2 = months.reduce((s, m) => s + m.index * m.index, 0);
+      const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+      const intercept = (sumY - slope * sumX) / n;
+      const linearForecast = intercept + slope * n;
+      const forecast = movingAvg3 * 0.7 + linearForecast * 0.3;
 
-  // Current month projection
-  const now = new Date();
-  const curKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const curMonth = rows.find(r => r.month === curKey);
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const daysPassed = now.getDate();
+      const avgRevenue = sumY / n;
+      const trend = slope > avgRevenue * 0.02 ? "crescimento" : slope < -avgRevenue * 0.02 ? "queda" : "estavel";
 
-  return {
-    forecast_next_month: rnd(forecast),
-    moving_avg_3m: rnd(movingAvg3),
-    linear_trend_forecast: rnd(linearForecast),
-    current_month: curMonth ? {
-      month: curKey,
-      actual_so_far: rnd(curMonth.total),
-      orders_so_far: curMonth.cnt,
-      days_passed: daysPassed,
-      days_in_month: daysInMonth,
-      projected_total: rnd((curMonth.total / daysPassed) * daysInMonth),
-    } : null,
-    last_complete_month: { month: months[n - 1].month, revenue: rnd(months[n - 1].revenue), orders: months[n - 1].orders },
-    trend,
-    avg_monthly_revenue: rnd(avgRevenue),
-    months_analyzed: n,
-    strong_months: months.filter(m => m.revenue > avgRevenue).map(m => m.month),
-    weak_months: months.filter(m => m.revenue < avgRevenue).map(m => m.month),
-    filters: { status: params.status, marketplace: params.marketplace },
-  };
+      // Current month projection
+      const now = new Date();
+      const curKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const curMonth = rows.find(r => r.month === curKey);
+      const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      const daysPassed = now.getDate();
+
+      return {
+        forecast_next_month: rnd(forecast),
+        moving_avg_3m: rnd(movingAvg3),
+        linear_trend_forecast: rnd(linearForecast),
+        current_month: curMonth ? {
+          month: curKey,
+          actual_so_far: rnd(curMonth.total),
+          orders_so_far: curMonth.cnt,
+          days_passed: daysPassed,
+          days_in_month: daysInMonth,
+          projected_total: rnd((curMonth.total / daysPassed) * daysInMonth),
+        } : null,
+        last_complete_month: { month: months[n - 1].month, revenue: rnd(months[n - 1].revenue), orders: months[n - 1].orders },
+        trend,
+        avg_monthly_revenue: rnd(avgRevenue),
+        months_analyzed: n,
+        strong_months: months.filter(m => m.revenue > avgRevenue).map(m => m.month),
+        weak_months: months.filter(m => m.revenue < avgRevenue).map(m => m.month),
+        filters: { status: params.status, marketplace: params.marketplace },
+      };
+  });
 }
 
 // ── 14. executiveSummary ────────────────────────────────
 export async function executiveSummary(params: QueryParams) {
-  const w = buildWhere(params, { includeStatus: false });
-  const tid = params._tenant_id;
+  const _tid = params._tenant_id || 'system';
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:executiveSummary:${Math.abs(hash)}`;
 
-  // 3 aggregated queries in parallel
-  const [overviewRows, mktRows, monthlyRows] = await Promise.all([
-    runSQL<{ total_orders: number; total_revenue: number; avg_ticket: number; paid_orders: number; paid_revenue: number; cancelled_orders: number; cancelled_revenue: number }>(`
-      SELECT COUNT(*)::int AS total_orders,
-             COALESCE(SUM(total_amount), 0)::float AS total_revenue,
-             COALESCE(AVG(total_amount), 0)::float AS avg_ticket,
-             COUNT(*) FILTER (WHERE LOWER(status) = 'paid')::int AS paid_orders,
-             COALESCE(SUM(total_amount) FILTER (WHERE LOWER(status) = 'paid'), 0)::float AS paid_revenue,
-             COUNT(*) FILTER (WHERE LOWER(status) = 'cancelled')::int AS cancelled_orders,
-             COALESCE(SUM(total_amount) FILTER (WHERE LOWER(status) = 'cancelled'), 0)::float AS cancelled_revenue
-      FROM orders WHERE ${w}
-    `, tid),
-    runSQL<{ marketplace: string; cnt: number; total: number }>(`
-      SELECT marketplace, COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
-      FROM orders WHERE ${w}
-      GROUP BY marketplace ORDER BY total DESC
-    `, tid),
-    runSQL<{ month: string; cnt: number; total: number }>(`
-      SELECT TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM') AS month,
-             COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
-      FROM orders WHERE ${w}
-      GROUP BY month ORDER BY month
-    `, tid),
-  ]);
+  return withCache(cacheKey, async () => {
+    const w = buildWhere(params, { includeStatus: false });
+      const tid = params._tenant_id;
 
-  // Also get status breakdown
-  const statusRows = await runSQL<{ status: string; cnt: number; total: number }>(`
-    SELECT LOWER(status) AS status, COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
-    FROM orders WHERE ${w}
-    GROUP BY LOWER(status) ORDER BY cnt DESC
-  `, tid);
+      // 3 aggregated queries in parallel
+      const [overviewRows, mktRows, monthlyRows] = await Promise.all([
+        runSQL<{ total_orders: number; total_revenue: number; avg_ticket: number; paid_orders: number; paid_revenue: number; cancelled_orders: number; cancelled_revenue: number }>(`
+          SELECT COUNT(*)::int AS total_orders,
+                 COALESCE(SUM(total_amount), 0)::float AS total_revenue,
+                 COALESCE(AVG(total_amount), 0)::float AS avg_ticket,
+                 COUNT(*) FILTER (WHERE LOWER(status) = 'paid')::int AS paid_orders,
+                 COALESCE(SUM(total_amount) FILTER (WHERE LOWER(status) = 'paid'), 0)::float AS paid_revenue,
+                 COUNT(*) FILTER (WHERE LOWER(status) = 'cancelled')::int AS cancelled_orders,
+                 COALESCE(SUM(total_amount) FILTER (WHERE LOWER(status) = 'cancelled'), 0)::float AS cancelled_revenue
+          FROM orders WHERE ${w}
+        `, tid),
+        runSQL<{ marketplace: string; cnt: number; total: number }>(`
+          SELECT marketplace, COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
+          FROM orders WHERE ${w}
+          GROUP BY marketplace ORDER BY total DESC
+        `, tid),
+        runSQL<{ month: string; cnt: number; total: number }>(`
+          SELECT TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM') AS month,
+                 COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
+          FROM orders WHERE ${w}
+          GROUP BY month ORDER BY month
+        `, tid),
+      ]);
 
-  const ov = overviewRows[0] || { total_orders: 0, total_revenue: 0, avg_ticket: 0, paid_orders: 0, paid_revenue: 0, cancelled_orders: 0, cancelled_revenue: 0 };
+      // Also get status breakdown
+      const statusRows = await runSQL<{ status: string; cnt: number; total: number }>(`
+        SELECT LOWER(status) AS status, COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
+        FROM orders WHERE ${w}
+        GROUP BY LOWER(status) ORDER BY cnt DESC
+      `, tid);
 
-  let monthTrend = null;
-  if (monthlyRows.length >= 2) {
-    const last = monthlyRows[monthlyRows.length - 1].total;
-    const prev = monthlyRows[monthlyRows.length - 2].total;
-    monthTrend = prev > 0 ? rnd(((last - prev) / prev) * 100) : null;
-  }
+      const ov = overviewRows[0] || { total_orders: 0, total_revenue: 0, avg_ticket: 0, paid_orders: 0, paid_revenue: 0, cancelled_orders: 0, cancelled_revenue: 0 };
 
-  const bestMonth = monthlyRows.length > 0 ? monthlyRows.reduce((b, m) => m.total > b.total ? m : b) : null;
-  const worstMonth = monthlyRows.length > 0 ? monthlyRows.reduce((w, m) => m.total < w.total ? m : w) : null;
+      let monthTrend = null;
+      if (monthlyRows.length >= 2) {
+        const last = monthlyRows[monthlyRows.length - 1].total;
+        const prev = monthlyRows[monthlyRows.length - 2].total;
+        monthTrend = prev > 0 ? rnd(((last - prev) / prev) * 100) : null;
+      }
 
-  return {
-    overview: {
-      total_orders: ov.total_orders,
-      total_revenue: rnd(ov.total_revenue),
-      avg_ticket: rnd(ov.avg_ticket),
-      period: fmtPeriod(params),
-    },
-    health: {
-      paid_orders: ov.paid_orders,
-      paid_revenue: rnd(ov.paid_revenue),
-      paid_pct: ov.total_orders > 0 ? rnd((ov.paid_orders / ov.total_orders) * 100) : 0,
-      cancelled_orders: ov.cancelled_orders,
-      cancelled_revenue: rnd(ov.cancelled_revenue),
-      cancellation_rate: ov.total_orders > 0 ? rnd((ov.cancelled_orders / ov.total_orders) * 100) : 0,
-    },
-    channels: mktRows.map(r => ({
-      marketplace: r.marketplace,
-      revenue: rnd(r.total),
-      share: ov.total_revenue > 0 ? rnd((r.total / ov.total_revenue) * 100) : 0,
-      orders: r.cnt,
-      avg_ticket: r.cnt > 0 ? rnd(r.total / r.cnt) : 0,
-    })),
-    timeline: {
-      months_count: monthlyRows.length,
-      best_month: bestMonth ? { month: bestMonth.month, revenue: rnd(bestMonth.total) } : null,
-      worst_month: worstMonth ? { month: worstMonth.month, revenue: rnd(worstMonth.total) } : null,
-      latest_month_trend: monthTrend,
-    },
-    status_breakdown: statusRows.map(r => ({
-      status: r.status,
-      count: r.cnt,
-      pct: ov.total_orders > 0 ? rnd((r.cnt / ov.total_orders) * 100) : 0,
-      revenue: rnd(r.total),
-    })),
-  };
+      const bestMonth = monthlyRows.length > 0 ? monthlyRows.reduce((b, m) => m.total > b.total ? m : b) : null;
+      const worstMonth = monthlyRows.length > 0 ? monthlyRows.reduce((w, m) => m.total < w.total ? m : w) : null;
+
+      return {
+        overview: {
+          total_orders: ov.total_orders,
+          total_revenue: rnd(ov.total_revenue),
+          avg_ticket: rnd(ov.avg_ticket),
+          period: fmtPeriod(params),
+        },
+        health: {
+          paid_orders: ov.paid_orders,
+          paid_revenue: rnd(ov.paid_revenue),
+          paid_pct: ov.total_orders > 0 ? rnd((ov.paid_orders / ov.total_orders) * 100) : 0,
+          cancelled_orders: ov.cancelled_orders,
+          cancelled_revenue: rnd(ov.cancelled_revenue),
+          cancellation_rate: ov.total_orders > 0 ? rnd((ov.cancelled_orders / ov.total_orders) * 100) : 0,
+        },
+        channels: mktRows.map(r => ({
+          marketplace: r.marketplace,
+          revenue: rnd(r.total),
+          share: ov.total_revenue > 0 ? rnd((r.total / ov.total_revenue) * 100) : 0,
+          orders: r.cnt,
+          avg_ticket: r.cnt > 0 ? rnd(r.total / r.cnt) : 0,
+        })),
+        timeline: {
+          months_count: monthlyRows.length,
+          best_month: bestMonth ? { month: bestMonth.month, revenue: rnd(bestMonth.total) } : null,
+          worst_month: worstMonth ? { month: worstMonth.month, revenue: rnd(worstMonth.total) } : null,
+          latest_month_trend: monthTrend,
+        },
+        status_breakdown: statusRows.map(r => ({
+          status: r.status,
+          count: r.cnt,
+          pct: ov.total_orders > 0 ? rnd((r.cnt / ov.total_orders) * 100) : 0,
+          revenue: rnd(r.total),
+        })),
+      };
+  });
 }
 
 // ── 15. marketplaceGrowth ───────────────────────────────
 export async function marketplaceGrowth(params: QueryParams) {
-  const w = buildWhere(params);
-  const tid = params._tenant_id;
+  const _tid = params._tenant_id || 'system';
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:marketplaceGrowth:${Math.abs(hash)}`;
 
-  const rows = await runSQL<{ marketplace: string; month: string; cnt: number; total: number }>(`
-    SELECT marketplace,
-           TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM') AS month,
-           COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
-    FROM orders WHERE ${w}
-    GROUP BY marketplace, month ORDER BY marketplace, month
-  `, tid);
+  return withCache(cacheKey, async () => {
+    const w = buildWhere(params);
+      const tid = params._tenant_id;
 
-  const mktMonths: Record<string, Array<{ month: string; orders: number; revenue: number; growth_pct: number | null }>> = {};
-  const mktMap: Record<string, Record<string, { cnt: number; total: number }>> = {};
+      const rows = await runSQL<{ marketplace: string; month: string; cnt: number; total: number }>(`
+        SELECT marketplace,
+               TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM') AS month,
+               COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
+        FROM orders WHERE ${w}
+        GROUP BY marketplace, month ORDER BY marketplace, month
+      `, tid);
 
-  rows.forEach(r => {
-    const m = r.marketplace || "desconhecido";
-    if (!mktMap[m]) mktMap[m] = {};
-    mktMap[m][r.month] = { cnt: r.cnt, total: r.total };
+      const mktMonths: Record<string, Array<{ month: string; orders: number; revenue: number; growth_pct: number | null }>> = {};
+      const mktMap: Record<string, Record<string, { cnt: number; total: number }>> = {};
+
+      rows.forEach(r => {
+        const m = r.marketplace || "desconhecido";
+        if (!mktMap[m]) mktMap[m] = {};
+        mktMap[m][r.month] = { cnt: r.cnt, total: r.total };
+      });
+
+      for (const [mkt, monthData] of Object.entries(mktMap)) {
+        const sorted = Object.entries(monthData).sort(([a], [b]) => a.localeCompare(b));
+        mktMonths[mkt] = sorted.map(([month, d], i) => ({
+          month,
+          orders: d.cnt,
+          revenue: rnd(d.total),
+          growth_pct: i > 0 && sorted[i - 1][1].total > 0
+            ? rnd(((d.total - sorted[i - 1][1].total) / sorted[i - 1][1].total) * 100)
+            : null,
+        }));
+      }
+
+      return {
+        marketplaces: mktMonths,
+        filters: { status: params.status, marketplace: params.marketplace, period: fmtPeriod(params) },
+      };
   });
-
-  for (const [mkt, monthData] of Object.entries(mktMap)) {
-    const sorted = Object.entries(monthData).sort(([a], [b]) => a.localeCompare(b));
-    mktMonths[mkt] = sorted.map(([month, d], i) => ({
-      month,
-      orders: d.cnt,
-      revenue: rnd(d.total),
-      growth_pct: i > 0 && sorted[i - 1][1].total > 0
-        ? rnd(((d.total - sorted[i - 1][1].total) / sorted[i - 1][1].total) * 100)
-        : null,
-    }));
-  }
-
-  return {
-    marketplaces: mktMonths,
-    filters: { status: params.status, marketplace: params.marketplace, period: fmtPeriod(params) },
-  };
 }
 
 // ── 16. cancellationByMonth ─────────────────────────────
 export async function cancellationByMonth(params: QueryParams) {
-  const w = buildWhere(params, { includeStatus: false });
-  const tid = params._tenant_id;
+  const _tid = params._tenant_id || 'system';
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:cancellationByMonth:${Math.abs(hash)}`;
 
-  const rows = await runSQL<{ month: string; status: string; cnt: number; total: number }>(`
-    SELECT TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM') AS month,
-           LOWER(status) AS status, COUNT(*)::int AS cnt,
-           COALESCE(SUM(total_amount), 0)::float AS total
-    FROM orders WHERE ${w}
-    GROUP BY month, LOWER(status) ORDER BY month
-  `, tid);
+  return withCache(cacheKey, async () => {
+    const w = buildWhere(params, { includeStatus: false });
+      const tid = params._tenant_id;
 
-  const monthMap: Record<string, { total: number; cancelled: number; cancelledAmount: number; totalOrders: number }> = {};
-  rows.forEach(r => {
-    if (!monthMap[r.month]) monthMap[r.month] = { total: 0, cancelled: 0, cancelledAmount: 0, totalOrders: 0 };
-    monthMap[r.month].totalOrders += r.cnt;
-    monthMap[r.month].total += r.total;
-    if (r.status === "cancelled") { monthMap[r.month].cancelled += r.cnt; monthMap[r.month].cancelledAmount += r.total; }
+      const rows = await runSQL<{ month: string; status: string; cnt: number; total: number }>(`
+        SELECT TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM') AS month,
+               LOWER(status) AS status, COUNT(*)::int AS cnt,
+               COALESCE(SUM(total_amount), 0)::float AS total
+        FROM orders WHERE ${w}
+        GROUP BY month, LOWER(status) ORDER BY month
+      `, tid);
+
+      const monthMap: Record<string, { total: number; cancelled: number; cancelledAmount: number; totalOrders: number }> = {};
+      rows.forEach(r => {
+        if (!monthMap[r.month]) monthMap[r.month] = { total: 0, cancelled: 0, cancelledAmount: 0, totalOrders: 0 };
+        monthMap[r.month].totalOrders += r.cnt;
+        monthMap[r.month].total += r.total;
+        if (r.status === "cancelled") { monthMap[r.month].cancelled += r.cnt; monthMap[r.month].cancelledAmount += r.total; }
+      });
+
+      const months = Object.entries(monthMap)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([month, d]) => ({
+          month,
+          total_orders: d.totalOrders,
+          cancelled_orders: d.cancelled,
+          cancellation_rate: d.totalOrders > 0 ? rnd((d.cancelled / d.totalOrders) * 100) : 0,
+          cancelled_amount: rnd(d.cancelledAmount),
+        }));
+
+      const avgRate = months.length > 0 ? rnd(months.reduce((s, m) => s + m.cancellation_rate, 0) / months.length) : 0;
+      return {
+        months,
+        avg_cancellation_rate: avgRate,
+        filters: { marketplace: params.marketplace, period: fmtPeriod(params) },
+      };
   });
-
-  const months = Object.entries(monthMap)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, d]) => ({
-      month,
-      total_orders: d.totalOrders,
-      cancelled_orders: d.cancelled,
-      cancellation_rate: d.totalOrders > 0 ? rnd((d.cancelled / d.totalOrders) * 100) : 0,
-      cancelled_amount: rnd(d.cancelledAmount),
-    }));
-
-  const avgRate = months.length > 0 ? rnd(months.reduce((s, m) => s + m.cancellation_rate, 0) / months.length) : 0;
-  return {
-    months,
-    avg_cancellation_rate: avgRate,
-    filters: { marketplace: params.marketplace, period: fmtPeriod(params) },
-  };
 }
 
 // ── 17. yearOverYear ────────────────────────────────────
 export async function yearOverYear(params: QueryParams) {
-  const w = buildWhere(params);
-  const tid = params._tenant_id;
+  const _tid = params._tenant_id || 'system';
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:yearOverYear:${Math.abs(hash)}`;
 
-  // Annual totals
-  const rows = await runSQL<{ year: string; cnt: number; total: number; avg: number }>(`
-    SELECT TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY') AS year,
-           COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total,
-           COALESCE(AVG(total_amount), 0)::float AS avg
-    FROM orders WHERE ${w}
-    GROUP BY year ORDER BY year
-  `, tid);
+  return withCache(cacheKey, async () => {
+    const w = buildWhere(params);
+      const tid = params._tenant_id;
 
-  const years = rows.map((r, i) => ({
-    year: r.year,
-    orders: r.cnt,
-    revenue: rnd(r.total),
-    avg_ticket: rnd(r.avg),
-    growth_pct: i > 0 && rows[i - 1].total > 0 ? rnd(((r.total - rows[i - 1].total) / rows[i - 1].total) * 100) : null,
-  }));
+      // Annual totals
+      const rows = await runSQL<{ year: string; cnt: number; total: number; avg: number }>(`
+        SELECT TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY') AS year,
+               COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total,
+               COALESCE(AVG(total_amount), 0)::float AS avg
+        FROM orders WHERE ${w}
+        GROUP BY year ORDER BY year
+      `, tid);
 
-  // Monthly breakdown across years (e.g. Jan 2025 vs Jan 2026)
-  const monthRows = await runSQL<{ year: string; month: string; cnt: number; total: number; avg: number }>(`
-    SELECT TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY') AS year,
-           TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'MM') AS month,
-           COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total,
-           COALESCE(AVG(total_amount), 0)::float AS avg
-    FROM orders WHERE ${w}
-    GROUP BY year, month ORDER BY month, year
-  `, tid);
+      const years = rows.map((r, i) => ({
+        year: r.year,
+        orders: r.cnt,
+        revenue: rnd(r.total),
+        avg_ticket: rnd(r.avg),
+        growth_pct: i > 0 && rows[i - 1].total > 0 ? rnd(((r.total - rows[i - 1].total) / rows[i - 1].total) * 100) : null,
+      }));
 
-  // Group by month for cross-year comparison
-  const monthMap: Record<string, Array<{ year: string; orders: number; revenue: number; avg_ticket: number }>> = {};
-  monthRows.forEach(r => {
-    if (!monthMap[r.month]) monthMap[r.month] = [];
-    monthMap[r.month].push({ year: r.year, orders: r.cnt, revenue: rnd(r.total), avg_ticket: rnd(r.avg) });
+      // Monthly breakdown across years (e.g. Jan 2025 vs Jan 2026)
+      const monthRows = await runSQL<{ year: string; month: string; cnt: number; total: number; avg: number }>(`
+        SELECT TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY') AS year,
+               TO_CHAR(order_date AT TIME ZONE 'America/Sao_Paulo', 'MM') AS month,
+               COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total,
+               COALESCE(AVG(total_amount), 0)::float AS avg
+        FROM orders WHERE ${w}
+        GROUP BY year, month ORDER BY month, year
+      `, tid);
+
+      // Group by month for cross-year comparison
+      const monthMap: Record<string, Array<{ year: string; orders: number; revenue: number; avg_ticket: number }>> = {};
+      monthRows.forEach(r => {
+        if (!monthMap[r.month]) monthMap[r.month] = [];
+        monthMap[r.month].push({ year: r.year, orders: r.cnt, revenue: rnd(r.total), avg_ticket: rnd(r.avg) });
+      });
+
+      const monthlyComparison = Object.entries(monthMap)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([month, yearData]) => {
+          const sorted = yearData.sort((a, b) => a.year.localeCompare(b.year));
+          const lastTwo = sorted.length >= 2 ? sorted.slice(-2) : sorted;
+          const growthPct = lastTwo.length === 2 && lastTwo[0].revenue > 0
+            ? rnd(((lastTwo[1].revenue - lastTwo[0].revenue) / lastTwo[0].revenue) * 100)
+            : null;
+          return { month, years: sorted, growth_pct: growthPct };
+        });
+
+      return {
+        years,
+        monthly_comparison: monthlyComparison,
+        filters: { status: params.status, marketplace: params.marketplace, period: fmtPeriod(params) },
+      };
   });
-
-  const monthlyComparison = Object.entries(monthMap)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, yearData]) => {
-      const sorted = yearData.sort((a, b) => a.year.localeCompare(b.year));
-      const lastTwo = sorted.length >= 2 ? sorted.slice(-2) : sorted;
-      const growthPct = lastTwo.length === 2 && lastTwo[0].revenue > 0
-        ? rnd(((lastTwo[1].revenue - lastTwo[0].revenue) / lastTwo[0].revenue) * 100)
-        : null;
-      return { month, years: sorted, growth_pct: growthPct };
-    });
-
-  return {
-    years,
-    monthly_comparison: monthlyComparison,
-    filters: { status: params.status, marketplace: params.marketplace, period: fmtPeriod(params) },
-  };
 }
 
 
 // ── 18. seasonalityAnalysis ─────────────────────────────
 export async function seasonalityAnalysis(params: QueryParams) {
-  const w = buildWhere(params);
-  const tid = params._tenant_id;
+  const _tid = params._tenant_id || 'system';
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:seasonalityAnalysis:${Math.abs(hash)}`;
 
-  const rows = await runSQL<{ month_num: number; cnt: number; total: number }>(`
-    SELECT EXTRACT(MONTH FROM order_date AT TIME ZONE 'America/Sao_Paulo')::int AS month_num,
-           COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
-    FROM orders WHERE ${w}
-    GROUP BY month_num ORDER BY month_num
-  `, tid);
+  return withCache(cacheKey, async () => {
+    const w = buildWhere(params);
+      const tid = params._tenant_id;
 
-  const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-  const months = Array.from({ length: 12 }, (_, i) => {
-    const r = rows.find(r => r.month_num === i + 1);
-    return {
-      month: i + 1,
-      name: monthNames[i],
-      orders: r?.cnt || 0,
-      revenue: rnd(r?.total || 0),
-      avg_ticket: r && r.cnt > 0 ? rnd(r.total / r.cnt) : 0,
-    };
+      const rows = await runSQL<{ month_num: number; cnt: number; total: number }>(`
+        SELECT EXTRACT(MONTH FROM order_date AT TIME ZONE 'America/Sao_Paulo')::int AS month_num,
+               COUNT(*)::int AS cnt, COALESCE(SUM(total_amount), 0)::float AS total
+        FROM orders WHERE ${w}
+        GROUP BY month_num ORDER BY month_num
+      `, tid);
+
+      const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+      const months = Array.from({ length: 12 }, (_, i) => {
+        const r = rows.find(r => r.month_num === i + 1);
+        return {
+          month: i + 1,
+          name: monthNames[i],
+          orders: r?.cnt || 0,
+          revenue: rnd(r?.total || 0),
+          avg_ticket: r && r.cnt > 0 ? rnd(r.total / r.cnt) : 0,
+        };
+      });
+
+      const withData = months.filter(m => m.orders > 0);
+      const avgRevenue = withData.length > 0 ? withData.reduce((s, m) => s + m.revenue, 0) / withData.length : 0;
+
+      return {
+        months,
+        strongest: withData.length > 0 ? withData.reduce((b, m) => m.revenue > b.revenue ? m : b) : null,
+        weakest: withData.length > 0 ? withData.reduce((w, m) => m.revenue < w.revenue ? m : w) : null,
+        avg_monthly_revenue: rnd(avgRevenue),
+        filters: { status: params.status, marketplace: params.marketplace, period: fmtPeriod(params) },
+      };
   });
-
-  const withData = months.filter(m => m.orders > 0);
-  const avgRevenue = withData.length > 0 ? withData.reduce((s, m) => s + m.revenue, 0) / withData.length : 0;
-
-  return {
-    months,
-    strongest: withData.length > 0 ? withData.reduce((b, m) => m.revenue > b.revenue ? m : b) : null,
-    weakest: withData.length > 0 ? withData.reduce((w, m) => m.revenue < w.revenue ? m : w) : null,
-    avg_monthly_revenue: rnd(avgRevenue),
-    filters: { status: params.status, marketplace: params.marketplace, period: fmtPeriod(params) },
-  };
 }
 
 /**
@@ -1468,36 +1612,44 @@ async function topProducts(params: QueryParams): Promise<unknown> {
  * Uses PostgreSQL's native corr(y, x) function.
  */
 export async function getMetricCorrelation(params: QueryParams) {
-  const tenantId = params._tenant_id;
-  const where = buildWhere(params);
+  const _tid = params._tenant_id || 'system';
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:getMetricCorrelation:${Math.abs(hash)}`;
 
-  const sql = `
-        WITH daily_metrics AS (
+  return withCache(cacheKey, async () => {
+    const tenantId = params._tenant_id;
+      const where = buildWhere(params);
+
+      const sql = `
+            WITH daily_metrics AS (
+                SELECT 
+                    DATE(order_date) as day,
+                    SUM(total_amount) as revenue,
+                    COUNT(id) as order_count,
+                    AVG(total_amount) as avg_ticket
+                FROM public.orders
+                WHERE ${where} AND tenant_id = '${tenantId}'::uuid
+                GROUP BY 1
+            )
             SELECT 
-                DATE(order_date) as day,
-                SUM(total_amount) as revenue,
-                COUNT(id) as order_count,
-                AVG(total_amount) as avg_ticket
-            FROM public.orders
-            WHERE ${where} AND tenant_id = '${tenantId}'::uuid
-            GROUP BY 1
-        )
-        SELECT 
-            corr(revenue, order_count) as revenue_vs_count,
-            corr(revenue, avg_ticket) as revenue_vs_ticket,
-            corr(order_count, avg_ticket) as count_vs_ticket
-        FROM daily_metrics
-    `;
+                corr(revenue, order_count) as revenue_vs_count,
+                corr(revenue, avg_ticket) as revenue_vs_ticket,
+                corr(order_count, avg_ticket) as count_vs_ticket
+            FROM daily_metrics
+        `;
 
-  const rows = await runSQL<any>(sql, null);
-  const result = rows[0] || {};
+      const rows = await runSQL<any>(sql, null);
+      const result = rows[0] || {};
 
-  return {
-    revenue_v_orders: rnd(result.revenue_vs_count || 0),
-    revenue_v_ticket: rnd(result.revenue_vs_ticket || 0),
-    orders_v_ticket: rnd(result.count_vs_ticket || 0),
-    period: fmtPeriod(params)
-  };
+      return {
+        revenue_v_orders: rnd(result.revenue_vs_count || 0),
+        revenue_v_ticket: rnd(result.revenue_vs_ticket || 0),
+        orders_v_ticket: rnd(result.count_vs_ticket || 0),
+        period: fmtPeriod(params)
+      };
+  });
 }
 
 /**
@@ -1505,119 +1657,127 @@ export async function getMetricCorrelation(params: QueryParams) {
  * Based on RFM logic but returns specific customer lists.
  */
 export async function getSmartSegments(params: QueryParams) {
-  const tenantId = params._tenant_id;
-  const where = buildWhere(params);
-  const limit = params.limit || 5;
+  const _tid = params._tenant_id || 'system';
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:getSmartSegments:${Math.abs(hash)}`;
 
-  const churnSql = `
-        WITH recent_orders AS (
-            SELECT o.id, o.total_amount, o.order_date, o.external_order_id, o.marketplace
-            FROM public.orders o
-            WHERE ${where} AND o.tenant_id = '${tenantId}'::uuid
-        ),
-        customer_orders AS (
-            SELECT 
-                o.id,
-                o.total_amount,
-                o.order_date,
-                COALESCE(
-                  ml.raw_json->'buyer'->>'nickname',
-                  sh.raw_json->>'buyer_username',
-                  bg.raw_json->>'nome',
-                  'Cliente Oculto'
-                ) as customer_name,
-                COALESCE(
-                  ml.raw_json->'buyer'->>'email',
-                  sh.raw_json->>'buyer_username',
-                  bg.raw_json->>'email'
-                ) as customer_email
-            FROM recent_orders o
-            LEFT JOIN public.ml_raw_orders ml ON o.external_order_id = ml.id AND o.marketplace = 'ml' AND ml.tenant_id = '${tenantId}'::uuid
-            LEFT JOIN public.bagy_raw_orders bg ON o.external_order_id = bg.id AND o.marketplace = 'bagy' AND bg.tenant_id = '${tenantId}'::uuid
-            LEFT JOIN public.shopee_raw_orders sh ON o.external_order_id = sh.id AND o.marketplace = 'shopee' AND sh.tenant_id = '${tenantId}'::uuid
-            LEFT JOIN public.shein_raw_orders sn ON o.external_order_id = sn.id AND o.marketplace = 'shein' AND sn.tenant_id = '${tenantId}'::uuid
-        ),
-        customer_stats AS (
-            SELECT 
-                customer_name as name,
-                customer_email as email,
-                MAX(order_date) as last_order,
-                COUNT(id) as total_orders,
-                SUM(total_amount) as total_spent
-            FROM customer_orders
-            GROUP BY 1, 2
-            HAVING COUNT(id) > 2
-        )
-        SELECT * FROM customer_stats
-        WHERE last_order < NOW() - INTERVAL '45 days'
-        ORDER BY total_spent DESC
-        LIMIT ${limit}
-    `;
+  return withCache(cacheKey, async () => {
+    const tenantId = params._tenant_id;
+      const where = buildWhere(params);
+      const limit = params.limit || 5;
 
-  const upsellSql = `
-        WITH recent_orders AS (
-            SELECT o.id, o.total_amount, o.order_date, o.external_order_id, o.marketplace
-            FROM public.orders o
-            WHERE ${where} AND o.tenant_id = '${tenantId}'::uuid
-        ),
-        customer_orders AS (
-            SELECT 
-                o.id,
-                o.total_amount,
-                o.order_date,
-                COALESCE(
-                  ml.raw_json->'buyer'->>'nickname',
-                  sh.raw_json->>'buyer_username',
-                  bg.raw_json->>'nome',
-                  'Cliente Oculto'
-                ) as customer_name,
-                COALESCE(
-                  ml.raw_json->'buyer'->>'email',
-                  sh.raw_json->>'buyer_username',
-                  bg.raw_json->>'email'
-                ) as customer_email
-            FROM recent_orders o
-            LEFT JOIN public.ml_raw_orders ml ON o.external_order_id = ml.id AND o.marketplace = 'ml' AND ml.tenant_id = '${tenantId}'::uuid
-            LEFT JOIN public.bagy_raw_orders bg ON o.external_order_id = bg.id AND o.marketplace = 'bagy' AND bg.tenant_id = '${tenantId}'::uuid
-            LEFT JOIN public.shopee_raw_orders sh ON o.external_order_id = sh.id AND o.marketplace = 'shopee' AND sh.tenant_id = '${tenantId}'::uuid
-            LEFT JOIN public.shein_raw_orders sn ON o.external_order_id = sn.id AND o.marketplace = 'shein' AND sn.tenant_id = '${tenantId}'::uuid
-        ),
-        customer_stats AS (
-            SELECT 
-                customer_name as name,
-                customer_email as email,
-                COUNT(id) as total_orders,
-                AVG(total_amount) as avg_ticket,
-                SUM(total_amount) as total_spent
-            FROM customer_orders
-            GROUP BY 1, 2
-            HAVING COUNT(id) > 5
-        )
-        SELECT * FROM customer_stats
-        WHERE avg_ticket < (SELECT AVG(total_amount) FROM public.orders WHERE ${where} AND tenant_id = '${tenantId}'::uuid) * 1.2
-        ORDER BY total_orders DESC
-        LIMIT ${limit}
-    `;
+      const churnSql = `
+            WITH recent_orders AS (
+                SELECT o.id, o.total_amount, o.order_date, o.external_order_id, o.marketplace
+                FROM public.orders o
+                WHERE ${where} AND o.tenant_id = '${tenantId}'::uuid
+            ),
+            customer_orders AS (
+                SELECT 
+                    o.id,
+                    o.total_amount,
+                    o.order_date,
+                    COALESCE(
+                      ml.raw_json->'buyer'->>'nickname',
+                      sh.raw_json->>'buyer_username',
+                      bg.raw_json->>'nome',
+                      'Cliente Oculto'
+                    ) as customer_name,
+                    COALESCE(
+                      ml.raw_json->'buyer'->>'email',
+                      sh.raw_json->>'buyer_username',
+                      bg.raw_json->>'email'
+                    ) as customer_email
+                FROM recent_orders o
+                LEFT JOIN public.ml_raw_orders ml ON o.external_order_id = ml.id AND o.marketplace = 'ml' AND ml.tenant_id = '${tenantId}'::uuid
+                LEFT JOIN public.bagy_raw_orders bg ON o.external_order_id = bg.id AND o.marketplace = 'bagy' AND bg.tenant_id = '${tenantId}'::uuid
+                LEFT JOIN public.shopee_raw_orders sh ON o.external_order_id = sh.id AND o.marketplace = 'shopee' AND sh.tenant_id = '${tenantId}'::uuid
+                LEFT JOIN public.shein_raw_orders sn ON o.external_order_id = sn.id AND o.marketplace = 'shein' AND sn.tenant_id = '${tenantId}'::uuid
+            ),
+            customer_stats AS (
+                SELECT 
+                    customer_name as name,
+                    customer_email as email,
+                    MAX(order_date) as last_order,
+                    COUNT(id) as total_orders,
+                    SUM(total_amount) as total_spent
+                FROM customer_orders
+                GROUP BY 1, 2
+                HAVING COUNT(id) > 2
+            )
+            SELECT * FROM customer_stats
+            WHERE last_order < NOW() - INTERVAL '45 days'
+            ORDER BY total_spent DESC
+            LIMIT ${limit}
+        `;
 
-  const [churners, upsellers] = await Promise.all([
-    runSQL<any>(churnSql, null),
-    runSQL<any>(upsellSql, null)
-  ]);
+      const upsellSql = `
+            WITH recent_orders AS (
+                SELECT o.id, o.total_amount, o.order_date, o.external_order_id, o.marketplace
+                FROM public.orders o
+                WHERE ${where} AND o.tenant_id = '${tenantId}'::uuid
+            ),
+            customer_orders AS (
+                SELECT 
+                    o.id,
+                    o.total_amount,
+                    o.order_date,
+                    COALESCE(
+                      ml.raw_json->'buyer'->>'nickname',
+                      sh.raw_json->>'buyer_username',
+                      bg.raw_json->>'nome',
+                      'Cliente Oculto'
+                    ) as customer_name,
+                    COALESCE(
+                      ml.raw_json->'buyer'->>'email',
+                      sh.raw_json->>'buyer_username',
+                      bg.raw_json->>'email'
+                    ) as customer_email
+                FROM recent_orders o
+                LEFT JOIN public.ml_raw_orders ml ON o.external_order_id = ml.id AND o.marketplace = 'ml' AND ml.tenant_id = '${tenantId}'::uuid
+                LEFT JOIN public.bagy_raw_orders bg ON o.external_order_id = bg.id AND o.marketplace = 'bagy' AND bg.tenant_id = '${tenantId}'::uuid
+                LEFT JOIN public.shopee_raw_orders sh ON o.external_order_id = sh.id AND o.marketplace = 'shopee' AND sh.tenant_id = '${tenantId}'::uuid
+                LEFT JOIN public.shein_raw_orders sn ON o.external_order_id = sn.id AND o.marketplace = 'shein' AND sn.tenant_id = '${tenantId}'::uuid
+            ),
+            customer_stats AS (
+                SELECT 
+                    customer_name as name,
+                    customer_email as email,
+                    COUNT(id) as total_orders,
+                    AVG(total_amount) as avg_ticket,
+                    SUM(total_amount) as total_spent
+                FROM customer_orders
+                GROUP BY 1, 2
+                HAVING COUNT(id) > 5
+            )
+            SELECT * FROM customer_stats
+            WHERE avg_ticket < (SELECT AVG(total_amount) FROM public.orders WHERE ${where} AND tenant_id = '${tenantId}'::uuid) * 1.2
+            ORDER BY total_orders DESC
+            LIMIT ${limit}
+        `;
 
-  return {
-    churn_risk: (churners || []).map(c => ({
-      name: c.name,
-      email: c.email || 'N/A',
-      last_order: c.last_order,
-      total_spent: rnd(c.total_spent)
-    })),
-    upsell_candidates: (upsellers || []).map(u => ({
-      name: u.name,
-      email: u.email || 'N/A',
-      avg_ticket: rnd(u.avg_ticket),
-      orders: u.total_orders
-    }))
-  };
+      const [churners, upsellers] = await Promise.all([
+        runSQL<any>(churnSql, null),
+        runSQL<any>(upsellSql, null)
+      ]);
+
+      return {
+        churn_risk: (churners || []).map(c => ({
+          name: c.name,
+          email: c.email || 'N/A',
+          last_order: c.last_order,
+          total_spent: rnd(c.total_spent)
+        })),
+        upsell_candidates: (upsellers || []).map(u => ({
+          name: u.name,
+          email: u.email || 'N/A',
+          avg_ticket: rnd(u.avg_ticket),
+          orders: u.total_orders
+        }))
+      };
+  });
 }
 
 /**
