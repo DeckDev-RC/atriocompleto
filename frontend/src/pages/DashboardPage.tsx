@@ -16,8 +16,8 @@ import { OrderDistributionChart, MonthlyRevenueChart } from '../components/Chart
 import { SkeletonBanner, SkeletonCard } from '../components/Skeleton';
 import { useDashboard } from '../hooks/useDashboard';
 import { useAuth } from '../contexts/AuthContext';
+import { useBrandPrimaryColor, getBrandPrimaryWithOpacity } from '../hooks/useBrandPrimaryColor';
 import { useFormatting } from '../hooks/useFormatting';
-import { useState } from 'react';
 
 // ── Page ───────────────────────────────────────────
 
