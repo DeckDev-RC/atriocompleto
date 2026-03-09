@@ -11,6 +11,8 @@ import {
   Target,
   Megaphone,
   BarChart3,
+  Calculator,
+  Package,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../../contexts/AppContext';
@@ -76,6 +78,8 @@ export function Sidebar() {
             { icon: Target, label: 'Estratégia', path: '/estrategia', permission: 'acessar_agente' },
             { icon: Megaphone, label: 'Campanhas', path: '/campanhas', permission: 'acessar_agente' },
             { icon: BarChart3, label: 'Benchmarking', path: '/benchmarking', permission: 'acessar_agente' },
+            { icon: Calculator, label: 'Simulações', path: '/simulacoes', permission: 'acessar_agente' },
+            { icon: Package, label: 'Estoque EOQ', path: '/simulacoes/inventory', permission: 'acessar_agente' },
           ],
         },
       ]
