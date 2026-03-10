@@ -6,6 +6,7 @@ import { sanitizeSQL } from "../utils/sql-sanitizer";
 import { ChatMessage } from "../types";
 import type { Content, FunctionDeclaration, Type } from "@google/genai";
 import { DataContextService } from "./dataContext.service";
+import { AnomalyExplainerService } from "./optimus/anomalyExplainer";
 
 // ── Cached metadata (Redis-backed) ──────────────────────
 const METADATA_CACHE_KEY = "agent:metadata";
@@ -368,6 +369,12 @@ const functionDeclarations: FunctionDeclaration[] = [
         limit: { type: "number" as Type, description: "Quantidade de candidatos (padrao 20)" },
       }
     },
+  },
+  // ── Anomaly Explainer ─────────────────────────────────────────
+  {
+    name: "explainAnomaly",
+    description: "ANALISE CAUSAL de anomalias detectadas. Usa IA para explicar POR QUE metricas variaram, estimar impacto financeiro em R$, sugerir acoes corretivas e perguntas de drill-down. Use para: 'por que vendas cairam', 'explique essa anomalia', 'o que causou essa queda', 'por que faturamento subiu', 'analise essa variacao', 'investigue esse alerta', 'causas possiveis'.",
+    parameters: { type: "object" as Type, properties: {} },
   },
 ];
 
@@ -1018,12 +1025,20 @@ function formatFallback(fnName: string, result: unknown): string {
       }
 
       case "healthCheck": {
-        const alertsList = r.alerts as Array<{ type: string; message: string }>;
+        const alertsList = r.alerts as Array<{ type: string; message: string; estimated_impact?: { amount: number; direction: string; description: string } }>;
         const hcSummary = r.summary as Record<string, unknown> | null;
+        const drillDown = r.drill_down_suggestions as string[] | undefined;
         const icons: Record<string, string> = { danger: "🔴", warning: "⚠️", success: "🟢", info: "ℹ️" };
         const lines: string[] = ["## 🩺 Diagnóstico Rápido\n"];
         if (alertsList) {
-          alertsList.forEach((a) => { lines.push(icons[a.type] + " " + a.message); lines.push(""); });
+          alertsList.forEach((a) => {
+            lines.push(icons[a.type] + " " + a.message);
+            if (a.estimated_impact) {
+              const impactIcon = a.estimated_impact.direction === "loss" ? "📉" : "📈";
+              lines.push(`  ${impactIcon} **Impacto:** ${a.estimated_impact.description}`);
+            }
+            lines.push("");
+          });
         }
         if (hcSummary) {
           lines.push("---");
@@ -1032,6 +1047,11 @@ function formatFallback(fnName: string, result: unknown): string {
             (hcSummary.days_passed as number) + " dias | " +
             fNum((hcSummary.orders_so_far as number) || 0) + " pedidos | Faltam " +
             (hcSummary.days_remaining as number) + " dias");
+        }
+        if (drillDown && drillDown.length > 0) {
+          lines.push("");
+          lines.push("🔍 **Quer se aprofundar?**");
+          drillDown.forEach(s => lines.push("- " + s));
         }
         return lines.join("\n");
       }
@@ -1151,6 +1171,46 @@ function formatFallback(fnName: string, result: unknown): string {
         ].join("\n");
       }
 
+      case "explainAnomaly": {
+        const explanation = r as any;
+        const lines: string[] = ["## 🔍 Análise de Anomalias\n"];
+        if (explanation.anomaly_summary) {
+          lines.push(explanation.anomaly_summary + "\n");
+        }
+        if (explanation.probable_causes?.length) {
+          lines.push("### 🎯 Causas Prováveis");
+          explanation.probable_causes.forEach((c: any) => {
+            const conf = { alta: "🟢", media: "🟡", baixa: "🟠" };
+            lines.push(`- ${(conf as any)[c.confidence] || "⚪"} **${c.cause}** (confiança: ${c.confidence})`);
+            lines.push(`  _${c.evidence}_`);
+          });
+          lines.push("");
+        }
+        if (explanation.estimated_impact) {
+          const imp = explanation.estimated_impact;
+          const icon = imp.direction === "loss" ? "📉" : "📈";
+          lines.push(`### ${icon} Impacto Estimado`);
+          lines.push(`**R$ ${(imp.amount || 0).toLocaleString("pt-BR")}** (${imp.direction === "loss" ? "perda" : "ganho"})`);
+          lines.push(imp.description || "");
+          if (imp.projection) lines.push(`_${imp.projection}_`);
+          lines.push("");
+        }
+        if (explanation.corrective_actions?.length) {
+          lines.push("### ✅ Ações Sugeridas");
+          const prioIcons = { urgente: "🔴", alta: "🟠", media: "🟡", baixa: "🟢" };
+          explanation.corrective_actions.forEach((a: any) => {
+            lines.push(`- ${(prioIcons as any)[a.priority] || "⚪"} **${a.action}**`);
+            lines.push(`  _${a.expected_effect}_`);
+          });
+          lines.push("");
+        }
+        if (explanation.drill_down_suggestions?.length) {
+          lines.push("🔍 **Quer se aprofundar?**");
+          explanation.drill_down_suggestions.forEach((s: string) => lines.push("- " + s));
+        }
+        return lines.join("\n");
+      }
+
       default:
         return "```json\n" + JSON.stringify(r, null, 2).substring(0, 2000) + "\n```";
     }
@@ -1267,9 +1327,14 @@ const SUGGESTIONS_MAP: Record<string, string[]> = {
     "Resumo executivo completo?",
   ],
   healthCheck: [
+    "Explique as anomalias detectadas",
     "Me dá um resumo executivo completo",
     "Qual a previsão para o próximo mês?",
-    "Evolução mês a mês?",
+  ],
+  explainAnomaly: [
+    "Quais marketplaces foram mais afetados?",
+    "Compare com o mesmo período do ano passado",
+    "Quais ações devo tomar agora?",
   ],
   executeSQLQuery: [
     "Resumo executivo?",
@@ -1361,6 +1426,8 @@ export async function processMessage(
         try {
           if (name === "executeSQLQuery" && args?.sql) {
             fnResult = await executeAdHocSQL(args.sql as string, tenantId);
+          } else if (name === "explainAnomaly" && tenantId) {
+            fnResult = await AnomalyExplainerService.explain(tenantId);
           } else if (name && queryFunctions[name]) {
             fnResult = await queryFunctions[name]({ ...args, _tenant_id: tenantId } as QueryParams);
           } else {
@@ -1478,6 +1545,8 @@ export async function* processMessageStream(
       try {
         if (name === "executeSQLQuery" && args?.sql) {
           fnResult = await executeAdHocSQL(args.sql as string, tenantId);
+        } else if (name === "explainAnomaly" && tenantId) {
+          fnResult = await AnomalyExplainerService.explain(tenantId);
         } else if (name && (queryFunctions as any)[name]) {
           fnResult = await (queryFunctions as any)[name]({ ...args, _tenant_id: tenantId } as QueryParams);
         } else {

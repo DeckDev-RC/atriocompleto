@@ -57,25 +57,55 @@ router.get("/health-check", aiReadLimiter, async (req: Request, res: Response) =
     }
     const result = await queryFunctions.healthCheck({ _tenant_id: tenantId } as unknown as Record<string, unknown>);
     const r = result as {
-      alerts: Array<{ type: string; message: string }>;
+      alerts: Array<{ type: string; message: string; estimated_impact?: { amount: number; direction: string; description: string } }>;
       summary: Record<string, unknown> | null;
+      drill_down_suggestions?: string[];
     };
 
     const icons: Record<string, string> = { danger: "🔴", warning: "⚠️", success: "🟢", info: "ℹ️" };
     const fBRL = (v: number) => "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
     let text = "## 🩺 Diagnóstico Rápido\n\n";
-    r.alerts.forEach((a) => { text += icons[a.type] + " " + a.message + "\n\n"; });
+    r.alerts.forEach((a) => {
+      text += icons[a.type] + " " + a.message + "\n";
+      if (a.estimated_impact) {
+        const impactIcon = a.estimated_impact.direction === "loss" ? "📉" : "📈";
+        text += `  ${impactIcon} **Impacto:** ${a.estimated_impact.description}\n`;
+      }
+      text += "\n";
+    });
 
     if (r.summary) {
       text += "---\n";
       text += `📊 **Mês atual (${r.summary.current_month}):** ${fBRL((r.summary.revenue_so_far as number) || 0)} em ${r.summary.days_passed} dias | ${((r.summary.orders_so_far as number) || 0).toLocaleString("pt-BR")} pedidos | Faltam ${r.summary.days_remaining} dias`;
     }
 
-    res.json({ success: true, data: { message: text, alerts: r.alerts, summary: r.summary } });
+    if (r.drill_down_suggestions && r.drill_down_suggestions.length > 0) {
+      text += "\n\n🔍 **Quer se aprofundar?**\n";
+      r.drill_down_suggestions.forEach(s => { text += "- " + s + "\n"; });
+    }
+
+    res.json({ success: true, data: { message: text, alerts: r.alerts, summary: r.summary, drill_down_suggestions: r.drill_down_suggestions } });
   } catch (error) {
     console.error("Erro no health-check:", error);
     res.status(500).json({ success: false, error: "Erro ao gerar diagnóstico" });
+  }
+});
+
+// ── GET /api/chat/anomalies/explain ─────────────────────
+// Análise causal de anomalias via Gemini — custo de tokens
+router.get("/anomalies/explain", aiLimiter, async (req: Request, res: Response) => {
+  try {
+    const tenantId = req.user!.tenant_id;
+    if (!tenantId) {
+      return res.status(403).json({ success: false, error: "Vincule uma empresa para analisar anomalias." });
+    }
+    const { AnomalyExplainerService } = await import("../services/optimus/anomalyExplainer");
+    const explanation = await AnomalyExplainerService.explain(tenantId);
+    res.json({ success: true, data: explanation });
+  } catch (error) {
+    console.error("Erro na análise de anomalias:", error);
+    res.status(500).json({ success: false, error: "Erro ao analisar anomalias" });
   }
 });
 

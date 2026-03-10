@@ -1211,7 +1211,7 @@ export async function healthCheck(_params: QueryParams) {
     FROM orders WHERE order_date >= NOW() - INTERVAL '7 days'
   `, tid);
 
-  const alerts: Array<{ type: "danger" | "warning" | "success" | "info"; message: string; metric?: string; data_support?: any }> = [];
+  const alerts: Array<{ type: "danger" | "warning" | "success" | "info"; message: string; metric?: string; data_support?: any; estimated_impact?: { amount: number; direction: "loss" | "gain"; description: string } }> = [];
 
   // ALERT 0: Statistical Anomalies (Z-score)
   if (dailyRows.length >= 7) {
@@ -1221,13 +1221,21 @@ export async function healthCheck(_params: QueryParams) {
     // 1. Revenue Anomaly
     const rev = calcZScore(lastDay.total, history.map(h => h.total));
     if (Math.abs(rev.z) > 1.5) {
+      const revenueImpact = Math.abs(Math.round(lastDay.total - rev.mean));
       alerts.push({
         type: rev.z > 2.5 ? "success" : rev.z < -2.5 ? "danger" : "warning",
         metric: "revenue_anomaly",
         message: rev.z > 0
           ? `Vendas em alta! R$ ${Math.round(lastDay.total).toLocaleString("pt-BR")} hoje — desvio positivo de ${rev.z.toFixed(1)}σ.`
           : `Vendas abaixo do padrão: R$ ${Math.round(lastDay.total).toLocaleString("pt-BR")} hoje (esperado ~R$ ${Math.round(rev.mean)}).`,
-        data_support: { z_score: rnd(rev.z), actual: rnd(lastDay.total), expected: rnd(rev.mean) }
+        data_support: { z_score: rnd(rev.z), actual: rnd(lastDay.total), expected: rnd(rev.mean) },
+        estimated_impact: {
+          amount: revenueImpact,
+          direction: rev.z > 0 ? "gain" : "loss",
+          description: rev.z > 0
+            ? `R$ ${revenueImpact.toLocaleString("pt-BR")} acima do esperado hoje`
+            : `R$ ${revenueImpact.toLocaleString("pt-BR")} abaixo do esperado hoje`
+        }
       });
     }
 
@@ -1237,13 +1245,19 @@ export async function healthCheck(_params: QueryParams) {
     if (lastAvgTicket > 0 && avgTicketDist.length >= 5) {
       const atk = calcZScore(lastAvgTicket, avgTicketDist);
       if (Math.abs(atk.z) > 2.0) {
+        const ticketImpact = Math.abs(Math.round((lastAvgTicket - atk.mean) * lastDay.cnt));
         alerts.push({
           type: atk.z > 0 ? "success" : "warning",
           metric: "ticket_anomaly",
           message: atk.z > 0
             ? `Ticket médio disparou: R$ ${Math.round(lastAvgTicket)} hoje (${atk.z.toFixed(1)}σ acima da média).`
             : `Ticket médio caiu: R$ ${Math.round(lastAvgTicket)} hoje (esperado R$ ${Math.round(atk.mean)}).`,
-          data_support: { z_score: rnd(atk.z), actual: rnd(lastAvgTicket), expected: rnd(atk.mean) }
+          data_support: { z_score: rnd(atk.z), actual: rnd(lastAvgTicket), expected: rnd(atk.mean) },
+          estimated_impact: {
+            amount: ticketImpact,
+            direction: atk.z > 0 ? "gain" : "loss",
+            description: `Variação no ticket impactou ~R$ ${ticketImpact.toLocaleString("pt-BR")} no faturamento de hoje`
+          }
         });
       }
     }
@@ -1254,11 +1268,17 @@ export async function healthCheck(_params: QueryParams) {
     if (lastDay.cnt > 10 && cancelRateDist.length >= 5) {
       const cr = calcZScore(lastCancelRate, cancelRateDist);
       if (cr.z > 2.0) {
+        const cancelImpact = Math.round(lastDay.total * (lastCancelRate - cr.mean) / 100);
         alerts.push({
           type: "danger",
           metric: "cancellation_anomaly",
           message: `Alerta de cancelamento! Taxa de ${lastCancelRate.toFixed(1)}% hoje — pico anômalo (${cr.z.toFixed(1)}σ).`,
-          data_support: { z_score: rnd(cr.z), actual: rnd(lastCancelRate, 1), avg_rate: rnd(cr.mean, 1) }
+          data_support: { z_score: rnd(cr.z), actual: rnd(lastCancelRate, 1), avg_rate: rnd(cr.mean, 1) },
+          estimated_impact: {
+            amount: Math.abs(cancelImpact),
+            direction: "loss",
+            description: `~R$ ${Math.abs(cancelImpact).toLocaleString("pt-BR")} em cancelamentos acima do normal`
+          }
         });
       }
     }
@@ -1402,8 +1422,31 @@ export async function healthCheck(_params: QueryParams) {
     alerts.push({ type: "info", message: "Tudo normal — sem alertas ou anomalias detectadas." });
   }
 
+  // Build drill-down suggestions based on alert types
+  const drillDownSuggestions: string[] = [];
+  const alertMetrics = new Set(alerts.map(a => a.metric).filter(Boolean));
+  if (alertMetrics.has("revenue_anomaly") || alertMetrics.has("revenue_projection")) {
+    drillDownSuggestions.push("Quer ver quais marketplaces foram mais afetados?");
+    drillDownSuggestions.push("Devo comparar com o mesmo dia da semana passada?");
+  }
+  if (alertMetrics.has("cancellation_anomaly") || alertMetrics.has("cancellation") || alertMetrics.has("mkt_cancellation")) {
+    drillDownSuggestions.push("Quer ver quais produtos tiveram mais cancelamentos?");
+    drillDownSuggestions.push("Devo analisar a evolução de cancelamentos mês a mês?");
+  }
+  if (alertMetrics.has("ticket_anomaly") || alertMetrics.has("avg_ticket")) {
+    drillDownSuggestions.push("Quer ver o ticket médio por marketplace?");
+  }
+  if (alertMetrics.has("yoy")) {
+    drillDownSuggestions.push("Quer ver a comparação ano a ano detalhada?");
+  }
+  if (drillDownSuggestions.length === 0) {
+    drillDownSuggestions.push("Quer um relatório executivo completo?");
+    drillDownSuggestions.push("Devo analisar a sazonalidade do negócio?");
+  }
+
   return {
     alerts,
+    drill_down_suggestions: drillDownSuggestions.slice(0, 4),
     summary: {
       current_month: currentMonthKey,
       days_passed: dayOfMonth,
