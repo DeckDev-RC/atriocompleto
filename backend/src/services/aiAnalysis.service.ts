@@ -7,6 +7,7 @@ import { ChatMessage } from "../types";
 import type { Content, FunctionDeclaration, Type } from "@google/genai";
 import { DataContextService } from "./dataContext.service";
 import { AnomalyExplainerService } from "./optimus/anomalyExplainer";
+import { ForecasterService } from "./optimus/forecaster";
 
 // ── Cached metadata (Redis-backed) ──────────────────────
 const METADATA_CACHE_KEY = "agent:metadata";
@@ -376,6 +377,59 @@ const functionDeclarations: FunctionDeclaration[] = [
     description: "ANALISE CAUSAL de anomalias detectadas. Usa IA para explicar POR QUE metricas variaram, estimar impacto financeiro em R$, sugerir acoes corretivas e perguntas de drill-down. Use para: 'por que vendas cairam', 'explique essa anomalia', 'o que causou essa queda', 'por que faturamento subiu', 'analise essa variacao', 'investigue esse alerta', 'causas possiveis'.",
     parameters: { type: "object" as Type, properties: {} },
   },
+  // ── Forecaster ────────────────────────────────────────────────
+  {
+    name: "enhancedForecast",
+    description: "PREVISAO AVANCADA de faturamento com INTERVALO DE CONFIANCA (min/max), projecao do mes atual, tendencia, variancia e comparacao com ultima previsao. IMPORTANTE: para previsao de faturamento, use status='paid'. Use para: 'quanto vou faturar', 'previsao de vendas', 'projecao', 'forecast', 'estimativa de faturamento', 'quanto vamos vender', 'previsao com confianca'.",
+    parameters: {
+      type: "object" as Type, properties: {
+        status: { type: "string" as Type, description: "Filtrar por status" },
+        marketplace: { type: "string" as Type, description: "Filtrar por marketplace" },
+      }
+    },
+  },
+  {
+    name: "goalProbability",
+    description: "Calcula PROBABILIDADE de bater uma meta de faturamento. Mostra: ritmo atual vs necessario, gap diario, chance percentual, e recomendacao. Tambem calcula metas dinamicas (quanto precisa vender por dia). Use para: 'vou bater a meta', 'chance de atingir', 'probabilidade', 'meta do mes', 'quanto preciso vender por dia', 'ritmo de vendas', 'falta quanto para meta', 'meta de X reais'.",
+    parameters: {
+      type: "object" as Type, properties: {
+        goal_amount: { type: "number" as Type, description: "Valor da meta em R$ (ex: 200000)" },
+        status: { type: "string" as Type, description: "Filtrar por status (padrao: paid)" },
+        marketplace: { type: "string" as Type, description: "Filtrar por marketplace" },
+      }, required: ["goal_amount"]
+    },
+  },
+  {
+    name: "productDemandRate",
+    description: "Velocidade de VENDA por produto (unidades/dia). Mostra demanda dos ultimos 30 dias e 7 dias, tendencia (acelerando/estavel/desacelerando) e projecao de unidades. NAO inclui estoque (dados indisponiveis). Use para: 'velocidade de venda', 'demanda de produto', 'quanto vende por dia', 'produtos mais vendidos', 'ritmo de saida', 'quando produto vai acabar'.",
+    parameters: {
+      type: "object" as Type, properties: {
+        product_name: { type: "string" as Type, description: "Nome do produto para filtrar (busca parcial)" },
+        limit: { type: "number" as Type, description: "Quantidade de produtos (padrao 20)" },
+      }
+    },
+  },
+  {
+    name: "forecastComparison",
+    description: "COMPARACAO FUTURA: projecao do proximo periodo vs atual e vs anterior. Mostra variacao percentual e resumo de tendencia. Use para: 'proximo mes vs este mes', 'comparar futuro', 'expectativa', 'projecao comparativa', 'quanto mais ou menos'.",
+    parameters: {
+      type: "object" as Type, properties: {
+        status: { type: "string" as Type, description: "Filtrar por status" },
+        marketplace: { type: "string" as Type, description: "Filtrar por marketplace" },
+      }
+    },
+  },
+  {
+    name: "runWhatIfScenario",
+    description: "SIMULACAO What-If (E se...?). Simula impacto de mudancas em preco, trafego e conversao sobre faturamento. Retorna cenario pessimista, realista e otimista com impacto em R$. Use para: 'e se fizer promocao', 'se aumentar preco', 'se dobrar marketing', 'impacto de desconto', 'simulacao', 'what if', 'cenario hipotetico'.",
+    parameters: {
+      type: "object" as Type, properties: {
+        price_change_pct: { type: "number" as Type, description: "Variacao % no preco (ex: -20 para 20% desconto, +10 para aumento de 10%)" },
+        traffic_change_pct: { type: "number" as Type, description: "Variacao % no trafego/sessoes (ex: +50 para +50% visitantes)" },
+        conversion_change_pct: { type: "number" as Type, description: "Variacao % na taxa de conversao (ex: +20 para +20% mais conversao)" },
+      }
+    },
+  },
 ];
 
 // ── System Prompt ───────────────────────────────────────
@@ -543,6 +597,11 @@ QUANDO GERAR GRAFICOS:
 - executiveSummary → grafico de PIZZA (mix de canais) + BARRAS (status)
 - salesForecast → grafico de LINHA com historico + previsao tracejada
 - topDays → grafico de BARRAS HORIZONTAIS
+- enhancedForecast → grafico de LINHA com historico (solido) + projecao (usar cor mais clara) + intervalo de confianca
+- forecastComparison → grafico de BARRAS comparando periodo atual vs projecao
+- productDemandRate → tabela MARKDOWN com ranking de produtos + unidades/dia
+- goalProbability → indicadores visuais com emojis (🟢 no ritmo, 🟡 atencao, 🔴 abaixo)
+- runWhatIfScenario → tabela com 3 cenarios (pessimista/realista/otimista)
 
 REGRAS DE GRAFICOS:
 1. SEMPRE inclua texto explicativo ALEM do grafico
@@ -551,6 +610,36 @@ REGRAS DE GRAFICOS:
 4. Use no maximo 1-2 graficos por resposta
 5. Arredonde valores para inteiros nos graficos (legibilidade)
 6. Para dados monetarios, use options.currency = true
+
+## GERAÇÃO DE RELATÓRIOS (Optimus Reports)
+Quando o usuário pedir para "gerar um relatório", "resumo da semana", "fechamento do mês" ou intenções similares de análise ampla e estruturada:
+1. Você DEVE assumir a intenção de gerar um relatório estruturado e convocar as funções de dados necessárias (ex: \`comparePeriods\`, \`executiveSummary\`).
+2. Formate a resposta OBRIGATORIAMENTE usando as seguintes seções em Markdown (H3 - ###):
+   - ### Sumário Executivo: 3-5 frases com os destaques do período.
+   - ### Métricas Principais: KPIs importantes (Faturamento, TM, Cancelamentos) com comparações se souber.
+   - ### Análise de Performance: O que foi bem e o que foi mal (ex: qual canal puxou o crescimento).
+   - ### Insights: Descobertas, padrões ou anomalias encontradas.
+   - ### Recomendações: 3-5 ações sugeridas e práticas.
+3. SEMPRE inclua pelo menos 1 gráfico (bloco chart) logo após as Métricas Principais (ex: linha de evolução ou barras de mix de canais).
+4. Use emojis em cada seção para facilitar a leitura (ex: 📊 para Sumário, 💰 para Métricas, 💡 para Insights, 🎯 para Recomendações), a menos que o usuário peça algo formal.
+5. Adapte o tom do relatório conforme o usuário pedir (ex: se pedir formal, sem emojis, obedeça rigorosamente).
+
+## PREVISOES E METAS (Forecaster)
+Voce tem funcoes avancadas de previsao e simulacao:
+- enhancedForecast: Use em vez de salesForecast para perguntas de previsao. Retorna intervalo de confianca e tracking continuo.
+- goalProbability: Quando o usuario mencionar META, pergunte o valor se nao informado. Mostre ritmo atual vs necessario.
+- productDemandRate: Para perguntas sobre "quando acaba", "velocidade de venda", "demanda". AVISO: NAO temos dados de estoque, apenas velocidade de venda.
+- forecastComparison: Para "proximo mes vs este mes", "expectativa futura".
+- runWhatIfScenario: Para "e se?", "simulacao", "impacto de promocao". Mostre tabela com 3 cenarios.
+
+REGRAS DE PREVISAO:
+1. SEMPRE use status="paid" para previsoes de faturamento
+2. Quando mostrar intervalo de confianca, formate: "R$ X (entre R$ Y e R$ Z)"
+3. Para metas, se o usuario nao informar valor, PERGUNTE: "Qual e a sua meta para este mes?"
+4. Ao mostrar probabilidade, use emojis: 🟢 >= 70%, 🟡 40-69%, 🔴 < 40%
+5. Para what-if, SEMPRE mostre os 3 cenarios em tabela markdown
+6. Na demanda de produtos, avise que nao temos dados de estoque quando relevante
+7. Se delta_from_last estiver presente no enhancedForecast, mencione a mudanca: "Previsao atualizada: R$X (antes R$Y)"
 
 ## ANALISE DE CLIENTES
 Voce tambem analisa clientes/compradores usando dados extraidos dos pedidos.
@@ -1056,6 +1145,111 @@ function formatFallback(fnName: string, result: unknown): string {
         return lines.join("\n");
       }
 
+      // ── Forecaster Formatters ───────────────────────────────
+      case "enhancedForecast": {
+        const lines = [
+          "**Previsão próximo mês:** " + fBRL((r.forecast_next_month as number) || 0),
+          "**Intervalo de confiança:** " + fBRL((r.confidence_interval as any)?.low || 0) + " a " + fBRL((r.confidence_interval as any)?.high || 0),
+          "**Tendencia:** " + ((r.trend as string) || "N/A"),
+          "**Variancia historica:** " + ((r.variance_pct as number) || 0) + "%",
+        ];
+        const curr = r.current_month as Record<string, unknown> | null;
+        if (curr) {
+          lines.push("**Mes atual (" + curr.month + "):** " + fBRL((curr.actual_so_far as number) || 0) +
+            " (" + curr.days_passed + "/" + curr.days_in_month + " dias) | Projecao: " + fBRL(curr.projected_total as number));
+        }
+        if (r.delta_from_last) {
+          const delta = r.delta_from_last as any;
+          lines.push(`**Atualizacao:** Previsao anterior era ${fBRL(delta.previous)} (mudanca de ${fPct(delta.change_pct)})`);
+        }
+        const chartBlock = "\n\n```chart\n" + JSON.stringify({
+          type: "line",
+          title: "Previsão de Faturamento (com Intervalo de Confiança)",
+          labels: [curr?.month || "Atual", "Próximo Mês"],
+          datasets: [
+             { label: "Atual", data: [curr?.actual_so_far || 0, null] },
+             { label: "Projeção", data: [curr?.projected_total || 0, r.forecast_next_month || 0], borderDash: [5, 5] },
+          ],
+          options: { currency: true },
+        }) + "\n```";
+        return lines.join("\n") + chartBlock;
+      }
+
+      case "goalProbability": {
+        const g = r as any;
+        if (g.error) return "❌ " + g.error;
+        let emoji = "⚪";
+        if (g.pace_status === "ahead") emoji = "🚀";
+        if (g.pace_status === "on_track") emoji = "✅";
+        if (g.pace_status === "behind") emoji = "⚠️";
+        if (g.pace_status === "far_behind") emoji = "🔴";
+
+        return [
+          `## 🎯 Acompanhamento de Meta: ${fBRL(g.goal_amount)}`,
+          `**Status:** ${emoji} ${g.recommendation}`,
+          "",
+          `**Faturado até agora:** ${fBRL(g.current_revenue)} (${g.days_passed} dias)`,
+          `**Falta faturar:** ${fBRL(g.remaining)} (${g.days_remaining} dias restantes)`,
+          `**Ritmo atual:** ${fBRL(g.daily_pace_current)}/dia`,
+          `**Ritmo necessário:** ${fBRL(g.daily_pace_needed)}/dia`,
+          "",
+          `**Projeção final:** ${fBRL(g.projected_total)} (${fPct(g.projected_vs_goal_pct)} da meta)`,
+          `**Probabilidade de bater:** ${g.probability_pct}%`,
+        ].join("\n");
+      }
+
+      case "productDemandRate": {
+        const pd = r as any;
+        if (pd.error) return "❌ " + pd.error;
+        const products = pd.products as Array<any>;
+        return `**Velocidade de Venda (${pd.period}) — ${pd.total_products} produtos analisados:**\n\n` +
+          "| Produto | Canal | Vendidos 30d | Vendidos 7d | Vel. Diária | Projecao 30d | Tendencia |\n" +
+          "|---------|-------|--------------|-------------|-------------|--------------|-----------|\n" +
+          products.map(p =>
+            `| ${p.name.substring(0, 30)} | ${mPT[p.marketplace] || p.marketplace} | ${p.units_last_30d} | ${p.units_last_7d} | ${p.daily_rate}/dia | ${p.projection_30d} | ${p.trend === 'accelerating' ? '📈 Acelerando' : p.trend === 'decelerating' ? '📉 Desacelerando' : '➡️ Estavel'} |`
+          ).join("\n") +
+          "\n\n_Aviso: Calculo baseado no historico recente de pedidos pagos. Nao inclui dados de estoque em tempo real._";
+      }
+
+      case "forecastComparison": {
+        const fc = r as any;
+        if (fc.error) return "❌ " + fc.error;
+        const compLine = fc.comparison_previous
+          ? `**Periodo anterior (${fc.comparison_previous.label}):** ${fBRL(fc.comparison_previous.revenue)} (Var: ${fPct(fc.projected_vs_previous_pct)})`
+          : "";
+        const chartBlock = "\n\n```chart\n" + JSON.stringify({
+          type: "bar",
+          title: "Comparação de Projeção",
+          labels: [fc.current_period.label, fc.projected_next.label],
+          datasets: [{ label: "Faturamento", data: [Math.round(fc.current_period.revenue), Math.round(fc.projected_next.revenue)] }],
+          options: { currency: true },
+        }) + "\n```";
+        return [
+          `**Projecao vs Atual:** ${fc.trend_summary}`,
+          `**Periodo atual (${fc.current_period.label}):** ${fBRL(fc.current_period.revenue)}`,
+          `**Proximo periodo (${fc.projected_next.label}):** ${fBRL(fc.projected_next.revenue)} (entre ${fBRL(fc.projected_next.confidence.low)} e ${fBRL(fc.projected_next.confidence.high)})`,
+          compLine,
+        ].filter(Boolean).join("\n") + chartBlock;
+      }
+
+      case "runWhatIfScenario": {
+        const wi = r as any;
+        if (wi.error) return "❌ " + wi.error;
+        const sc = wi.scenarios;
+        return [
+          "## 🧮 Simulação What-If",
+          `**Cenário aplicado:** Preco ${wi.scenario_applied.price_change_pct}%, Trafego ${wi.scenario_applied.traffic_change_pct}%, Conversao ${wi.scenario_applied.conversion_change_pct}%`,
+          "",
+          "| Cenário | Faturamento Previsto | Pedidos Previstos | Variação vs Atual |",
+          "|---------|----------------------|-------------------|-------------------|",
+          `| **Pessimista** | ${fBRL(sc.pessimista.revenue)} | ${sc.pessimista.orders} | ${fPct(sc.pessimista.change_pct)} |`,
+          `| **Realista**   | ${fBRL(sc.realista.revenue)} | ${sc.realista.orders} | ${fPct(sc.realista.change_pct)} |`,
+          `| **Otimista**   | ${fBRL(sc.otimista.revenue)} | ${sc.otimista.orders} | ${fPct(sc.otimista.change_pct)} |`,
+          "",
+          `_Baseline atual (${wi.baseline.period}): ${fBRL(wi.baseline.revenue)} | ${wi.baseline.orders} pedidos | TM ${fBRL(wi.baseline.avg_ticket)}_`
+        ].join("\n");
+      }
+
       // ── Customer Analyzer Formatters ──────────────────────
       case "customerCount": {
         const byMkt = r.by_marketplace as Record<string, { distinct_buyers: number; orders: number; revenue: number }>;
@@ -1341,6 +1535,32 @@ const SUGGESTIONS_MAP: Record<string, string[]> = {
     "Vendas por marketplace?",
     "Evolução mês a mês?",
   ],
+  // Forecaster
+  enhancedForecast: [
+    "Vou bater minha meta do mês?",
+    "Qual a velocidade de venda dos meus produtos?",
+    "E se eu fizer uma promoção de 20%?",
+  ],
+  goalProbability: [
+    "Qual a previsão completa para o próximo mês?",
+    "Compare a projeção com o mês anterior",
+    "E se eu aumentar o marketing em 50%?",
+  ],
+  productDemandRate: [
+    "Previsão de faturamento do mês?",
+    "Quais produtos estão desacelerando?",
+    "Como está o ritmo geral de vendas?",
+  ],
+  forecastComparison: [
+    "Qual a probabilidade de bater a meta?",
+    "Previsão detalhada com intervalo de confiança?",
+    "Simule um cenário what-if",
+  ],
+  runWhatIfScenario: [
+    "Qual a previsão de faturamento do mês?",
+    "Velocidade de venda dos meus produtos?",
+    "Vou bater a meta de R$200k?",
+  ],
 };
 
 // Gemini 2.5 Flash pricing (per 1M tokens) - May 2025
@@ -1428,6 +1648,16 @@ export async function processMessage(
             fnResult = await executeAdHocSQL(args.sql as string, tenantId);
           } else if (name === "explainAnomaly" && tenantId) {
             fnResult = await AnomalyExplainerService.explain(tenantId);
+          } else if (name === "enhancedForecast") {
+            fnResult = await ForecasterService.enhancedForecast({ ...args, _tenant_id: tenantId } as QueryParams);
+          } else if (name === "goalProbability") {
+            fnResult = await ForecasterService.goalProbability({ ...args, _tenant_id: tenantId } as any);
+          } else if (name === "productDemandRate") {
+            fnResult = await ForecasterService.productDemandRate({ ...args, _tenant_id: tenantId } as any);
+          } else if (name === "forecastComparison") {
+            fnResult = await ForecasterService.forecastComparison({ ...args, _tenant_id: tenantId } as QueryParams);
+          } else if (name === "runWhatIfScenario") {
+            fnResult = await ForecasterService.runWhatIfScenario({ ...args, _tenant_id: tenantId } as any);
           } else if (name && queryFunctions[name]) {
             fnResult = await queryFunctions[name]({ ...args, _tenant_id: tenantId } as QueryParams);
           } else {
@@ -1547,6 +1777,16 @@ export async function* processMessageStream(
           fnResult = await executeAdHocSQL(args.sql as string, tenantId);
         } else if (name === "explainAnomaly" && tenantId) {
           fnResult = await AnomalyExplainerService.explain(tenantId);
+        } else if (name === "enhancedForecast") {
+          fnResult = await ForecasterService.enhancedForecast({ ...args, _tenant_id: tenantId } as QueryParams);
+        } else if (name === "goalProbability") {
+          fnResult = await ForecasterService.goalProbability({ ...args, _tenant_id: tenantId } as any);
+        } else if (name === "productDemandRate") {
+          fnResult = await ForecasterService.productDemandRate({ ...args, _tenant_id: tenantId } as any);
+        } else if (name === "forecastComparison") {
+          fnResult = await ForecasterService.forecastComparison({ ...args, _tenant_id: tenantId } as QueryParams);
+        } else if (name === "runWhatIfScenario") {
+          fnResult = await ForecasterService.runWhatIfScenario({ ...args, _tenant_id: tenantId } as any);
         } else if (name && (queryFunctions as any)[name]) {
           fnResult = await (queryFunctions as any)[name]({ ...args, _tenant_id: tenantId } as QueryParams);
         } else {

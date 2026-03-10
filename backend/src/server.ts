@@ -19,6 +19,7 @@ import auditRoutes from "./routes/audit";
 import benchmarkingRoutes from "./routes/benchmarking";
 import simulationsRoutes from "./routes/simulations";
 import inventoryRoutes from "./routes/inventory";
+import optimusSuggestionsRoutes from "./routes/optimus_suggestions";
 
 const app = express();
 app.set('trust proxy', 1); // Confia no proxy reverso do Easypanel/Traefik para o rate-limit funcionar
@@ -87,6 +88,7 @@ app.use("/api/audit-logs", auditRoutes);
 app.use("/api/benchmarking", benchmarkingRoutes);
 app.use("/api/simulations", simulationsRoutes);
 app.use("/api/inventory", inventoryRoutes);
+app.use("/api/optimus", optimusSuggestionsRoutes);
 
 // ── Error Handler ───────────────────────────────────────
 app.use(errorHandler);

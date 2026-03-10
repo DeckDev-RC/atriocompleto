@@ -74,6 +74,7 @@ export function Sidebar() {
           items: [
             { icon: Sparkles, label: 'Insights', path: '/insights', permission: 'acessar_agente' },
             { icon: null, imageSrc: optimusSidebarIcon, label: 'Optimus', path: '/agente', permission: 'acessar_agente' },
+            { icon: Sparkles, label: 'Sugestões', path: '/optimus/sugestoes', permission: 'acessar_agente' },
             { icon: Search, label: 'Padrões', path: '/analytics/patterns', permission: 'acessar_agente' },
             { icon: Target, label: 'Estratégia', path: '/estrategia', permission: 'acessar_agente' },
             { icon: Megaphone, label: 'Campanhas', path: '/campanhas', permission: 'acessar_agente' },
@@ -142,7 +143,7 @@ export function Sidebar() {
         </button>
 
         {/* Top section */}
-        <div className="flex flex-col overflow-hidden">
+        <div className="flex flex-col flex-1 overflow-hidden min-h-0">
           {/* Logo / título */}
           <div className="flex items-center justify-center mb-1">
             {collapsed ? (
@@ -154,7 +155,7 @@ export function Sidebar() {
                 <img
                   src={theme === 'dark' ? logoAtrioBranca : logoAtrio}
                   alt="Átrio"
-                  className="h-20 w-auto object-contain"
+                  className="h-14 w-auto object-contain"
                 />
                 {/* Logo da Agregar movida para a área inferior, abaixo do botão Sair */}
               </div>
@@ -171,7 +172,7 @@ export function Sidebar() {
           </div>
 
           {/* Navigation */}
-          <nav className="mt-8 flex flex-col gap-6" aria-label="Menu principal">
+          <nav className="mt-5 flex flex-col flex-1 min-h-0 gap-3 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden" aria-label="Menu principal">
             {filteredSections.map((section) => (
               <div key={section.section} className="flex flex-col gap-1" role="group" aria-label={section.section}>
                 {!collapsed && (
@@ -192,11 +193,11 @@ export function Sidebar() {
                       aria-current={active ? 'page' : undefined}
                       className={`
                         group relative flex w-full items-center gap-3 rounded-xl
-                        text-[13.5px] font-medium text-left
+                        text-[13px] font-medium text-left
                         transition-[background-color,color] duration-150
                         ${collapsed
-                          ? 'justify-center px-0 py-3'
-                          : 'px-4 py-2.5'}
+                          ? 'justify-center px-0 py-2.5'
+                          : 'px-4 py-2'}
                         ${active
                           ? 'bg-gray-50 dark:bg-primary/5'
                           : 'text-secondary/80 hover:bg-border/40 hover:text-primary'}
@@ -249,7 +250,7 @@ export function Sidebar() {
         </div>
 
         {/* User area */}
-        <div className="flex flex-col gap-4 overflow-hidden mt-auto">
+        <div className="flex flex-col gap-4 overflow-hidden mt-auto shrink-0 pt-2">
           <div className="h-px w-full bg-border/40 mx-2" />
 
           {collapsed ? (

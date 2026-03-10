@@ -50,6 +50,7 @@ const CampaignRecommendationsPage = lazyWithRetry(() => import('./pages/Campaign
 const BenchmarkingPage = lazyWithRetry(() => import('./pages/BenchmarkingPage'));
 const WhatIfAnalysisPage = lazyWithRetry(() => import('./pages/Simulations/WhatIfAnalysis'));
 const InventoryOptimizationPage = lazyWithRetry(() => import('./pages/Simulations/InventoryOptimization'));
+const ProactiveSuggestionsPage = lazyWithRetry(() => import('./pages/ProactiveSuggestionsPage').then(m => ({ default: m.ProactiveSuggestionsPage })));
 
 function PageLoader() {
   return (
@@ -157,6 +158,11 @@ function AppRoutes() {
           <Route path="simulacoes/inventory" element={
             <ProtectedRoute permission="acessar_agente">
               <InventoryOptimizationPage />
+            </ProtectedRoute>
+          } />
+          <Route path="optimus/sugestoes" element={
+            <ProtectedRoute permission="acessar_agente">
+              <ProactiveSuggestionsPage />
             </ProtectedRoute>
           } />
         </Route>

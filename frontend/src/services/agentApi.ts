@@ -810,6 +810,27 @@ class AgentApiService {
   }
 
   // ══════════════════════════════════════════════════════
+  // OPTIMUS SUGGESTIONS
+  // ══════════════════════════════════════════════════════
+
+  async getOptimusSuggestions() {
+    return this.request<{ suggestions: any[] }>('/api/optimus/suggestions');
+  }
+
+  async generateOptimusSuggestions() {
+    return this.request<{ suggestions: any[] }>('/api/optimus/suggestions/generate', {
+      method: 'POST',
+    });
+  }
+
+  async markOptimusSuggestionStatus(id: string, status: 'accepted' | 'dismissed') {
+    return this.request<{ success: boolean }>(`/api/optimus/suggestions/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+  }
+
+  // ══════════════════════════════════════════════════════
   // STRATEGIC REPORT
   // ══════════════════════════════════════════════════════
 

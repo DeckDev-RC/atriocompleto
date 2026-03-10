@@ -1098,3 +1098,43 @@
     opacity: 1;
   }
 }
+
+/* ===== PRINT STYLES FOR OPTIMUS REPORTS ===== */
+@media print {
+  body, html {
+    background: white !important;
+    color: black !important;
+  }
+  
+  /* Esconder todo o resto da UI exceto o conteúdo principal do chat */
+  aside, nav, header, footer, .optimus-input-area, [data-sidebar], .print\:hidden {
+    display: none !important;
+  }
+  
+  /* Ajustar o container da página para ocupar 100% sem scroll */
+  main, #root, .flex-1 {
+    height: auto !important;
+    min-height: auto !important;
+    width: 100% !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+  }
+
+  /* Ajustes para Markdown (AgentMessage) no PDF */
+  .agent-message-content {
+    color: black !important;
+  }
+
+  .agent-message-content table, 
+  .agent-message-content pre,
+  .agent-message-content canvas {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  canvas {
+    max-width: 100% !important;
+  }
+}

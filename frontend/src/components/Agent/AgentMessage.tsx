@@ -139,16 +139,29 @@ export function AgentMessage({ role, content, timestamp, isLoading, tokenUsage, 
           <div className="text-[14px] leading-[1.7] text-primary wrap-break-word agent-message-content" style={{ wordBreak: 'break-word' }}>
             {renderContent()}
 
-            {tokenUsage && !isUser && (
-              <div className="flex items-center gap-1.5 mt-3 pt-2.5 border-t border-border text-[10px] text-muted opacity-60">
-                <Zap size={9} />
-                <span>{formatInteger(tokenUsage.totalTokens)} tokens</span>
-                <span className="opacity-40">·</span>
-                <span>
-                  ~${tokenUsage.estimatedCostUSD < 0.01
-                    ? tokenUsage.estimatedCostUSD.toFixed(4)
-                    : tokenUsage.estimatedCostUSD.toFixed(3)}
-                </span>
+            {!isUser && (
+              <div className="flex items-center gap-1.5 mt-3 pt-2.5 border-t border-border flex-wrap print:hidden">
+                {tokenUsage && (
+                  <div className="flex items-center gap-1.5 text-[10px] text-muted opacity-60">
+                    <Zap size={9} />
+                    <span>{formatInteger(tokenUsage.totalTokens)} tokens</span>
+                    <span className="opacity-40">·</span>
+                    <span>
+                      ~${tokenUsage.estimatedCostUSD < 0.01
+                        ? tokenUsage.estimatedCostUSD.toFixed(4)
+                        : tokenUsage.estimatedCostUSD.toFixed(3)}
+                    </span>
+                  </div>
+                )}
+                <div className="flex-1" />
+                <button
+                  onClick={() => window.print()}
+                  className="text-[11px] text-muted hover:text-primary transition-colors flex items-center gap-1.5 opacity-60 hover:opacity-100"
+                  title="Exportar como PDF"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                  Exportar PDF
+                </button>
               </div>
             )}
 

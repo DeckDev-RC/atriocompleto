@@ -696,8 +696,10 @@ export async function comparePeriods(params: QueryParams) {
       // Calculate previous period
       let prevStart: string, prevEnd: string;
       if (params.start_date && params.end_date) {
-        const s = new Date(params.start_date);
-        const e = new Date(params.end_date);
+        const sStr = safeDate(params.start_date.substring(0, 10));
+        const eStr = safeDate(params.end_date.substring(0, 10));
+        const s = new Date(`${sStr}T00:00:00Z`);
+        const e = new Date(`${eStr}T00:00:00Z`);
         const diffMs = e.getTime() - s.getTime();
         const pe = new Date(s.getTime() - 86400000); // day before current start
         const ps = new Date(pe.getTime() - diffMs);
