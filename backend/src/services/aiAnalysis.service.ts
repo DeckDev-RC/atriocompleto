@@ -259,6 +259,116 @@ const functionDeclarations: FunctionDeclaration[] = [
       required: ["action", "reason"]
     },
   },
+  // ── Customer Analyzer Functions ──────────────────────────
+  {
+    name: "customerCount",
+    description: "Conta compradores DISTINTOS por marketplace. IMPORTANTE: clientes sao identificados por marketplace (nome no Bagy, buyer_id no ML, username na Shopee). Mesmo cliente em canais diferentes conta separado. Shein nao tem identificador de comprador. Use para: 'quantos clientes tenho', 'base de clientes', 'total de compradores'.",
+    parameters: {
+      type: "object" as Type, properties: {
+        marketplace: { type: "string" as Type, description: "Filtrar por marketplace" },
+        ...DATE_PARAMS,
+      }
+    },
+  },
+  {
+    name: "customerSearch",
+    description: "Busca cliente por nome, nickname ou username. Retorna resumo de compras, status (Ativo/Em Risco/Dormindo/Perdido), ticket medio. Use para: 'informacoes sobre cliente X', 'buscar cliente', 'dados do cliente'.",
+    parameters: {
+      type: "object" as Type, properties: {
+        search_name: { type: "string" as Type, description: "Nome, nickname ou username do cliente para buscar" },
+        ...DATE_PARAMS,
+      }, required: ["search_name"]
+    },
+  },
+  {
+    name: "customer360",
+    description: "Perfil COMPLETO do cliente (Customer 360). Retorna: total gasto, ticket medio, primeira/ultima compra, status, ciclo de vida, timeline mensal, acoes sugeridas. Use para: 'perfil do cliente X', 'customer 360', 'detalhes do cliente', 'tudo sobre o cliente'.",
+    parameters: {
+      type: "object" as Type, properties: {
+        search_name: { type: "string" as Type, description: "Nome do cliente para perfil 360" },
+      }, required: ["search_name"]
+    },
+  },
+  {
+    name: "topBuyers",
+    description: "Ranking dos TOP compradores por valor gasto ou frequencia de compra. Inclui status de atividade. Use para: 'clientes que mais compraram', 'melhores clientes', 'top compradores', 'clientes VIP', 'clientes Champions'.",
+    parameters: {
+      type: "object" as Type, properties: {
+        sort_by: { type: "string" as Type, description: "'revenue' para ordenar por valor gasto (padrao), 'frequency' para ordenar por quantidade de compras" },
+        limit: { type: "number" as Type, description: "Quantidade de clientes no ranking (padrao 15)" },
+        marketplace: { type: "string" as Type, description: "Filtrar por marketplace" },
+        ...DATE_PARAMS,
+      }
+    },
+  },
+  {
+    name: "inactiveCustomers",
+    description: "Lista compradores INATIVOS (sem compra ha X dias). Mostra apenas clientes recorrentes (2+ compras) que pararam de comprar. Use para: 'clientes inativos', 'clientes que sumiram', 'quem parou de comprar', 'clientes em risco de churn'.",
+    parameters: {
+      type: "object" as Type, properties: {
+        inactive_days: { type: "number" as Type, description: "Dias sem compra para considerar inativo (padrao 60)" },
+        limit: { type: "number" as Type, description: "Quantidade de clientes (padrao 20)" },
+      }
+    },
+  },
+  {
+    name: "newCustomers",
+    description: "Conta compradores NOVOS (primeira compra no periodo). Mostra quantos clientes novos por marketplace e receita gerada. Use para: 'clientes novos este mes', 'novos compradores', 'aquisicao de clientes'.",
+    parameters: {
+      type: "object" as Type, properties: {
+        ...DATE_PARAMS,
+      }
+    },
+  },
+  {
+    name: "customerPurchasePatterns",
+    description: "Analise de COMPORTAMENTO de compra dos clientes. Inclui: frequencia media, taxa de recompra, intervalo medio entre compras, distribuicao por canal, ciclo de vida (Novo/Em Desenvolvimento/Fiel/Em Risco/Dormindo/Perdido). Use para: 'frequencia de compra', 'taxa de recompra', 'tempo entre compras', 'comportamento dos clientes', 'ciclo de vida', 'padrao de compra'.",
+    parameters: {
+      type: "object" as Type, properties: {
+        marketplace: { type: "string" as Type, description: "Filtrar por marketplace" },
+        ...DATE_PARAMS,
+      }
+    },
+  },
+  {
+    name: "customerCompare",
+    description: "Compara dois clientes lado a lado. Mostra tabela comparativa com pedidos, gasto total, ticket medio, ultima compra, e determina o 'vencedor' em cada metrica. Use para: 'comparar cliente A vs B', 'cliente X vs cliente Y', 'diferenca entre clientes'.",
+    parameters: {
+      type: "object" as Type, properties: {
+        buyer_a: { type: "string" as Type, description: "Nome do primeiro cliente" },
+        buyer_b: { type: "string" as Type, description: "Nome do segundo cliente" },
+      }, required: ["buyer_a", "buyer_b"]
+    },
+  },
+  {
+    name: "customerTicketBySegment",
+    description: "Ticket medio e receita POR SEGMENTO de ciclo de vida (Novo, Em Desenvolvimento, Fiel, VIP). Mostra quanto cada segmento gasta em media e sua participacao na receita total. Use para: 'ticket medio por segmento', 'quanto VIPs gastam vs novos', 'valor medio por tipo de cliente', 'receita por segmento'.",
+    parameters: {
+      type: "object" as Type, properties: {
+        marketplace: { type: "string" as Type, description: "Filtrar por marketplace" },
+        ...DATE_PARAMS,
+      }
+    },
+  },
+  {
+    name: "customerSegmentComparison",
+    description: "Compara VIPs (>10 compras) vs clientes normais. Mostra diferenca em ticket, gasto total, frequencia e intervalo entre compras. Inclui multiplicadores (ex: VIPs gastam 5x mais). Use para: 'VIPs vs normais', 'diferenca entre VIP e cliente comum', 'quanto mais VIPs gastam', 'comparar segmentos'.",
+    parameters: {
+      type: "object" as Type, properties: {
+        marketplace: { type: "string" as Type, description: "Filtrar por marketplace" },
+        ...DATE_PARAMS,
+      }
+    },
+  },
+  {
+    name: "loyaltyCandidates",
+    description: "Lista clientes CANDIDATOS a programa de fidelidade. Sao clientes Fieis (4-10 compras) ativos nos ultimos 60 dias — potenciais VIPs. Use para: 'clientes para programa de fidelidade', 'candidatos a fidelizacao', 'quem pode virar VIP', 'potenciais VIPs'.",
+    parameters: {
+      type: "object" as Type, properties: {
+        limit: { type: "number" as Type, description: "Quantidade de candidatos (padrao 20)" },
+      }
+    },
+  },
 ];
 
 // ── System Prompt ───────────────────────────────────────
@@ -433,7 +543,31 @@ REGRAS DE GRAFICOS:
 3. Abrevie labels de meses: "Jan/25", "Fev/25", etc.
 4. Use no maximo 1-2 graficos por resposta
 5. Arredonde valores para inteiros nos graficos (legibilidade)
-6. Para dados monetarios, use options.currency = true`;
+6. Para dados monetarios, use options.currency = true
+
+## ANALISE DE CLIENTES
+Voce tambem analisa clientes/compradores usando dados extraidos dos pedidos.
+IMPORTANTE sobre dados de clientes:
+- NAO existe tabela 'customers'. Dados vem dos raw JSONs dos pedidos.
+- Bagy: identificado pelo 'nome' do comprador
+- Mercado Livre: identificado pelo 'buyer.id' + 'buyer.nickname'
+- Shopee: identificado pelo 'buyer_username'
+- Shein: NAO tem identificador de comprador (dados agregados apenas)
+- NAO e possivel vincular mesmo cliente entre marketplaces (sem CPF/email)
+- Sempre mencione de qual marketplace sao os dados de cliente
+- Status do cliente: Ativo (<=30d), Em Risco (31-60d), Dormindo (61-120d), Perdido (>120d)
+- Ciclo de vida: Novo (1 compra), Em Desenvolvimento (2-3), Fiel (4-10), VIP (>10)
+- Ao listar clientes, SEMPRE traduza marketplace (ml → Mercado Livre, etc.)
+- customerPurchasePatterns → grafico de PIZZA para ciclo de vida + BARRAS para canal
+- topBuyers → tabela MARKDOWN com ranking
+- customer360 → resposta rica com emojis e dados detalhados
+- customerTicketBySegment → grafico de BARRAS com ticket por segmento + tabela comparativa
+- customerSegmentComparison → tabela comparativa VIP vs Normal com multiplicadores em destaque
+- loyaltyCandidates → tabela MARKDOWN com ranking de candidatos a fidelidade
+- Quando perguntarem "Clientes Champions" ou "RFM 555": use getRFMAnalysis e filtre os Champions na resposta
+- Quando perguntarem "distribuicao por segmento": use customerPurchasePatterns e gere grafico de PIZZA com lifecycle
+- Quando perguntarem "cliente X vs media geral": use customer360 para o cliente + customerPurchasePatterns para a media, compare na resposta
+- Quando perguntarem "quantos VIPs": use customerTicketBySegment e destaque o segmento VIP`;
 }
 
 // ── Circuit Breaker ─────────────────────────────────────
@@ -900,6 +1034,121 @@ function formatFallback(fnName: string, result: unknown): string {
             (hcSummary.days_remaining as number) + " dias");
         }
         return lines.join("\n");
+      }
+
+      // ── Customer Analyzer Formatters ──────────────────────
+      case "customerCount": {
+        const byMkt = r.by_marketplace as Record<string, { distinct_buyers: number; orders: number; revenue: number }>;
+        return "**Base de Clientes:** " + fNum((r.total_distinct_buyers as number) || 0) + " compradores distintos\n\n" +
+          Object.entries(byMkt || {}).map(([m, d]) =>
+            "- **" + (mPT[m] || m) + ":** " + fNum(d.distinct_buyers) + " compradores | " + fNum(d.orders) + " pedidos | " + fBRL(d.revenue)
+          ).join("\n") +
+          "\n\n_" + (r.note as string || "") + "_";
+      }
+
+      case "customerSearch": {
+        const results = r.results as Array<any>;
+        if (!results?.length) return "Nenhum cliente encontrado para \"" + (r.search_term as string) + "\"";
+        return "**Resultados para \"" + (r.search_term as string) + "\"** (" + results.length + " encontrados):\n\n" +
+          results.map((c: any) =>
+            "- **" + c.name + "** (" + (mPT[c.marketplace] || c.marketplace) + ") | " + fNum(c.total_orders) + " pedidos | " +
+            fBRL(c.total_spent) + " | TM " + fBRL(c.avg_ticket) + " | " + c.status
+          ).join("\n");
+      }
+
+      case "customer360": {
+        const cust = r.customer as Record<string, any>;
+        const metrics = r.metrics as Record<string, any>;
+        const tline = r.timeline as Record<string, any>;
+        const actions = r.suggested_actions as string[];
+        if (r.error) return "❌ " + (r.error as string);
+        return [
+          "## 👤 " + cust.name,
+          "**Canal:** " + (mPT[cust.marketplace] || cust.marketplace) + " | **Status:** " + cust.status + " | **Ciclo:** " + cust.lifecycle,
+          "",
+          "📦 **Pedidos:** " + fNum(metrics.total_orders) + " total | " + fNum(metrics.paid_orders) + " pagos | " + fNum(metrics.cancelled_orders) + " cancelados",
+          "💰 **Gasto total:** " + fBRL(metrics.total_spent) + " | **Pagos:** " + fBRL(metrics.paid_total),
+          "🎫 **Ticket médio:** " + fBRL(metrics.avg_ticket) + " | Min: " + fBRL(metrics.min_order) + " | Max: " + fBRL(metrics.max_order),
+          "",
+          "📅 **Primeira compra:** " + (tline.first_order || "N/A"),
+          "📅 **Última compra:** " + (tline.last_order || "N/A") + " (" + (tline.days_since_last || 0) + " dias atrás)",
+          "🔄 **Intervalo médio:** " + (tline.avg_days_between_orders ? tline.avg_days_between_orders + " dias" : "N/A"),
+          "",
+          ...(actions?.length ? ["💡 **Ações sugeridas:**", ...actions.map((a: string) => "- " + a)] : []),
+        ].join("\n");
+      }
+
+      case "topBuyers": {
+        const buyers = r.top_buyers as Array<any>;
+        return "**🏆 Top Compradores** (por " + (r.sort_by as string) + "):\n\n" +
+          "| # | Cliente | Canal | Pedidos | Gasto Total | Ticket Médio | Status |\n" +
+          "|---|---------|-------|---------|-------------|-------------|--------|\n" +
+          (buyers || []).map((b: any) =>
+            "| " + b.rank + " | " + b.name + " | " + (mPT[b.marketplace] || b.marketplace) + " | " +
+            fNum(b.total_orders) + " | " + fBRL(b.total_spent) + " | " + fBRL(b.avg_ticket) + " | " + b.status + " |"
+          ).join("\n");
+      }
+
+      case "inactiveCustomers": {
+        const inactive = r.inactive_customers as Array<any>;
+        return "**⚠️ Clientes Inativos** (sem compra há " + (r.threshold_days as number) + "+ dias) — " + fNum((r.count as number) || 0) + " encontrados:\n\n" +
+          (inactive || []).map((c: any) =>
+            "- **" + c.name + "** (" + (mPT[c.marketplace] || c.marketplace) + ") | " +
+            fNum(c.total_orders) + " compras | " + fBRL(c.total_spent) + " | Última: " + c.last_order + " (" + c.days_inactive + " dias)"
+          ).join("\n");
+      }
+
+      case "newCustomers": {
+        const byMkt = r.by_marketplace as Record<string, { new_buyers: number; revenue: number; avg_first_spend: number }>;
+        return "**🆕 Novos Clientes:** " + fNum((r.total_new_buyers as number) || 0) + " | Receita: " + fBRL((r.total_new_revenue as number) || 0) + "\n\n" +
+          Object.entries(byMkt || {}).map(([m, d]) =>
+            "- **" + (mPT[m] || m) + ":** " + fNum(d.new_buyers) + " novos | " + fBRL(d.revenue) + " | Gasto médio: " + fBRL(d.avg_first_spend)
+          ).join("\n");
+      }
+
+      case "customerPurchasePatterns": {
+        const freq = r.frequency as Record<string, any>;
+        const interval = r.purchase_interval as Record<string, any>;
+        const lc = r.lifecycle as Record<string, number>;
+        const chDist = r.channel_distribution as Record<string, number>;
+        return [
+          "## 📊 Comportamento de Compra\n",
+          "**Frequência média:** " + (freq?.avg_orders_per_buyer || 0) + " compras/cliente",
+          "**Ticket médio:** " + fBRL(freq?.avg_ticket || 0),
+          "**Taxa de recompra:** " + (freq?.repeat_rate || 0) + "% (" + fNum(freq?.repeat_buyers || 0) + " de " + fNum(freq?.total_buyers || 0) + ")",
+          "**Intervalo médio:** " + (interval?.avg_days || 0) + " dias (mediana: " + (interval?.median_days || 0) + " dias)",
+          "",
+          "**Ciclo de vida:**",
+          ...Object.entries(lc || {}).map(([stage, count]) => "- **" + stage + ":** " + fNum(count)),
+          "",
+          "**Por canal:**",
+          ...Object.entries(chDist || {}).map(([m, count]) => "- **" + (mPT[m] || m) + ":** " + fNum(count) + " compradores"),
+        ].join("\n");
+      }
+
+      case "customerCompare": {
+        if (r.error) return "❌ " + (r.error as string);
+        const a = r.buyer_a as Record<string, any>;
+        const b = r.buyer_b as Record<string, any>;
+        const winner = r.winner as Record<string, string> | null;
+        if (a?.error || b?.error) return "❌ " + (a?.error || b?.error);
+        return [
+          "## ⚔️ Comparação de Clientes\n",
+          "| Métrica | " + a.name + " | " + b.name + " |",
+          "|---------|" + "-".repeat(a.name.length + 2) + "|" + "-".repeat(b.name.length + 2) + "|",
+          "| Canal | " + (mPT[a.marketplace] || a.marketplace) + " | " + (mPT[b.marketplace] || b.marketplace) + " |",
+          "| Pedidos | " + fNum(a.total_orders) + " | " + fNum(b.total_orders) + " |",
+          "| Gasto Total | " + fBRL(a.total_spent) + " | " + fBRL(b.total_spent) + " |",
+          "| Ticket Médio | " + fBRL(a.avg_ticket) + " | " + fBRL(b.avg_ticket) + " |",
+          "| Status | " + a.status + " | " + b.status + " |",
+          ...(winner ? [
+            "",
+            "🏆 **Mais pedidos:** " + winner.more_orders,
+            "💰 **Maior gasto:** " + winner.higher_spend,
+            "🎫 **Maior ticket:** " + winner.higher_ticket,
+            "📅 **Comprou mais recente:** " + winner.more_recent,
+          ] : []),
+        ].join("\n");
       }
 
       default:

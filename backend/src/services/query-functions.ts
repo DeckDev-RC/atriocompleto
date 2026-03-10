@@ -1884,6 +1884,888 @@ async function bcgMatrix(params: QueryParams): Promise<unknown> {
   });
 }
 
+// ═══════════════════════════════════════════════════════════
+// CUSTOMER ANALYZER — Query Functions
+// ═══════════════════════════════════════════════════════════
+
+/** CTE that extracts customer identity from raw marketplace tables */
+function customerCTE(tenantId: string, where: string): string {
+  return `
+    recent_orders AS (
+      SELECT o.id, o.total_amount, o.order_date, o.status, o.external_order_id, o.marketplace
+      FROM public.orders o
+      WHERE ${where} AND o.tenant_id = '${tenantId}'::uuid
+    ),
+    customer_orders AS (
+      SELECT
+        o.id as order_id,
+        o.total_amount,
+        o.order_date,
+        o.status,
+        o.marketplace,
+        COALESCE(
+          ml.raw_json->'buyer'->>'id',
+          sh.raw_json->>'buyer_username',
+          bg.raw_json->>'nome',
+          sn.raw_json->>'billNo'
+        ) as customer_id,
+        COALESCE(
+          ml.raw_json->'buyer'->>'nickname',
+          sh.raw_json->>'buyer_username',
+          bg.raw_json->>'nome',
+          'Cliente Shein'
+        ) as customer_name,
+        o.marketplace as source_marketplace
+      FROM recent_orders o
+      LEFT JOIN public.ml_raw_orders ml ON o.external_order_id = ml.id AND o.marketplace = 'ml' AND ml.tenant_id = '${tenantId}'::uuid
+      LEFT JOIN public.bagy_raw_orders bg ON o.external_order_id = bg.id AND o.marketplace = 'bagy' AND bg.tenant_id = '${tenantId}'::uuid
+      LEFT JOIN public.shopee_raw_orders sh ON o.external_order_id = sh.id AND o.marketplace = 'shopee' AND sh.tenant_id = '${tenantId}'::uuid
+      LEFT JOIN public.shein_raw_orders sn ON o.external_order_id = sn.id AND o.marketplace = 'shein' AND sn.tenant_id = '${tenantId}'::uuid
+    )`;
+}
+
+/**
+ * 24. customerCount — Count distinct buyers per marketplace
+ */
+export async function customerCount(params: QueryParams & { search_name?: string }) {
+  const tenantId = params._tenant_id;
+  if (!tenantId) return { error: "Tenant ID obrigatório" };
+  const _tid = tenantId;
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:customerCount:${Math.abs(hash)}`;
+
+  return withCache(cacheKey, async () => {
+    const where = buildWhere(params);
+    const cte = customerCTE(tenantId, where);
+    const sql = `
+      WITH ${cte}
+      SELECT
+        source_marketplace as marketplace,
+        COUNT(DISTINCT customer_id) FILTER (WHERE customer_id IS NOT NULL)::int as distinct_buyers,
+        COUNT(order_id)::int as total_orders,
+        COALESCE(SUM(total_amount), 0)::float as total_revenue
+      FROM customer_orders
+      GROUP BY source_marketplace
+      ORDER BY distinct_buyers DESC
+    `;
+    const rows = await runSQL<{ marketplace: string; distinct_buyers: number; total_orders: number; total_revenue: number }>(sql, null);
+    const totalBuyers = rows.reduce((s, r) => s + r.distinct_buyers, 0);
+    const totalOrders = rows.reduce((s, r) => s + r.total_orders, 0);
+    const totalRevenue = rows.reduce((s, r) => s + r.total_revenue, 0);
+
+    return {
+      total_distinct_buyers: totalBuyers,
+      total_orders: totalOrders,
+      total_revenue: rnd(totalRevenue),
+      by_marketplace: Object.fromEntries(rows.map(r => [r.marketplace, {
+        distinct_buyers: r.distinct_buyers,
+        orders: r.total_orders,
+        revenue: rnd(r.total_revenue),
+      }])),
+      note: "Compradores identificados por marketplace. Mesmo cliente em canais diferentes conta separadamente.",
+      filters: { marketplace: params.marketplace, period: fmtPeriod(params) },
+    };
+  });
+}
+
+/**
+ * 25. customerSearch — Search buyer by name/nickname/username
+ */
+export async function customerSearch(params: QueryParams & { search_name?: string }) {
+  const tenantId = params._tenant_id;
+  if (!tenantId) return { error: "Tenant ID obrigatório" };
+  const searchName = params.search_name;
+  if (!searchName || searchName.length < 2) return { error: "Nome de busca obrigatório (mínimo 2 caracteres)" };
+
+  const _tid = tenantId;
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:customerSearch:${Math.abs(hash)}`;
+
+  return withCache(cacheKey, async () => {
+    const where = buildWhere({ ...params, _tenant_id: tenantId });
+    const cte = customerCTE(tenantId, where);
+    const escapedName = escapeLike(searchName);
+    const sql = `
+      WITH ${cte},
+      customer_stats AS (
+        SELECT
+          customer_id,
+          MAX(customer_name) as customer_name,
+          source_marketplace as marketplace,
+          COUNT(order_id)::int as total_orders,
+          COUNT(order_id) FILTER (WHERE LOWER(status) = 'paid')::int as paid_orders,
+          COALESCE(SUM(total_amount), 0)::float as total_spent,
+          COALESCE(SUM(total_amount) FILTER (WHERE LOWER(status) = 'paid'), 0)::float as paid_total,
+          COALESCE(AVG(total_amount), 0)::float as avg_ticket,
+          MAX(order_date) as last_order,
+          MIN(order_date) as first_order,
+          EXTRACT(DAY FROM (NOW() - MAX(order_date)))::int as days_since_last
+        FROM customer_orders
+        WHERE customer_id IS NOT NULL
+        GROUP BY customer_id, source_marketplace
+      )
+      SELECT * FROM customer_stats
+      WHERE LOWER(customer_name) LIKE LOWER('%${escapedName}%')
+      ORDER BY total_spent DESC
+      LIMIT 10
+    `;
+    const rows = await runSQL<any>(sql, null);
+    return {
+      results: rows.map(r => ({
+        name: r.customer_name,
+        marketplace: r.marketplace,
+        total_orders: r.total_orders,
+        paid_orders: r.paid_orders,
+        total_spent: rnd(r.total_spent),
+        paid_total: rnd(r.paid_total),
+        avg_ticket: rnd(r.avg_ticket),
+        last_order: r.last_order,
+        first_order: r.first_order,
+        days_since_last: r.days_since_last,
+        status: r.days_since_last <= 30 ? 'Ativo' : r.days_since_last <= 60 ? 'Em Risco' : r.days_since_last <= 120 ? 'Dormindo' : 'Perdido',
+      })),
+      search_term: searchName,
+      count: rows.length,
+    };
+  }, 300); // shorter TTL for searches
+}
+
+/**
+ * 26. customer360 — Full customer profile summary
+ */
+export async function customer360(params: QueryParams & { search_name?: string }) {
+  const tenantId = params._tenant_id;
+  if (!tenantId) return { error: "Tenant ID obrigatório" };
+  const searchName = params.search_name;
+  if (!searchName || searchName.length < 2) return { error: "Nome do cliente obrigatório" };
+
+  const _tid = tenantId;
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:customer360:${Math.abs(hash)}`;
+
+  return withCache(cacheKey, async () => {
+    const where = "1=1"; // all time for 360 view
+    const cte = customerCTE(tenantId, where);
+    const escapedName = escapeLike(searchName);
+    const sql = `
+      WITH ${cte},
+      target_customer AS (
+        SELECT customer_id, MAX(customer_name) as customer_name, MAX(source_marketplace) as marketplace
+        FROM customer_orders
+        WHERE customer_id IS NOT NULL AND LOWER(customer_name) LIKE LOWER('%${escapedName}%')
+        GROUP BY customer_id
+        LIMIT 1
+      ),
+      stats AS (
+        SELECT
+          co.customer_id,
+          tc.customer_name,
+          tc.marketplace,
+          COUNT(co.order_id)::int as total_orders,
+          COUNT(co.order_id) FILTER (WHERE LOWER(co.status) = 'paid')::int as paid_orders,
+          COUNT(co.order_id) FILTER (WHERE LOWER(co.status) = 'cancelled')::int as cancelled_orders,
+          COALESCE(SUM(co.total_amount), 0)::float as total_spent,
+          COALESCE(SUM(co.total_amount) FILTER (WHERE LOWER(co.status) = 'paid'), 0)::float as paid_total,
+          COALESCE(AVG(co.total_amount), 0)::float as avg_ticket,
+          COALESCE(MIN(co.total_amount), 0)::float as min_order,
+          COALESCE(MAX(co.total_amount), 0)::float as max_order,
+          MAX(co.order_date) as last_order,
+          MIN(co.order_date) as first_order,
+          EXTRACT(DAY FROM (NOW() - MAX(co.order_date)))::int as days_since_last,
+          EXTRACT(DAY FROM (MAX(co.order_date) - MIN(co.order_date)))::int as relationship_days,
+          CASE WHEN COUNT(co.order_id) > 1
+            THEN EXTRACT(DAY FROM (MAX(co.order_date) - MIN(co.order_date)))::float / (COUNT(co.order_id) - 1)
+            ELSE NULL
+          END as avg_days_between_orders
+        FROM customer_orders co
+        JOIN target_customer tc ON co.customer_id = tc.customer_id
+        GROUP BY co.customer_id, tc.customer_name, tc.marketplace
+      ),
+      monthly_orders AS (
+        SELECT
+          TO_CHAR(co.order_date AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM') as month,
+          COUNT(co.order_id)::int as orders,
+          COALESCE(SUM(co.total_amount), 0)::float as revenue
+        FROM customer_orders co
+        JOIN target_customer tc ON co.customer_id = tc.customer_id
+        GROUP BY month
+        ORDER BY month
+      )
+      SELECT
+        s.*,
+        (SELECT json_agg(json_build_object('month', m.month, 'orders', m.orders, 'revenue', ROUND(m.revenue::numeric, 2)))
+         FROM monthly_orders m) as monthly_timeline
+      FROM stats s
+    `;
+    const rows = await runSQL<any>(sql, null);
+    if (!rows.length) return { error: `Cliente "${searchName}" não encontrado` };
+
+    const r = rows[0];
+    const daysSince = r.days_since_last || 0;
+    let status: string;
+    if (daysSince <= 30) status = 'Ativo';
+    else if (daysSince <= 60) status = 'Em Risco';
+    else if (daysSince <= 120) status = 'Dormindo';
+    else status = 'Perdido';
+
+    let lifecycle: string;
+    if (r.total_orders === 1) lifecycle = 'Novo';
+    else if (r.total_orders <= 3) lifecycle = 'Em Desenvolvimento';
+    else if (r.total_orders <= 10) lifecycle = 'Fiel';
+    else lifecycle = 'VIP';
+
+    const actions: string[] = [];
+    if (status === 'Em Risco') actions.push('Enviar cupom de desconto para reativação');
+    if (status === 'Dormindo') actions.push('Ligar ou enviar WhatsApp personalizado');
+    if (status === 'Perdido') actions.push('Campanha de win-back com oferta especial');
+    if (lifecycle === 'VIP') actions.push('Incluir em programa de fidelidade VIP');
+    if (lifecycle === 'Fiel' && status === 'Ativo') actions.push('Oferecer produtos complementares (upsell)');
+
+    return {
+      customer: {
+        name: r.customer_name,
+        marketplace: r.marketplace,
+        status,
+        lifecycle,
+      },
+      metrics: {
+        total_orders: r.total_orders,
+        paid_orders: r.paid_orders,
+        cancelled_orders: r.cancelled_orders,
+        total_spent: rnd(r.total_spent),
+        paid_total: rnd(r.paid_total),
+        avg_ticket: rnd(r.avg_ticket),
+        min_order: rnd(r.min_order),
+        max_order: rnd(r.max_order),
+      },
+      timeline: {
+        first_order: r.first_order,
+        last_order: r.last_order,
+        days_since_last: r.days_since_last,
+        relationship_days: r.relationship_days,
+        avg_days_between_orders: r.avg_days_between_orders ? rnd(r.avg_days_between_orders) : null,
+      },
+      monthly_timeline: r.monthly_timeline || [],
+      suggested_actions: actions,
+    };
+  }, 300);
+}
+
+/**
+ * 27. topBuyers — Top N buyers by revenue or frequency
+ */
+export async function topBuyers(params: QueryParams & { sort_by?: string }) {
+  const tenantId = params._tenant_id;
+  if (!tenantId) return { error: "Tenant ID obrigatório" };
+  const _tid = tenantId;
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:topBuyers:${Math.abs(hash)}`;
+
+  return withCache(cacheKey, async () => {
+    const where = buildWhere(params);
+    const cte = customerCTE(tenantId, where);
+    const limit = params.limit || 15;
+    const sortBy = params.sort_by === 'frequency' ? 'total_orders' : 'total_spent';
+    const sql = `
+      WITH ${cte},
+      customer_stats AS (
+        SELECT
+          customer_id,
+          MAX(customer_name) as customer_name,
+          MAX(source_marketplace) as marketplace,
+          COUNT(order_id)::int as total_orders,
+          COUNT(order_id) FILTER (WHERE LOWER(status) = 'paid')::int as paid_orders,
+          COALESCE(SUM(total_amount), 0)::float as total_spent,
+          COALESCE(SUM(total_amount) FILTER (WHERE LOWER(status) = 'paid'), 0)::float as paid_total,
+          COALESCE(AVG(total_amount), 0)::float as avg_ticket,
+          MAX(order_date) as last_order,
+          EXTRACT(DAY FROM (NOW() - MAX(order_date)))::int as days_since_last
+        FROM customer_orders
+        WHERE customer_id IS NOT NULL
+        GROUP BY customer_id
+      )
+      SELECT * FROM customer_stats
+      ORDER BY ${sortBy} DESC
+      LIMIT ${limit}
+    `;
+    const rows = await runSQL<any>(sql, null);
+    return {
+      top_buyers: rows.map((r: any, i: number) => ({
+        rank: i + 1,
+        name: r.customer_name,
+        marketplace: r.marketplace,
+        total_orders: r.total_orders,
+        paid_orders: r.paid_orders,
+        total_spent: rnd(r.total_spent),
+        paid_total: rnd(r.paid_total),
+        avg_ticket: rnd(r.avg_ticket),
+        last_order: r.last_order,
+        days_since_last: r.days_since_last,
+        status: r.days_since_last <= 30 ? 'Ativo' : r.days_since_last <= 60 ? 'Em Risco' : 'Inativo',
+      })),
+      sort_by: sortBy === 'total_orders' ? 'frequência' : 'valor gasto',
+      count: rows.length,
+      filters: { marketplace: params.marketplace, period: fmtPeriod(params) },
+    };
+  });
+}
+
+/**
+ * 28. inactiveCustomers — Buyers without orders in X days
+ */
+export async function inactiveCustomers(params: QueryParams & { inactive_days?: number }) {
+  const tenantId = params._tenant_id;
+  if (!tenantId) return { error: "Tenant ID obrigatório" };
+  const _tid = tenantId;
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:inactiveCustomers:${Math.abs(hash)}`;
+
+  return withCache(cacheKey, async () => {
+    const inactiveDays = params.inactive_days || 60;
+    const where = "1=1"; // search all-time to find last order
+    const cte = customerCTE(tenantId, where);
+    const limit = params.limit || 20;
+    const sql = `
+      WITH ${cte},
+      customer_stats AS (
+        SELECT
+          customer_id,
+          MAX(customer_name) as customer_name,
+          MAX(source_marketplace) as marketplace,
+          COUNT(order_id)::int as total_orders,
+          COALESCE(SUM(total_amount), 0)::float as total_spent,
+          COALESCE(AVG(total_amount), 0)::float as avg_ticket,
+          MAX(order_date) as last_order,
+          EXTRACT(DAY FROM (NOW() - MAX(order_date)))::int as days_since_last
+        FROM customer_orders
+        WHERE customer_id IS NOT NULL
+        GROUP BY customer_id
+        HAVING COUNT(order_id) >= 2
+      )
+      SELECT * FROM customer_stats
+      WHERE days_since_last >= ${inactiveDays}
+      ORDER BY total_spent DESC
+      LIMIT ${limit}
+    `;
+    const rows = await runSQL<any>(sql, null);
+
+    const byMarketplace: Record<string, number> = {};
+    rows.forEach((r: any) => {
+      byMarketplace[r.marketplace] = (byMarketplace[r.marketplace] || 0) + 1;
+    });
+
+    return {
+      inactive_customers: rows.map((r: any) => ({
+        name: r.customer_name,
+        marketplace: r.marketplace,
+        total_orders: r.total_orders,
+        total_spent: rnd(r.total_spent),
+        avg_ticket: rnd(r.avg_ticket),
+        last_order: r.last_order,
+        days_inactive: r.days_since_last,
+      })),
+      threshold_days: inactiveDays,
+      count: rows.length,
+      by_marketplace: byMarketplace,
+    };
+  });
+}
+
+/**
+ * 29. newCustomers — New (first-time) buyers in period
+ */
+export async function newCustomers(params: QueryParams) {
+  const tenantId = params._tenant_id;
+  if (!tenantId) return { error: "Tenant ID obrigatório" };
+  const _tid = tenantId;
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:newCustomers:${Math.abs(hash)}`;
+
+  return withCache(cacheKey, async () => {
+    const cte = customerCTE(tenantId, "1=1");
+    // Default to current month if no dates provided
+    const periodDays = params.period_days || 30;
+    const dateFilter = params.start_date && params.end_date
+      ? `first_order >= '${safeDate(params.start_date)}T00:00:00-03:00' AND first_order <= '${safeDate(params.end_date)}T23:59:59-03:00'`
+      : `first_order >= NOW() - INTERVAL '${periodDays} days'`;
+
+    const sql = `
+      WITH ${cte},
+      customer_first AS (
+        SELECT
+          customer_id,
+          MAX(customer_name) as customer_name,
+          MAX(source_marketplace) as marketplace,
+          MIN(order_date) as first_order,
+          COUNT(order_id)::int as total_orders,
+          COALESCE(SUM(total_amount), 0)::float as total_spent
+        FROM customer_orders
+        WHERE customer_id IS NOT NULL
+        GROUP BY customer_id
+      )
+      SELECT
+        marketplace,
+        COUNT(*)::int as new_buyers,
+        COALESCE(SUM(total_spent), 0)::float as new_revenue,
+        COALESCE(AVG(total_spent), 0)::float as avg_first_spend
+      FROM customer_first
+      WHERE ${dateFilter}
+      GROUP BY marketplace
+      ORDER BY new_buyers DESC
+    `;
+    const rows = await runSQL<{ marketplace: string; new_buyers: number; new_revenue: number; avg_first_spend: number }>(sql, null);
+    const totalNew = rows.reduce((s, r) => s + r.new_buyers, 0);
+    const totalNewRevenue = rows.reduce((s, r) => s + r.new_revenue, 0);
+
+    return {
+      total_new_buyers: totalNew,
+      total_new_revenue: rnd(totalNewRevenue),
+      by_marketplace: Object.fromEntries(rows.map(r => [r.marketplace, {
+        new_buyers: r.new_buyers,
+        revenue: rnd(r.new_revenue),
+        avg_first_spend: rnd(r.avg_first_spend),
+      }])),
+      filters: { period: fmtPeriod(params) },
+    };
+  });
+}
+
+/**
+ * 30. customerPurchasePatterns — Temporal buying patterns
+ */
+export async function customerPurchasePatterns(params: QueryParams) {
+  const tenantId = params._tenant_id;
+  if (!tenantId) return { error: "Tenant ID obrigatório" };
+  const _tid = tenantId;
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:customerPurchasePatterns:${Math.abs(hash)}`;
+
+  return withCache(cacheKey, async () => {
+    const where = buildWhere(params);
+    const cte = customerCTE(tenantId, where);
+
+    // Run multiple analytics in parallel
+    const [frequencyRows, avgIntervalRows, channelRows, lifecycle] = await Promise.all([
+      // Average purchase frequency
+      runSQL<{ avg_orders: number; avg_ticket: number; buyers_with_repeat: number; total_buyers: number }>(`
+        WITH ${cte},
+        cstats AS (
+          SELECT customer_id, COUNT(order_id)::int as orders, AVG(total_amount)::float as avg_tk
+          FROM customer_orders WHERE customer_id IS NOT NULL
+          GROUP BY customer_id
+        )
+        SELECT
+          ROUND(AVG(orders)::numeric, 2)::float as avg_orders,
+          ROUND(AVG(avg_tk)::numeric, 2)::float as avg_ticket,
+          COUNT(*) FILTER (WHERE orders > 1)::int as buyers_with_repeat,
+          COUNT(*)::int as total_buyers
+        FROM cstats
+      `, null),
+
+      // Average days between orders (repeat buyers only)
+      runSQL<{ avg_interval: number; median_interval: number }>(`
+        WITH ${cte},
+        buyer_intervals AS (
+          SELECT customer_id,
+            EXTRACT(DAY FROM (MAX(order_date) - MIN(order_date)))::float / NULLIF(COUNT(order_id) - 1, 0) as interval_days
+          FROM customer_orders
+          WHERE customer_id IS NOT NULL
+          GROUP BY customer_id
+          HAVING COUNT(order_id) > 1
+        )
+        SELECT
+          ROUND(AVG(interval_days)::numeric, 1)::float as avg_interval,
+          ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY interval_days)::numeric, 1)::float as median_interval
+        FROM buyer_intervals
+      `, null),
+
+      // Channel preference distribution
+      runSQL<{ marketplace: string; buyer_count: number }>(`
+        WITH ${cte},
+        buyer_channel AS (
+          SELECT DISTINCT customer_id, source_marketplace
+          FROM customer_orders WHERE customer_id IS NOT NULL
+        )
+        SELECT source_marketplace as marketplace, COUNT(*)::int as buyer_count
+        FROM buyer_channel
+        GROUP BY source_marketplace
+        ORDER BY buyer_count DESC
+      `, null),
+
+      // Customer lifecycle distribution
+      runSQL<{ stage: string; count: number }>(`
+        WITH ${cte},
+        cstats AS (
+          SELECT customer_id,
+            COUNT(order_id)::int as orders,
+            EXTRACT(DAY FROM (NOW() - MAX(order_date)))::int as days_since
+          FROM customer_orders WHERE customer_id IS NOT NULL
+          GROUP BY customer_id
+        )
+        SELECT
+          CASE
+            WHEN days_since <= 30 AND orders = 1 THEN 'Novo'
+            WHEN days_since <= 30 AND orders <= 3 THEN 'Em Desenvolvimento'
+            WHEN days_since <= 30 AND orders > 3 THEN 'Fiel'
+            WHEN days_since <= 60 THEN 'Em Risco'
+            WHEN days_since <= 120 THEN 'Dormindo'
+            ELSE 'Perdido'
+          END as stage,
+          COUNT(*)::int as count
+        FROM cstats
+        GROUP BY stage
+        ORDER BY count DESC
+      `, null),
+    ]);
+
+    const freq = frequencyRows[0] || { avg_orders: 0, avg_ticket: 0, buyers_with_repeat: 0, total_buyers: 0 };
+    const interval = avgIntervalRows[0] || { avg_interval: 0, median_interval: 0 };
+    const repeatRate = freq.total_buyers > 0 ? rnd((freq.buyers_with_repeat / freq.total_buyers) * 100) : 0;
+
+    return {
+      frequency: {
+        avg_orders_per_buyer: freq.avg_orders,
+        avg_ticket: rnd(freq.avg_ticket),
+        repeat_rate: repeatRate,
+        total_buyers: freq.total_buyers,
+        repeat_buyers: freq.buyers_with_repeat,
+      },
+      purchase_interval: {
+        avg_days: interval.avg_interval,
+        median_days: interval.median_interval,
+      },
+      channel_distribution: Object.fromEntries(channelRows.map(r => [r.marketplace, r.buyer_count])),
+      lifecycle: Object.fromEntries(lifecycle.map(r => [r.stage, r.count])),
+      filters: { marketplace: params.marketplace, period: fmtPeriod(params) },
+    };
+  });
+}
+
+/**
+ * 31. customerCompare — Compare two buyers side by side
+ */
+export async function customerCompare(params: QueryParams & { buyer_a?: string; buyer_b?: string }) {
+  const tenantId = params._tenant_id;
+  if (!tenantId) return { error: "Tenant ID obrigatório" };
+  const buyerA = params.buyer_a;
+  const buyerB = params.buyer_b;
+  if (!buyerA || !buyerB) return { error: "Informe os nomes dos dois clientes para comparar (buyer_a e buyer_b)" };
+
+  const _tid = tenantId;
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:customerCompare:${Math.abs(hash)}`;
+
+  return withCache(cacheKey, async () => {
+    const cte = customerCTE(tenantId, "1=1");
+    const escA = escapeLike(buyerA);
+    const escB = escapeLike(buyerB);
+
+    const sql = `
+      WITH ${cte},
+      customer_stats AS (
+        SELECT
+          customer_id,
+          MAX(customer_name) as customer_name,
+          MAX(source_marketplace) as marketplace,
+          COUNT(order_id)::int as total_orders,
+          COUNT(order_id) FILTER (WHERE LOWER(status) = 'paid')::int as paid_orders,
+          COALESCE(SUM(total_amount), 0)::float as total_spent,
+          COALESCE(SUM(total_amount) FILTER (WHERE LOWER(status) = 'paid'), 0)::float as paid_total,
+          COALESCE(AVG(total_amount), 0)::float as avg_ticket,
+          MAX(order_date) as last_order,
+          MIN(order_date) as first_order,
+          EXTRACT(DAY FROM (NOW() - MAX(order_date)))::int as days_since_last,
+          EXTRACT(DAY FROM (MAX(order_date) - MIN(order_date)))::int as relationship_days
+        FROM customer_orders
+        WHERE customer_id IS NOT NULL
+        GROUP BY customer_id
+      )
+      SELECT * FROM customer_stats
+      WHERE LOWER(customer_name) LIKE LOWER('%${escA}%')
+         OR LOWER(customer_name) LIKE LOWER('%${escB}%')
+      ORDER BY total_spent DESC
+    `;
+    const rows = await runSQL<any>(sql, null);
+
+    const mapRow = (r: any) => ({
+      name: r.customer_name,
+      marketplace: r.marketplace,
+      total_orders: r.total_orders,
+      paid_orders: r.paid_orders,
+      total_spent: rnd(r.total_spent),
+      paid_total: rnd(r.paid_total),
+      avg_ticket: rnd(r.avg_ticket),
+      last_order: r.last_order,
+      first_order: r.first_order,
+      days_since_last: r.days_since_last,
+      relationship_days: r.relationship_days,
+      status: r.days_since_last <= 30 ? 'Ativo' : r.days_since_last <= 60 ? 'Em Risco' : 'Inativo',
+    });
+
+    const a = rows.find((r: any) => r.customer_name?.toLowerCase().includes(buyerA.toLowerCase()));
+    const b = rows.find((r: any) => r.customer_name?.toLowerCase().includes(buyerB.toLowerCase()));
+
+    if (!a && !b) return { error: `Nenhum dos clientes "${buyerA}" ou "${buyerB}" foi encontrado` };
+
+    return {
+      buyer_a: a ? mapRow(a) : { error: `Cliente "${buyerA}" não encontrado` },
+      buyer_b: b ? mapRow(b) : { error: `Cliente "${buyerB}" não encontrado` },
+      winner: a && b ? {
+        more_orders: a.total_orders > b.total_orders ? a.customer_name : b.customer_name,
+        higher_spend: a.total_spent > b.total_spent ? a.customer_name : b.customer_name,
+        higher_ticket: (a.avg_ticket || 0) > (b.avg_ticket || 0) ? a.customer_name : b.customer_name,
+        more_recent: (a.days_since_last || 999) < (b.days_since_last || 999) ? a.customer_name : b.customer_name,
+      } : null,
+    };
+  }, 300);
+}
+
+/**
+ * 32. customerTicketBySegment — Avg ticket by lifecycle stage
+ */
+export async function customerTicketBySegment(params: QueryParams) {
+  const tenantId = params._tenant_id;
+  if (!tenantId) return { error: "Tenant ID obrigatório" };
+  const _tid = tenantId;
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:customerTicketBySegment:${Math.abs(hash)}`;
+
+  return withCache(cacheKey, async () => {
+    const where = buildWhere(params);
+    const cte = customerCTE(tenantId, where);
+    const sql = `
+      WITH ${cte},
+      cstats AS (
+        SELECT
+          customer_id,
+          MAX(customer_name) as customer_name,
+          COUNT(order_id)::int as orders,
+          COALESCE(SUM(total_amount), 0)::float as total_spent,
+          COALESCE(AVG(total_amount), 0)::float as avg_ticket,
+          COALESCE(MIN(total_amount), 0)::float as min_ticket,
+          COALESCE(MAX(total_amount), 0)::float as max_ticket,
+          EXTRACT(DAY FROM (NOW() - MAX(order_date)))::int as days_since
+        FROM customer_orders
+        WHERE customer_id IS NOT NULL
+        GROUP BY customer_id
+      ),
+      segmented AS (
+        SELECT *,
+          CASE
+            WHEN orders = 1 THEN 'Novo'
+            WHEN orders <= 3 THEN 'Em Desenvolvimento'
+            WHEN orders <= 10 THEN 'Fiel'
+            ELSE 'VIP'
+          END as lifecycle
+        FROM cstats
+      )
+      SELECT
+        lifecycle,
+        COUNT(*)::int as buyer_count,
+        ROUND(AVG(avg_ticket)::numeric, 2)::float as avg_ticket,
+        ROUND(AVG(total_spent)::numeric, 2)::float as avg_total_spent,
+        ROUND(MIN(avg_ticket)::numeric, 2)::float as min_ticket,
+        ROUND(MAX(avg_ticket)::numeric, 2)::float as max_ticket,
+        ROUND(AVG(orders)::numeric, 1)::float as avg_orders,
+        ROUND(SUM(total_spent)::numeric, 2)::float as segment_revenue
+      FROM segmented
+      GROUP BY lifecycle
+      ORDER BY avg_ticket DESC
+    `;
+    const rows = await runSQL<{
+      lifecycle: string; buyer_count: number; avg_ticket: number; avg_total_spent: number;
+      min_ticket: number; max_ticket: number; avg_orders: number; segment_revenue: number;
+    }>(sql, null);
+
+    const totalRevenue = rows.reduce((s, r) => s + r.segment_revenue, 0);
+    const totalBuyers = rows.reduce((s, r) => s + r.buyer_count, 0);
+
+    return {
+      segments: rows.map(r => ({
+        lifecycle: r.lifecycle,
+        buyer_count: r.buyer_count,
+        pct_buyers: totalBuyers > 0 ? rnd((r.buyer_count / totalBuyers) * 100) : 0,
+        avg_ticket: rnd(r.avg_ticket),
+        avg_total_spent: rnd(r.avg_total_spent),
+        min_ticket: rnd(r.min_ticket),
+        max_ticket: rnd(r.max_ticket),
+        avg_orders: r.avg_orders,
+        segment_revenue: rnd(r.segment_revenue),
+        pct_revenue: totalRevenue > 0 ? rnd((r.segment_revenue / totalRevenue) * 100) : 0,
+      })),
+      total_buyers: totalBuyers,
+      total_revenue: rnd(totalRevenue),
+      filters: { marketplace: params.marketplace, period: fmtPeriod(params) },
+    };
+  });
+}
+
+/**
+ * 33. customerSegmentComparison — VIPs vs normal customers
+ */
+export async function customerSegmentComparison(params: QueryParams) {
+  const tenantId = params._tenant_id;
+  if (!tenantId) return { error: "Tenant ID obrigatório" };
+  const _tid = tenantId;
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:customerSegmentComparison:${Math.abs(hash)}`;
+
+  return withCache(cacheKey, async () => {
+    const where = buildWhere(params);
+    const cte = customerCTE(tenantId, where);
+    const sql = `
+      WITH ${cte},
+      cstats AS (
+        SELECT
+          customer_id,
+          COUNT(order_id)::int as orders,
+          COALESCE(SUM(total_amount), 0)::float as total_spent,
+          COALESCE(AVG(total_amount), 0)::float as avg_ticket,
+          MAX(order_date) as last_order,
+          MIN(order_date) as first_order,
+          EXTRACT(DAY FROM (NOW() - MAX(order_date)))::int as days_since,
+          CASE WHEN COUNT(order_id) > 1
+            THEN EXTRACT(DAY FROM (MAX(order_date) - MIN(order_date)))::float / (COUNT(order_id) - 1)
+            ELSE NULL
+          END as avg_interval
+        FROM customer_orders
+        WHERE customer_id IS NOT NULL
+        GROUP BY customer_id
+      ),
+      segmented AS (
+        SELECT *,
+          CASE WHEN orders > 10 THEN 'VIP' ELSE 'Normal' END as segment
+        FROM cstats
+      )
+      SELECT
+        segment,
+        COUNT(*)::int as buyer_count,
+        ROUND(AVG(orders)::numeric, 1)::float as avg_orders,
+        ROUND(AVG(total_spent)::numeric, 2)::float as avg_total_spent,
+        ROUND(AVG(avg_ticket)::numeric, 2)::float as avg_ticket,
+        ROUND(SUM(total_spent)::numeric, 2)::float as segment_revenue,
+        ROUND(AVG(days_since)::numeric, 0)::int as avg_days_since_last,
+        ROUND(AVG(avg_interval)::numeric, 1)::float as avg_purchase_interval
+      FROM segmented
+      GROUP BY segment
+    `;
+    const rows = await runSQL<{
+      segment: string; buyer_count: number; avg_orders: number; avg_total_spent: number;
+      avg_ticket: number; segment_revenue: number; avg_days_since_last: number; avg_purchase_interval: number;
+    }>(sql, null);
+
+    const vip = rows.find(r => r.segment === 'VIP');
+    const normal = rows.find(r => r.segment === 'Normal');
+    const totalRevenue = rows.reduce((s, r) => s + r.segment_revenue, 0);
+
+    return {
+      vip: vip ? {
+        buyer_count: vip.buyer_count,
+        avg_orders: vip.avg_orders,
+        avg_total_spent: rnd(vip.avg_total_spent),
+        avg_ticket: rnd(vip.avg_ticket),
+        revenue: rnd(vip.segment_revenue),
+        revenue_share: totalRevenue > 0 ? rnd((vip.segment_revenue / totalRevenue) * 100) : 0,
+        avg_days_since_last: vip.avg_days_since_last,
+        avg_purchase_interval: rnd(vip.avg_purchase_interval || 0),
+      } : null,
+      normal: normal ? {
+        buyer_count: normal.buyer_count,
+        avg_orders: normal.avg_orders,
+        avg_total_spent: rnd(normal.avg_total_spent),
+        avg_ticket: rnd(normal.avg_ticket),
+        revenue: rnd(normal.segment_revenue),
+        revenue_share: totalRevenue > 0 ? rnd((normal.segment_revenue / totalRevenue) * 100) : 0,
+        avg_days_since_last: normal.avg_days_since_last,
+        avg_purchase_interval: rnd(normal.avg_purchase_interval || 0),
+      } : null,
+      highlights: vip && normal ? {
+        vip_ticket_multiplier: normal.avg_ticket > 0 ? rnd(vip.avg_ticket / normal.avg_ticket) : null,
+        vip_spend_multiplier: normal.avg_total_spent > 0 ? rnd(vip.avg_total_spent / normal.avg_total_spent) : null,
+        vip_frequency_multiplier: normal.avg_orders > 0 ? rnd(vip.avg_orders / normal.avg_orders) : null,
+      } : null,
+      filters: { marketplace: params.marketplace, period: fmtPeriod(params) },
+    };
+  });
+}
+
+/**
+ * 34. loyaltyCandidates — Customers ready for loyalty program
+ */
+export async function loyaltyCandidates(params: QueryParams) {
+  const tenantId = params._tenant_id;
+  if (!tenantId) return { error: "Tenant ID obrigatório" };
+  const _tid = tenantId;
+  const paramStr = JSON.stringify(params);
+  let hash = 0;
+  for (let i = 0; i < paramStr.length; i++) hash = Math.imul(31, hash) + paramStr.charCodeAt(i) | 0;
+  const cacheKey = `optimus:${_tid}:loyaltyCandidates:${Math.abs(hash)}`;
+
+  return withCache(cacheKey, async () => {
+    const cte = customerCTE(tenantId, "1=1");
+    const limit = params.limit || 20;
+    const sql = `
+      WITH ${cte},
+      cstats AS (
+        SELECT
+          customer_id,
+          MAX(customer_name) as customer_name,
+          MAX(source_marketplace) as marketplace,
+          COUNT(order_id)::int as total_orders,
+          COALESCE(SUM(total_amount), 0)::float as total_spent,
+          COALESCE(AVG(total_amount), 0)::float as avg_ticket,
+          MAX(order_date) as last_order,
+          EXTRACT(DAY FROM (NOW() - MAX(order_date)))::int as days_since_last
+        FROM customer_orders
+        WHERE customer_id IS NOT NULL
+        GROUP BY customer_id
+      )
+      SELECT * FROM cstats
+      WHERE total_orders >= 4 AND total_orders <= 10
+        AND days_since_last <= 60
+      ORDER BY total_spent DESC
+      LIMIT ${limit}
+    `;
+    const rows = await runSQL<any>(sql, null);
+
+    return {
+      candidates: rows.map((r: any, i: number) => ({
+        rank: i + 1,
+        name: r.customer_name,
+        marketplace: r.marketplace,
+        total_orders: r.total_orders,
+        total_spent: rnd(r.total_spent),
+        avg_ticket: rnd(r.avg_ticket),
+        last_order: r.last_order,
+        days_since_last: r.days_since_last,
+        reason: r.total_orders >= 7 ? 'Quase VIP — fidelizar agora' : 'Fiel e ativo — potencial VIP',
+      })),
+      count: rows.length,
+      criteria: 'Clientes Fiéis (4-10 compras) ativos nos últimos 60 dias',
+    };
+  });
+}
+
 // ── Function Registry ───────────────────────────────────
 export const queryFunctions: Record<string, (params: QueryParams) => Promise<unknown>> = {
   countOrders,
@@ -1911,4 +2793,16 @@ export const queryFunctions: Record<string, (params: QueryParams) => Promise<unk
   getMetricCorrelation,
   getSmartSegments,
   bcgMatrix,
+  // Customer Analyzer
+  customerCount,
+  customerSearch,
+  customer360,
+  topBuyers,
+  inactiveCustomers,
+  newCustomers,
+  customerPurchasePatterns,
+  customerCompare,
+  customerTicketBySegment,
+  customerSegmentComparison,
+  loyaltyCandidates,
 };
