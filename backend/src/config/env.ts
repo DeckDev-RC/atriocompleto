@@ -26,6 +26,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3001),
   FRONTEND_URL: z.string().url().default("http://localhost:5173"),
   APP_BASE_URL: z.string().url().default("http://localhost:5173"),
+  API_BASE_URL: z.string().url().default("http://localhost:3001"),
 
   // Security
   AUTH_SECURITY_SECRET: z.string().min(32),
@@ -39,6 +40,20 @@ const envSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
   BULLMQ_PREFIX: z.string().default("ambro"),
   WHITELIST_IPS: z.string().default(""), // Comma separated IPs
+
+  // Optimus file ingestion
+  OPTIMUS_UPLOAD_MAX_MB: z.coerce.number().int().min(1).max(50).default(10),
+  OPTIMUS_UPLOAD_MAX_FILES: z.coerce.number().int().min(1).max(10).default(5),
+  OPTIMUS_UPLOADS_PER_HOUR: z.coerce.number().int().min(1).max(100).default(10),
+  OPTIMUS_UPLOAD_STORAGE_MB: z.coerce.number().int().min(10).max(500).default(50),
+
+  // Optimus conversational memory
+  OPTIMUS_MEMORY_SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(24),
+  OPTIMUS_MEMORY_SESSION_MAX_MESSAGES: z.coerce.number().int().min(5).max(50).default(20),
+  OPTIMUS_MEMORY_RECALL_LIMIT: z.coerce.number().int().min(1).max(10).default(3),
+  OPTIMUS_MEMORY_SUMMARY_MIN_MESSAGES: z.coerce.number().int().min(2).max(100).default(6),
+  OPTIMUS_MEMORY_JOB_DELAY_MS: z.coerce.number().int().min(1_000).max(3_600_000).default(120_000),
+  OPTIMUS_MEMORY_RETENTION_DAYS: z.coerce.number().int().min(30).max(3650).default(365),
 
   // SMTP / Mail
   SMTP_HOST: z.string().min(1).default("smtp.gmail.com"),

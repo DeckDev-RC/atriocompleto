@@ -1,10 +1,13 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
 import { processMessage, processMessageStream } from "../services/aiAnalysis.service";
+import { repairTextArtifacts } from "../services/aiTextUtils";
 import { queryFunctions } from "../services/query-functions";
+import { env } from "../config/env";
 import {
   getOrCreateConversation,
   addMessage,
+  getConversationById,
   getConversationHistory,
   clearConversation,
   startNewConversation,
@@ -16,6 +19,8 @@ import { requirePermission } from "../middleware/rbac";
 import { aiLimiter, aiReadLimiter } from "../middleware/rate-limit";
 import { AutoInsightsService } from "../services/autoInsights.service";
 import { supabaseAdmin } from "../config/supabase";
+import { MemoryService } from "../services/optimus/memoryService";
+import { MemoryProcessingQueueService } from "../services/memory-processing-queue";
 
 // ── Async token usage logger (fire-and-forget) ─────────
 function logTokenUsage(
@@ -114,6 +119,13 @@ const messageSchema = z.object({
   message: z.string().min(1).max(1000), // Adjusted to 1000 per requirements
   conversation_id: z.string().uuid().optional(),
   stream: z.boolean().optional(), // Added for explicit stream request
+  file_ids: z.array(z.string().uuid()).max(env.OPTIMUS_UPLOAD_MAX_FILES).optional(),
+});
+
+const historyQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  offset: z.coerce.number().int().min(0).max(10_000).optional(),
+  q: z.string().trim().max(120).optional(),
 });
 
 const handleMessage = async (req: Request, res: Response) => {
@@ -131,6 +143,7 @@ const handleMessage = async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const tenantId = req.user!.tenant_id;
     const { message } = parsed.data;
+    const fileIds = parsed.data.file_ids || [];
 
     if (!tenantId) {
       return res.status(403).json({ success: false, error: "Vincule uma empresa para usar o chat." });
@@ -140,18 +153,15 @@ const handleMessage = async (req: Request, res: Response) => {
     const isAnalyzeEndpoint = req.path === "/analyze";
     const wantsStream = isAnalyzeEndpoint || req.headers.accept === "text/event-stream" || req.body.stream === true;
 
-    // Get or create conversation
     const conversation = parsed.data.conversation_id
-      ? { id: parsed.data.conversation_id, messages: [] as ChatMessage[], user_id: userId, created_at: "", updated_at: "" }
+      ? await getConversationById(parsed.data.conversation_id, userId, tenantId || undefined)
       : await getOrCreateConversation(userId, tenantId || undefined);
 
-    // Fetch full conversation if ID was provided
-    let history: ChatMessage[] = conversation.messages || [];
-    if (parsed.data.conversation_id) {
-      const convos = await getConversationHistory(userId);
-      const found = convos.find((c) => c.id === parsed.data.conversation_id);
-      if (found) history = found.messages;
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: "Conversa nao encontrada." });
     }
+
+    const history: ChatMessage[] = conversation.messages || [];
 
     // Save user message
     const userMsg: ChatMessage = {
@@ -159,21 +169,73 @@ const handleMessage = async (req: Request, res: Response) => {
       content: message,
       timestamp: new Date().toISOString(),
     };
-    await addMessage(conversation.id, userMsg);
+    await addMessage(conversation.id, userId, tenantId, userMsg);
+    await MemoryService.recordConversationActivity({
+      userId,
+      tenantId,
+      conversationId: conversation.id,
+      message: userMsg,
+    });
+
+    let effectiveMessage = message;
+    try {
+      const { FileProcessor } = await import("../services/optimus/fileProcessor");
+      if (fileIds.length > 0) {
+        await FileProcessor.attachFilesToConversation({
+          fileIds,
+          conversationId: conversation.id,
+          userId,
+          tenantId,
+        });
+      }
+
+      effectiveMessage = await FileProcessor.buildPromptWithFiles({
+        message,
+        userId,
+        tenantId,
+        conversationId: conversation.id,
+        fileIds,
+      });
+    } catch (fileContextError) {
+      console.error("[Chat] File context error:", fileContextError);
+    }
+
+    const memoryContext = await MemoryService.buildPromptContext({
+      userId,
+      tenantId,
+      conversationId: conversation.id,
+      query: message,
+    });
 
     if (wantsStream) {
-      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+
+      // Helper: write SSE event with ALL non-ASCII characters escaped to \uXXXX.
+      // This ensures the payload is 100% ASCII-safe and CANNOT be corrupted by
+      // any compression middleware, reverse proxy (Traefik), or encoding mismatch.
+      // JSON.parse on the frontend natively decodes \uXXXX back to Unicode chars.
+      const toAsciiJson = (payload: unknown): string => {
+        return JSON.stringify(payload).replace(/[^\x20-\x7E]/g, (ch) => {
+          return "\\u" + ch.charCodeAt(0).toString(16).padStart(4, "0");
+        });
+      };
+
+      const writeSSE = (payload: unknown) => {
+        res.write(`data: ${toAsciiJson(payload)}\n\n`);
+      };
 
       let fullText = "";
       let tokenUsage: any = null;
       let suggestions: string[] = [];
+      let actionPayload: unknown = null;
 
       // Spam Prevention (Check if the last 3 user messages are identical to the current one)
       const recentUserMsgs = history.filter(m => m.role === "user").slice(-3);
       if (recentUserMsgs.length >= 3 && recentUserMsgs.every(m => m.content === message)) {
-        res.write(`data: ${JSON.stringify({ type: "error", content: "Muitas mensagens repetidas ignoradas. Por favor, formule uma nova pergunta." })}\n\n`);
+        writeSSE({ type: "error", content: "Muitas mensagens repetidas ignoradas. Por favor, formule uma nova pergunta." });
         res.end();
         return;
       }
@@ -183,43 +245,64 @@ const handleMessage = async (req: Request, res: Response) => {
         processMessage(`Gere um título super curto de no máximo 4 palavras para resumir o seguinte assunto: "${message}". Responda APENAS o título, sem aspas, Markdown ou pontuação final.`, [], tenantId || undefined)
           .then((titleResult) => {
             if (titleResult.text && titleResult.text.length < 50) {
-               updateConversationTitle(conversation.id, titleResult.text.trim());
+               updateConversationTitle(conversation.id, userId, tenantId, titleResult.text.trim());
             }
           })
           .catch(e => console.error("Error auto-titling:", e));
       }
 
-      const stream = processMessageStream(message, history, tenantId || undefined);
+      const stream = processMessageStream(
+        effectiveMessage,
+        history,
+        tenantId || undefined,
+        { extraSystemContext: memoryContext },
+        { userId, tenantId: tenantId || undefined },
+      );
 
       for await (const event of stream) {
         if (event.type === "text") {
           fullText += event.content;
-          res.write(`data: ${JSON.stringify({ type: "text", content: event.content })}\n\n`);
+          writeSSE({ type: "text", content: event.content });
         } else if (event.type === "action") {
-          res.write(`data: ${JSON.stringify({ type: "action", content: event.content })}\n\n`);
+          actionPayload = event.content;
+          writeSSE({ type: "action", content: event.content });
         } else if (event.type === "done") {
           tokenUsage = event.tokenUsage;
           suggestions = event.suggestions || [];
           // Persist token usage (fire-and-forget)
           if (tokenUsage) logTokenUsage(userId, tenantId, conversation.id, tokenUsage);
-          res.write(`data: ${JSON.stringify({ type: "done", conversation_id: conversation.id, tokenUsage, suggestions })}\n\n`);
+          writeSSE({ type: "done", conversation_id: conversation.id, tokenUsage, suggestions });
         } else if (event.type === "error") {
-          res.write(`data: ${JSON.stringify({ type: "error", content: event.content })}\n\n`);
+          writeSSE({ type: "error", content: event.content });
         }
-        // flush for compression if middleware is used
-        if ((res as any).flush) (res as any).flush();
       }
 
       // Save assistant message at the end
       if (fullText) {
         const assistantMsg: ChatMessage = {
           role: "assistant",
-          content: fullText,
+          content: repairTextArtifacts(fullText),
           timestamp: new Date().toISOString(),
-          // We can't easily save action/suggestions in basic ChatMessage type yet, 
-          // but we save the text content.
+          metadata: {
+            suggestions,
+            action: actionPayload,
+          },
+          tokens_used: tokenUsage?.totalTokens ?? null,
         };
-        await addMessage(conversation.id, assistantMsg);
+        await addMessage(conversation.id, userId, tenantId, assistantMsg);
+        await MemoryService.recordConversationActivity({
+          userId,
+          tenantId,
+          conversationId: conversation.id,
+          message: assistantMsg,
+        });
+        void MemoryProcessingQueueService.scheduleRefresh({
+          conversationId: conversation.id,
+          userId,
+          tenantId,
+        }).catch((queueError) => {
+          console.error("[Chat] Failed to schedule memory refresh:", queueError);
+        });
       }
 
       res.end();
@@ -227,15 +310,38 @@ const handleMessage = async (req: Request, res: Response) => {
     }
 
     // Standard non-streaming response
-    const aiResult = await processMessage(message, history, tenantId || undefined);
+    const aiResult = await processMessage(
+      effectiveMessage,
+      history,
+      tenantId || undefined,
+      { extraSystemContext: memoryContext },
+      { userId, tenantId: tenantId || undefined },
+    );
 
     // Save assistant message
     const assistantMsg: ChatMessage = {
       role: "assistant",
       content: aiResult.text,
       timestamp: new Date().toISOString(),
+      metadata: {
+        suggestions: aiResult.suggestions || [],
+      },
+      tokens_used: aiResult.tokenUsage.totalTokens,
     };
-    await addMessage(conversation.id, assistantMsg);
+    await addMessage(conversation.id, userId, tenantId, assistantMsg);
+    await MemoryService.recordConversationActivity({
+      userId,
+      tenantId,
+      conversationId: conversation.id,
+      message: assistantMsg,
+    });
+    void MemoryProcessingQueueService.scheduleRefresh({
+      conversationId: conversation.id,
+      userId,
+      tenantId,
+    }).catch((queueError) => {
+      console.error("[Chat] Failed to schedule memory refresh:", queueError);
+    });
 
     // Persist token usage (fire-and-forget)
     logTokenUsage(userId, tenantId, conversation.id, aiResult.tokenUsage);
@@ -273,10 +379,24 @@ router.get("/history", aiReadLimiter, async (req: Request, res: Response) => {
     const tenantId = req.user!.tenant_id;
 
     if (!tenantId) {
-      return res.json({ success: true, data: [] });
+      return res.json({ success: true, data: { items: [], total: 0, has_more: false } });
     }
 
-    const conversations = await getConversationHistory(userId);
+    const parsed = historyQuerySchema.safeParse(req.query || {});
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        error: "Filtros invalidos",
+        details: parsed.error.flatten().fieldErrors,
+      });
+    }
+
+    const conversations = await getConversationHistory(userId, {
+      tenantId,
+      limit: parsed.data.limit,
+      offset: parsed.data.offset,
+      query: parsed.data.q,
+    });
 
     res.json({
       success: true,
@@ -285,6 +405,27 @@ router.get("/history", aiReadLimiter, async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Erro ao buscar histórico:", error);
     res.status(500).json({ success: false, error: "Erro ao buscar histórico" });
+  }
+});
+
+router.get("/conversation/:id", aiReadLimiter, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const tenantId = req.user!.tenant_id;
+
+    if (!tenantId) {
+      return res.status(403).json({ success: false, error: "Vincule uma empresa para abrir conversas." });
+    }
+
+    const conversation = await getConversationById(String(req.params.id), userId, tenantId);
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: "Conversa nao encontrada" });
+    }
+
+    return res.json({ success: true, data: conversation });
+  } catch (error) {
+    console.error("Erro ao carregar conversa:", error);
+    return res.status(500).json({ success: false, error: "Erro ao carregar conversa" });
   }
 });
 
@@ -317,7 +458,7 @@ router.delete("/:id", async (req: Request, res: Response) => {
     const tenantId = req.user!.tenant_id;
     const conversationId = req.params.id as string;
 
-    await clearConversation(conversationId, userId);
+    await clearConversation(conversationId, userId, tenantId || undefined);
 
     res.json({ success: true });
   } catch (error) {

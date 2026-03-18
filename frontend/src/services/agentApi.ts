@@ -414,7 +414,7 @@ class AgentApiService {
   // CHAT
   // ══════════════════════════════════════════════════════
 
-  async *sendMessageStream(message: string, conversationId?: string, signal?: AbortSignal) {
+  async *sendMessageStream(message: string, conversationId?: string, signal?: AbortSignal, fileIds?: string[]) {
     const baseUrl = AGENT_API_URL.endsWith('/') ? AGENT_API_URL.slice(0, -1) : AGENT_API_URL;
     const url = `${baseUrl}/api/ai/analyze`;
 
@@ -435,7 +435,7 @@ class AgentApiService {
           'Authorization': `Bearer ${this.token}`,
           'Accept': 'text/event-stream',
         },
-        body: JSON.stringify({ message, conversation_id: conversationId, stream: true }),
+        body: JSON.stringify({ message, conversation_id: conversationId, stream: true, file_ids: fileIds }),
         signal: controller.signal,
       });
 
@@ -477,15 +477,41 @@ class AgentApiService {
     }
   }
 
-  async getChatHistory() {
-    return this.request<
-      Array<{
+  async getChatHistory(params?: { limit?: number; offset?: number; q?: string }) {
+    const search = new URLSearchParams();
+    if (params?.limit) search.append('limit', String(params.limit));
+    if (params?.offset) search.append('offset', String(params.offset));
+    if (params?.q) search.append('q', params.q);
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+
+    return this.request<{
+      items: Array<{
         id: string;
-        messages: Array<{ role: string; content: string; timestamp: string }>;
+        title?: string | null;
         created_at: string;
         updated_at: string;
-      }>
-    >('/api/chat/history');
+        last_message_preview?: string | null;
+        last_message_at?: string | null;
+        message_count?: number;
+        summary?: string | null;
+      }>;
+      total: number;
+      has_more: boolean;
+    }>(`/api/chat/history${suffix}`);
+  }
+
+  async getConversation(id: string) {
+    return this.request<{
+      id: string;
+      title?: string | null;
+      messages: Array<{ role: string; content: string; timestamp: string }>;
+      created_at: string;
+      updated_at: string;
+      last_message_preview?: string | null;
+      last_message_at?: string | null;
+      message_count?: number;
+      summary?: string | null;
+    }>(`/api/chat/conversation/${id}`);
   }
 
   async newConversation() {
@@ -817,6 +843,57 @@ class AgentApiService {
     return this.request<{ suggestions: any[] }>('/api/optimus/suggestions');
   }
 
+  async uploadOptimusFiles(files: File[], conversationId?: string | null) {
+    const formData = new FormData();
+    files.forEach((file) => formData.append('files', file));
+    if (conversationId) formData.append('conversation_id', conversationId);
+
+    const headers: Record<string, string> = {};
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`;
+    }
+
+    try {
+      const response = await fetch(`${AGENT_API_URL}/api/optimus/upload-file`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+      return await response.json();
+    } catch {
+      return { success: false, error: 'Erro ao enviar arquivos' };
+    }
+  }
+
+  async getOptimusFiles(params?: { conversationId?: string | null; limit?: number }) {
+    const search = new URLSearchParams();
+    if (params?.conversationId) search.append('conversation_id', params.conversationId);
+    if (params?.limit) search.append('limit', String(params.limit));
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    return this.request<{ files: any[] }>(`/api/optimus/files${suffix}`);
+  }
+
+  async getOptimusFile(id: string) {
+    return this.request<any>(`/api/optimus/files/${id}`);
+  }
+
+  async deleteOptimusFile(id: string) {
+    return this.request<{ success: boolean }>(`/api/optimus/files/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getOptimusFileDownloadUrl(id: string) {
+    return this.request<{ url: string }>(`/api/optimus/files/${id}/download`);
+  }
+
+  async askOptimusFiles(payload: { question: string; file_ids: string[]; conversation_id?: string }) {
+    return this.request<{ message: string }>('/api/optimus/files/ask', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
   async generateOptimusSuggestions() {
     return this.request<{ suggestions: any[] }>('/api/optimus/suggestions/generate', {
       method: 'POST',
@@ -828,6 +905,31 @@ class AgentApiService {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     });
+  }
+
+  async executeOptimusSuggestionAction(id: string) {
+    return this.request<{
+      status: string;
+      message: string;
+      action_slug?: string;
+      deep_link?: string;
+      filters?: Record<string, unknown>;
+    }>(`/api/optimus/suggestions/${id}/action`, {
+      method: 'POST',
+    });
+  }
+
+  getOptimusExportUrl(filters: Record<string, string | number | boolean | undefined>) {
+    const params = new URLSearchParams();
+    if (this.token) params.append('token', this.token);
+
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') return;
+      params.append(key, String(value));
+    });
+
+    const baseUrl = AGENT_API_URL.endsWith('/') ? AGENT_API_URL.slice(0, -1) : AGENT_API_URL;
+    return `${baseUrl}/api/optimus/export.csv?${params.toString()}`;
   }
 
   // ══════════════════════════════════════════════════════
@@ -850,6 +952,419 @@ class AgentApiService {
   // ══════════════════════════════════════════════════════
   // CAMPAIGN RECOMMENDATIONS
   // ══════════════════════════════════════════════════════
+
+  async getReportMetadata() {
+    return this.request<{
+      recipients: Array<{ id: string; email: string; full_name: string }>;
+      statuses: string[];
+      marketplaces: string[];
+      categories: string[];
+      custom_reports: Array<{ id: string; name: string; description: string | null; dataset: 'sales' | 'products' | 'customers' }>;
+    }>('/api/reports/metadata');
+  }
+
+  async getScheduledReports() {
+    return this.request<any[]>('/api/reports/schedules');
+  }
+
+  async getReportExports(params?: {
+    source_type?: 'scheduled_report' | 'custom_definition' | 'custom_builder';
+    source_id?: string;
+    limit?: number;
+  }) {
+    const query = new URLSearchParams();
+    if (params?.source_type) query.set('source_type', params.source_type);
+    if (params?.source_id) query.set('source_id', params.source_id);
+    if (params?.limit) query.set('limit', String(params.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return this.request<any[]>(`/api/reports/exports${suffix}`);
+  }
+
+  async getReportExport(id: string) {
+    return this.request<any>(`/api/reports/exports/${id}`);
+  }
+
+  async createReportExport(payload:
+    | {
+      source_type: 'scheduled_report';
+      source_id: string;
+      title?: string | null;
+      format: 'csv' | 'xlsx' | 'html' | 'json' | 'pdf';
+      options?: {
+        orientation?: 'portrait' | 'landscape';
+        delimiter?: ',' | ';';
+        include_summary?: boolean;
+        include_graphs?: boolean;
+        watermark?: boolean;
+      };
+    }
+    | {
+      source_type: 'custom_definition';
+      source_id: string;
+      title?: string | null;
+      format: 'csv' | 'xlsx' | 'html' | 'json' | 'pdf';
+      options?: {
+        orientation?: 'portrait' | 'landscape';
+        delimiter?: ',' | ';';
+        include_summary?: boolean;
+        include_graphs?: boolean;
+        watermark?: boolean;
+      };
+    }
+    | {
+      source_type: 'custom_builder';
+      title: string;
+      description?: string | null;
+      format: 'csv' | 'xlsx' | 'html' | 'json' | 'pdf';
+      definition: {
+        dataset: 'sales' | 'products' | 'customers';
+        dimensions: string[];
+        metrics: string[];
+        filters?: Array<{
+          field: string;
+          operator: 'eq' | 'in' | 'between' | 'gte' | 'lte';
+          value: string | number | Array<string | number>;
+        }>;
+        sort?: {
+          field: string;
+          direction: 'asc' | 'desc';
+        };
+        limit?: number;
+      };
+      options?: {
+        orientation?: 'portrait' | 'landscape';
+        delimiter?: ',' | ';';
+        include_summary?: boolean;
+        include_graphs?: boolean;
+        watermark?: boolean;
+      };
+    }
+  ) {
+    return this.request<any>('/api/reports/exports', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async getReportExportDownloadUrl(id: string) {
+    return this.request<{ url: string }>(`/api/reports/exports/${id}/download`);
+  }
+
+  async shareReportExport(id: string) {
+    return this.request<{ token: string; expires_at: string; url: string }>(`/api/reports/exports/${id}/share`, {
+      method: 'POST',
+    });
+  }
+
+  async emailReportExport(id: string, recipients: string[]) {
+    return this.request<any>(`/api/reports/exports/${id}/email`, {
+      method: 'POST',
+      body: JSON.stringify({ recipients }),
+    });
+  }
+
+  async getScheduledReportExecutions(id: string) {
+    return this.request<any[]>(`/api/reports/schedules/${id}/executions`);
+  }
+
+  async getReportExecutionDownloadUrl(id: string) {
+    return this.request<{ url: string }>(`/api/reports/executions/${id}/download`);
+  }
+
+  async previewScheduledReport(payload: {
+    name: string;
+    report_type: 'sales' | 'products' | 'customers' | 'finance' | 'custom';
+    custom_report_id?: string | null;
+    format: 'csv' | 'xlsx' | 'html';
+    is_active: boolean;
+    recipients: string[];
+    schedule: {
+      frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'annual' | 'custom';
+      time: string;
+      day_of_week?: number | null;
+      day_of_month?: number | null;
+      month_of_year?: number | null;
+      cron_expression?: string | null;
+      timezone?: string;
+    };
+    filters: {
+      period_mode: 'relative' | 'fixed';
+      relative_period?: 'yesterday' | 'last_7_days' | 'previous_month_complete' | null;
+      start_date?: string | null;
+      end_date?: string | null;
+      status?: string | null;
+      marketplace?: string | null;
+      category?: string | null;
+      low_stock?: boolean | null;
+      out_of_stock?: boolean | null;
+      excess_stock?: boolean | null;
+    };
+  }) {
+    return this.request<{
+      cronExpression: string;
+      nextRunAt: string;
+      description: string;
+    }>('/api/reports/preview', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async createScheduledReport(payload: {
+    name: string;
+    report_type: 'sales' | 'products' | 'customers' | 'finance' | 'custom';
+    custom_report_id?: string | null;
+    format: 'csv' | 'xlsx' | 'html';
+    is_active: boolean;
+    recipients: string[];
+    schedule: {
+      frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'annual' | 'custom';
+      time: string;
+      day_of_week?: number | null;
+      day_of_month?: number | null;
+      month_of_year?: number | null;
+      cron_expression?: string | null;
+      timezone?: string;
+    };
+    filters: {
+      period_mode: 'relative' | 'fixed';
+      relative_period?: 'yesterday' | 'last_7_days' | 'previous_month_complete' | null;
+      start_date?: string | null;
+      end_date?: string | null;
+      status?: string | null;
+      marketplace?: string | null;
+      category?: string | null;
+      low_stock?: boolean | null;
+      out_of_stock?: boolean | null;
+      excess_stock?: boolean | null;
+    };
+  }) {
+    return this.request<any>('/api/reports/schedule', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async updateScheduledReport(id: string, payload: {
+    name: string;
+    report_type: 'sales' | 'products' | 'customers' | 'finance' | 'custom';
+    custom_report_id?: string | null;
+    format: 'csv' | 'xlsx' | 'html';
+    is_active: boolean;
+    recipients: string[];
+    schedule: {
+      frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'annual' | 'custom';
+      time: string;
+      day_of_week?: number | null;
+      day_of_month?: number | null;
+      month_of_year?: number | null;
+      cron_expression?: string | null;
+      timezone?: string;
+    };
+    filters: {
+      period_mode: 'relative' | 'fixed';
+      relative_period?: 'yesterday' | 'last_7_days' | 'previous_month_complete' | null;
+      start_date?: string | null;
+      end_date?: string | null;
+      status?: string | null;
+      marketplace?: string | null;
+      category?: string | null;
+      low_stock?: boolean | null;
+      out_of_stock?: boolean | null;
+      excess_stock?: boolean | null;
+    };
+  }) {
+    return this.request<any>(`/api/reports/schedules/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async updateScheduledReportStatus(id: string, status: 'active' | 'paused') {
+    return this.request<any>(`/api/reports/schedules/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+  }
+
+  async deleteScheduledReport(id: string) {
+    return this.request(`/api/reports/schedules/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async runScheduledReportNow(id: string) {
+    return this.request<any>(`/api/reports/schedules/${id}/run-now`, {
+      method: 'POST',
+    });
+  }
+
+  async getCustomReportMetadata() {
+    return this.request<{
+      datasets: Array<{
+        key: 'sales' | 'products' | 'customers';
+        label: string;
+        description: string;
+        dimensions: Array<{ key: string; label: string }>;
+        metrics: Array<{ key: string; label: string }>;
+        filters: Array<{ key: string; label: string; type: 'text' | 'number' | 'date' }>;
+      }>;
+    }>('/api/reports/custom/metadata');
+  }
+
+  async getCustomReportDefinitions() {
+    return this.request<any[]>('/api/reports/custom/definitions');
+  }
+
+  async getReportTemplates(params?: {
+    search?: string;
+    category?: string;
+    dataset?: 'sales' | 'products' | 'customers';
+    scope?: 'system' | 'tenant' | 'user' | 'all';
+  }) {
+    const query = new URLSearchParams();
+    if (params?.search) query.set('search', params.search);
+    if (params?.category) query.set('category', params.category);
+    if (params?.dataset) query.set('dataset', params.dataset);
+    if (params?.scope) query.set('scope', params.scope);
+
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return this.request<any[]>(`/api/reports/templates${suffix}`);
+  }
+
+  async getReportTemplate(id: string) {
+    return this.request<any>(`/api/reports/templates/${id}`);
+  }
+
+  async createReportTemplate(payload: {
+    name: string;
+    description?: string | null;
+    category: string;
+    tags?: string[];
+    icon?: string | null;
+    preview_image_url?: string | null;
+    scope: 'tenant' | 'user';
+    source_definition_id?: string | null;
+    definition?: {
+      dataset: 'sales' | 'products' | 'customers';
+      dimensions: string[];
+      metrics: string[];
+      filters?: Array<{
+        field: string;
+        operator: 'eq' | 'in' | 'between' | 'gte' | 'lte';
+        value: string | number | Array<string | number>;
+      }>;
+      sort?: {
+        field: string;
+        direction: 'asc' | 'desc';
+      };
+      limit?: number;
+    };
+    default_schedule?: {
+      format?: 'csv' | 'xlsx' | 'html';
+      schedule?: {
+        frequency?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'annual' | 'custom';
+        time?: string;
+        day_of_week?: number | null;
+        day_of_month?: number | null;
+        month_of_year?: number | null;
+        cron_expression?: string | null;
+        timezone?: string;
+      };
+    };
+  }) {
+    return this.request<any>('/api/reports/templates', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async useReportTemplate(id: string) {
+    return this.request<any>(`/api/reports/templates/${id}/use`, {
+      method: 'POST',
+    });
+  }
+
+  async createCustomReportDefinition(payload: {
+    name: string;
+    description?: string | null;
+    definition: {
+      dataset: 'sales' | 'products' | 'customers';
+      dimensions: string[];
+      metrics: string[];
+      filters?: Array<{
+        field: string;
+        operator: 'eq' | 'in' | 'between' | 'gte' | 'lte';
+        value: string | number | Array<string | number>;
+      }>;
+      sort?: {
+        field: string;
+        direction: 'asc' | 'desc';
+      };
+      limit?: number;
+    };
+  }) {
+    return this.request<any>('/api/reports/custom/definitions', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async updateCustomReportDefinition(id: string, payload: {
+    name: string;
+    description?: string | null;
+    definition: {
+      dataset: 'sales' | 'products' | 'customers';
+      dimensions: string[];
+      metrics: string[];
+      filters?: Array<{
+        field: string;
+        operator: 'eq' | 'in' | 'between' | 'gte' | 'lte';
+        value: string | number | Array<string | number>;
+      }>;
+      sort?: {
+        field: string;
+        direction: 'asc' | 'desc';
+      };
+      limit?: number;
+    };
+  }) {
+    return this.request<any>(`/api/reports/custom/definitions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async deleteCustomReportDefinition(id: string) {
+    return this.request(`/api/reports/custom/definitions/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async previewCustomReport(payload: {
+    dataset: 'sales' | 'products' | 'customers';
+    dimensions: string[];
+    metrics: string[];
+    filters?: Array<{
+      field: string;
+      operator: 'eq' | 'in' | 'between' | 'gte' | 'lte';
+      value: string | number | Array<string | number>;
+    }>;
+    sort?: {
+      field: string;
+      direction: 'asc' | 'desc';
+    };
+    limit?: number;
+  }) {
+    return this.request<{
+      sql: string;
+      rowCount: number;
+      rows: Array<Record<string, string | number | null>>;
+    }>('/api/reports/custom/preview', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
 
   async getCampaignRecommendations() {
     return this.request<{

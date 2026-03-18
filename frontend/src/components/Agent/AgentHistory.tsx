@@ -4,10 +4,13 @@ import { useBrandPrimaryColor, getBrandPrimaryWithOpacity } from '../../hooks/us
 
 interface Conversation {
   id: string;
-  messages: Array<{ role: string; content: string; timestamp: string }>;
   created_at: string;
   updated_at: string;
-  title?: string;
+  title?: string | null;
+  last_message_preview?: string | null;
+  last_message_at?: string | null;
+  message_count?: number;
+  summary?: string | null;
 }
 
 interface AgentHistoryProps {
@@ -16,6 +19,9 @@ interface AgentHistoryProps {
   onSelect: (conversation: Conversation) => void;
   onDelete: (id: string) => void;
   onNewChat: () => void;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 export function AgentHistory({
@@ -24,6 +30,9 @@ export function AgentHistory({
   onSelect,
   onDelete,
   onNewChat,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
 }: AgentHistoryProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const brandPrimaryColor = useBrandPrimaryColor();
@@ -40,9 +49,7 @@ export function AgentHistory({
 
   const getPreview = (conv: Conversation) => {
     if (conv.title) return conv.title;
-    const firstUserMsg = conv.messages.find((m) => m.role === 'user');
-    if (!firstUserMsg) return 'Nova conversa';
-    const text = firstUserMsg.content;
+    const text = conv.last_message_preview || conv.summary || 'Nova conversa';
     return text.length > 40 ? text.slice(0, 40) + '...' : text;
   };
 
@@ -162,6 +169,18 @@ export function AgentHistory({
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {hasMore && onLoadMore && (
+          <div className="px-2 pt-3">
+            <button
+              onClick={onLoadMore}
+              disabled={isLoadingMore}
+              className="w-full rounded-xl border border-border bg-body/40 px-3 py-2 text-[12px] text-secondary transition-colors hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isLoadingMore ? 'Carregando...' : 'Carregar mais'}
+            </button>
           </div>
         )}
       </div>

@@ -390,3 +390,113 @@ export async function sendWeeklyStrategicReport(params: {
   });
 }
 
+export async function sendScheduledReportEmail(params: {
+  to: string;
+  fullName?: string | null;
+  subject: string;
+  html: string;
+  downloadUrl: string;
+  attachments?: Array<{
+    filename: string;
+    content: Buffer;
+    contentType: string;
+  }>;
+}): Promise<void> {
+  await ensureTransportReady();
+
+  const greeting = params.fullName?.trim() ? `Oi ${params.fullName.trim()},` : "Oi,";
+  const wrappedHtml = `
+    <div style="font-family:sans-serif;max-width:720px;margin:0 auto;">
+      <p style="font-size:14px;color:#334155;">${escapeHtml(greeting)}</p>
+      ${params.html}
+      <p style="margin-top:20px;font-size:12px;color:#64748b;">
+        Se o anexo estiver indisponível ou for muito grande, use este link: <a href="${escapeHtml(params.downloadUrl)}">baixar relatório</a>.
+      </p>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: env.SMTP_FROM,
+    to: params.to,
+    subject: params.subject,
+    html: wrappedHtml,
+    attachments: params.attachments,
+  });
+}
+
+export async function sendScheduledReportFailureEmail(params: {
+  to: string;
+  fullName?: string | null;
+  reportName: string;
+  errorMessage: string;
+}): Promise<void> {
+  await ensureTransportReady();
+
+  const greeting = params.fullName?.trim() ? `Oi ${params.fullName.trim()},` : "Oi,";
+  const subject = `[Átrio] Falha no relatório agendado: ${params.reportName}`;
+  const html = `
+    <div style="font-family:sans-serif;max-width:640px;margin:0 auto;padding:24px;border:1px solid #e2e8f0;border-radius:12px;">
+      <p style="font-size:14px;color:#334155;">${escapeHtml(greeting)}</p>
+      <h2 style="margin-top:0;color:#0f172a;">Falha definitiva no relatório agendado</h2>
+      <p style="font-size:14px;color:#475569;">
+        O relatório <strong>${escapeHtml(params.reportName)}</strong> falhou três vezes consecutivas e foi pausado automaticamente.
+      </p>
+      <div style="margin-top:16px;padding:16px;background:#fff1f2;border:1px solid #fecdd3;border-radius:10px;">
+        <strong style="display:block;margin-bottom:8px;color:#9f1239;">Erro</strong>
+        <code style="white-space:pre-wrap;color:#881337;">${escapeHtml(params.errorMessage)}</code>
+      </div>
+      <p style="margin-top:16px;font-size:13px;color:#475569;">
+        Revise a configuração do agendamento e execute um teste manual após o ajuste.
+      </p>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: env.SMTP_FROM,
+    to: params.to,
+    subject,
+    html,
+  });
+}
+
+export async function sendReportExportEmail(params: {
+  to: string;
+  fullName?: string | null;
+  reportTitle: string;
+  fileName: string;
+  format: "csv" | "xlsx" | "html" | "json" | "pdf";
+  downloadUrl: string;
+}): Promise<void> {
+  await ensureTransportReady();
+
+  const greeting = params.fullName?.trim() ? `Oi ${params.fullName.trim()},` : "Oi,";
+  const subject = `[Átrio] Export pronto: ${params.reportTitle}`;
+  const html = `
+    <div style="font-family:sans-serif;max-width:680px;margin:0 auto;padding:24px;border:1px solid #e2e8f0;border-radius:12px;">
+      <p style="font-size:14px;color:#334155;">${escapeHtml(greeting)}</p>
+      <h2 style="margin-top:0;color:#0f172a;">Seu arquivo está pronto</h2>
+      <p style="font-size:14px;color:#475569;">
+        O relatório <strong>${escapeHtml(params.reportTitle)}</strong> foi exportado com sucesso no formato
+        <strong> ${escapeHtml(params.format.toUpperCase())}</strong>.
+      </p>
+      <div style="margin:16px 0;padding:16px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
+        <div style="font-size:13px;color:#475569;">Arquivo</div>
+        <div style="margin-top:6px;font-size:15px;font-weight:600;color:#0f172a;">${escapeHtml(params.fileName)}</div>
+      </div>
+      <a href="${escapeHtml(params.downloadUrl)}" style="display:inline-block;margin-top:8px;padding:12px 18px;background:#0f172a;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;">
+        Baixar arquivo
+      </a>
+      <p style="margin-top:20px;font-size:12px;color:#64748b;">
+        O link é temporário. Se ele expirar, gere um novo pelo painel da Átrio.
+      </p>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: env.SMTP_FROM,
+    to: params.to,
+    subject,
+    html,
+  });
+}
+

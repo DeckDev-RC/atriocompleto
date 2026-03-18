@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect, useCallback, type FormEvent, type KeyboardEvent } from 'react';
-import { SendHorizontal, Mic, MicOff } from 'lucide-react';
+﻿import { useState, useRef, useEffect, useCallback, type FormEvent, type KeyboardEvent } from 'react';
+import { SendHorizontal, Mic, MicOff, Paperclip } from 'lucide-react';
 import { useBrandPrimaryColor } from '../../hooks/useBrandPrimaryColor';
 
-// ── Web Speech API types ────────────────────────────────
+// â”€â”€ Web Speech API types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface SpeechRecognitionEvent extends Event {
   results: SpeechRecognitionResultList;
   resultIndex: number;
@@ -46,23 +46,59 @@ interface AgentInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
   onStop?: () => void;
+  uploadedFiles?: UploadedAgentFile[];
+  onFilesSelected?: (files: File[]) => void;
+  onRemoveFile?: (localId: string) => void;
+  onDownloadFile?: (fileId: string) => void;
+}
+
+export interface UploadedAgentFile {
+  localId: string;
+  id?: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  status: 'uploading' | 'queued' | 'processing' | 'processed' | 'error';
+  progress: number;
+  stage?: string;
+  summary?: string;
+  previewUrl?: string;
+  error?: string;
 }
 
 const MAX_CHARS = 1000;
+const MAX_FILE_SIZE_MB = 10;
+const MAX_FILES = 5;
+const ACCEPTED_MIME_TYPES = [
+  'image/png',
+  'application/pdf',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/plain',
+];
 const SLASH_COMMANDS = [
   { command: '/clear', description: 'Limpar a conversa atual e iniciar uma nova' },
   { command: '/help', description: 'Aprender o que eu posso perguntar' },
   { command: '/feedback', description: 'Enviar um feedback ou reportar um erro' }
 ];
 
-export function AgentInput({ onSend, disabled, onStop }: AgentInputProps) {
+export function AgentInput({
+  onSend,
+  disabled,
+  onStop,
+  uploadedFiles = [],
+  onFilesSelected,
+}: AgentInputProps) {
   const [message, setMessage] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [interimText, setInterimText] = useState('');
   const [showSlashCommands, setShowSlashCommands] = useState(false);
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
+  const [dragOver, setDragOver] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -74,6 +110,31 @@ export function AgentInput({ onSend, disabled, onStop }: AgentInputProps) {
   const speechSupported =
     typeof window !== 'undefined' &&
     (!!window.SpeechRecognition || !!window.webkitSpeechRecognition);
+
+  const validateAndForwardFiles = useCallback((files: File[]) => {
+    if (!onFilesSelected || files.length === 0) return;
+
+    const totalFiles = uploadedFiles.filter((file) => file.status !== 'error').length + files.length;
+    if (totalFiles > MAX_FILES) {
+      setUploadError(`Voce pode enviar no maximo ${MAX_FILES} arquivos por vez.`);
+      return;
+    }
+
+    for (const file of files) {
+      if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+        setUploadError(`"${file.name}" excede ${MAX_FILE_SIZE_MB}MB.`);
+        return;
+      }
+
+      if (!ACCEPTED_MIME_TYPES.includes(file.type)) {
+        setUploadError(`"${file.name}" nao e suportado. Use PNG, PDF, XLS, XLSX ou TXT.`);
+        return;
+      }
+    }
+
+    setUploadError(null);
+    onFilesSelected(files);
+  }, [onFilesSelected, uploadedFiles]);
 
   useEffect(() => {
     return () => {
@@ -219,6 +280,20 @@ export function AgentInput({ onSend, disabled, onStop }: AgentInputProps) {
     }
   };
 
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    validateAndForwardFiles(files);
+    e.target.value = '';
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (disabled) return;
+    const files = Array.from(e.dataTransfer.files || []);
+    validateAndForwardFiles(files);
+  };
+
   const handleInput = () => {
     const textarea = textareaRef.current;
     if (textarea) {
@@ -227,7 +302,7 @@ export function AgentInput({ onSend, disabled, onStop }: AgentInputProps) {
     }
   };
 
-  // ── Audio Visualizer ──
+  // â”€â”€ Audio Visualizer â”€â”€
   const startVisualizer = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -275,7 +350,7 @@ export function AgentInput({ onSend, disabled, onStop }: AgentInputProps) {
           const halfBar = barHeight / 2;
           const x = i * (barWidth + gap);
 
-          // Gradient usando a cor primária da marca
+          // Gradient usando a cor primÃ¡ria da marca
           const t = i / barCount;
           let r = 56, g = 182, b = 255; // Fallback
           
@@ -292,7 +367,7 @@ export function AgentInput({ onSend, disabled, onStop }: AgentInputProps) {
               b = parseInt(hex.substring(4, 6), 16);
             }
           } else {
-            // Ler da variável CSS se não tiver no estado
+            // Ler da variÃ¡vel CSS se nÃ£o tiver no estado
             const cssColor = getComputedStyle(document.documentElement).getPropertyValue('--color-brand-primary').trim();
             if (cssColor) {
               const rgb = cssColor.match(/\d+/g);
@@ -348,12 +423,35 @@ export function AgentInput({ onSend, disabled, onStop }: AgentInputProps) {
   }, [isListening, startVisualizer, stopVisualizer]);
 
   const displayValue = message + (interimText ? (message && !message.endsWith(' ') ? ' ' : '') + interimText : '');
+  const hasPendingFiles = uploadedFiles.some((file) => file.status !== 'processed' && file.status !== 'error');
 
   return (
-    <form onSubmit={handleSubmit} className="shrink-0 border-t border-border p-4 max-sm:p-3">
+    <form
+      onSubmit={handleSubmit}
+      className="shrink-0 border-t border-border p-4 max-sm:p-3"
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (!disabled) setDragOver(true);
+      }}
+      onDragLeave={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+      }}
+      onDrop={handleDrop}
+    >
       <div className="mx-auto max-w-[960px] lg:px-4">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".png,.pdf,.xls,.xlsx,.txt"
+          multiple
+          className="hidden"
+          onChange={handleFileInputChange}
+        />
         <div
-          className={`relative flex items-end gap-2 rounded-2xl border p-3 transition-all duration-300 ${isListening
+          className={`relative flex items-end gap-2 rounded-2xl border p-3 transition-all duration-300 ${dragOver
+              ? 'border-brand-primary bg-brand-primary/5'
+              : isListening
               ? 'border-danger/40 shadow-[0_0_20px_rgba(255,69,58,0.1)] bg-card'
               : 'border-border bg-card shadow-soft hover:shadow-soft-hover dark:shadow-dark-card dark:hover:shadow-dark-hover'
             }`}
@@ -400,7 +498,7 @@ export function AgentInput({ onSend, disabled, onStop }: AgentInputProps) {
               onChange={handleTextChange}
               onKeyDown={handleKeyDown}
               onInput={handleInput}
-              placeholder="Pergunte ao Optimus..."
+              placeholder="Pergunte ao Optimus ou anexe um arquivo..."
               disabled={disabled}
               rows={1}
               className="flex-1 resize-none bg-transparent text-[14px] text-primary leading-relaxed placeholder:text-muted outline-none max-sm:text-[16px]"
@@ -427,6 +525,19 @@ export function AgentInput({ onSend, disabled, onStop }: AgentInputProps) {
                 </button>
               ))}
             </div>
+          )}
+
+          {onFilesSelected && (
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={disabled || uploadedFiles.length >= MAX_FILES}
+              title="Anexar arquivo (PNG, PDF, XLS, XLSX ou TXT)"
+              className={`flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border border-border/70 bg-border/50 px-3 text-secondary transition-all duration-200 dark:bg-[rgba(255,255,255,0.06)] ${disabled ? 'opacity-50 cursor-not-allowed' : 'active:scale-90 hover:text-primary'}`}
+            >
+              <Paperclip size={16} strokeWidth={2} />
+              <span className="text-[12px] font-medium max-sm:hidden">Anexar</span>
+            </button>
           )}
 
           {/* Voice button */}
@@ -478,7 +589,7 @@ export function AgentInput({ onSend, disabled, onStop }: AgentInputProps) {
           ) : (
             <button
               type="submit"
-              disabled={!message.trim() || disabled || message.length > MAX_CHARS}
+              disabled={!message.trim() || disabled || message.length > MAX_CHARS || hasPendingFiles}
               className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-200 ${message.trim() && !disabled && message.length <= MAX_CHARS
                   ? 'text-white shadow-sm hover:shadow-md active:scale-90'
                   : 'bg-border/50 dark:bg-[rgba(255,255,255,0.05)] text-muted cursor-not-allowed'
@@ -492,9 +603,15 @@ export function AgentInput({ onSend, disabled, onStop }: AgentInputProps) {
           )}
         </div>
 
+        {uploadError && (
+          <div className="mt-2 rounded-xl border border-danger/20 bg-danger/10 px-3 py-2 text-[11px] text-danger">
+            {uploadError}
+          </div>
+        )}
+
         <div className="mt-2 flex items-center justify-between px-1">
           <p className="text-[10px] text-muted">
-            Optimus pode cometer erros. Verifique informações importantes.
+            Use o botão Anexar para enviar PNG, PDF, XLS, XLSX ou TXT. Você também pode arrastar o arquivo para esta área.
           </p>
           <p className={`text-[10px] font-medium ${message.length > MAX_CHARS ? 'text-danger' : 'text-muted/60'}`}>
             {message.length} / {MAX_CHARS}
@@ -504,3 +621,4 @@ export function AgentInput({ onSend, disabled, onStop }: AgentInputProps) {
     </form>
   );
 }
+

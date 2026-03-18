@@ -46,6 +46,8 @@ const VerifyEmailPage = lazyWithRetry(() => import('./pages/VerifyEmailPage').th
 const InsightsHistoryPage = lazyWithRetry(() => import('./pages/InsightsHistoryPage'));
 const PatternDiscoveryPage = lazyWithRetry(() => import('./pages/PatternDiscoveryPage'));
 const StrategicReportPage = lazyWithRetry(() => import('./pages/StrategicReportPage'));
+const ScheduledReportsPage = lazyWithRetry(() => import('./pages/ScheduledReportsPage'));
+const CustomReportsPage = lazyWithRetry(() => import('./pages/CustomReportsPage'));
 const CampaignRecommendationsPage = lazyWithRetry(() => import('./pages/CampaignRecommendationsPage'));
 const BenchmarkingPage = lazyWithRetry(() => import('./pages/BenchmarkingPage'));
 const WhatIfAnalysisPage = lazyWithRetry(() => import('./pages/Simulations/WhatIfAnalysis'));
@@ -138,6 +140,16 @@ function AppRoutes() {
           <Route path="estrategia" element={
             <ProtectedRoute permission="acessar_agente">
               <StrategicReportPage />
+            </ProtectedRoute>
+          } />
+          <Route path="relatorios" element={
+            <ProtectedRoute permission="visualizar_relatorios">
+              <ScheduledReportsPage />
+            </ProtectedRoute>
+          } />
+          <Route path="relatorios/customizados" element={
+            <ProtectedRoute permission="visualizar_relatorios">
+              <CustomReportsPage />
             </ProtectedRoute>
           } />
           <Route path="campanhas" element={

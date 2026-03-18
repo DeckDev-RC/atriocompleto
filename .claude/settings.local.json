@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "Bash(npm ls:*)",
+      "Bash(node -e \":*)",
+      "Bash(find /c/Users/User/Documents/Lightshot/atrio-integrado-v2/backend/src/jobs -type f -name *.ts)",
+      "Bash(â† ')",
+      "Bash(â€\"\\\\|âš \\\\|â›\")",
+      "Bash(ðŸ)",
+      "Bash(Ã§)",
+      "Bash(Ã£)",
+      "Bash(Ã¡)",
+      "Bash(Ãµ)",
+      "Bash(Ã­)",
+      "Bash(Ãº)",
+      "Bash(Ã©)",
+      "Bash(Ãƒ)",
+      "Bash(Ã— \")",
+      "Bash(node -e \"const fs=require\\(''fs''\\); const c=fs.readFileSync\\(''backend/src/services/aiAnalysis.service.ts'',''utf-8''\\); const idx=c.indexOf\\(''salesByMonth''\\); console.log\\(''salesByMonth context:'', JSON.stringify\\(c.substring\\(idx, idx+80\\)\\)\\); const idx2=c.indexOf\\(''REGRA DE OURO''\\); console.log\\(''REGRA context:'', JSON.stringify\\(c.substring\\(idx2-5, idx2+50\\)\\)\\); const idx3=c.indexOf\\(''tendencias de alta''\\); console.log\\(''emoji context:'', JSON.stringify\\(c.substring\\(idx3-30, idx3+20\\)\\)\\);\")",
+      "Bash(node -e \"require\\(''dotenv''\\).config\\(\\); const Redis = require\\(''ioredis''\\); const redis = new Redis\\(process.env.REDIS_URL\\); \\(async \\(\\) => { const ok = await redis.keys\\(''optimus:*''\\); const ak = await redis.keys\\(''agent:*''\\); const all = [...ok, ...ak]; if \\(all.length > 0\\) { await redis.del\\(...all\\); console.log\\(''Deleted '' + all.length + '' keys \\('' + ok.length + '' optimus, '' + ak.length + '' agent\\)''\\); } else { console.log\\(''No cache keys found''\\); } redis.disconnect\\(\\); }\\)\\(\\).catch\\(e => { console.error\\(e.message\\); process.exit\\(1\\); }\\);\")"
+    ]
+  }
+}

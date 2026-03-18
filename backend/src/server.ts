@@ -20,6 +20,11 @@ import benchmarkingRoutes from "./routes/benchmarking";
 import simulationsRoutes from "./routes/simulations";
 import inventoryRoutes from "./routes/inventory";
 import optimusSuggestionsRoutes from "./routes/optimus_suggestions";
+import reportsRoutes from "./routes/reports";
+import "./services/file-processing-queue";
+import "./services/memory-processing-queue";
+import { ScheduledReportsQueueService } from "./jobs/scheduledReports.job";
+import "./jobs/reportExports.job";
 
 const app = express();
 app.set('trust proxy', 1); // Confia no proxy reverso do Easypanel/Traefik para o rate-limit funcionar
@@ -60,10 +65,32 @@ app.use(checkIPBlock); // Bloqueio imediato para IPs na blacklist/blocked
 app.use(globalLimiter); // Limite global de 100 req/min via Redis
 
 // ── Compression ─────────────────────────────────────────
-app.use(compression());
+// Skip compression for SSE (text/event-stream) to prevent corruption
+// of multi-byte UTF-8 characters at chunk boundaries (U+FFFD issue)
+app.use(compression({
+  filter: (req, res) => {
+    const contentType = res.getHeader("Content-Type");
+    if (typeof contentType === "string" && contentType.includes("text/event-stream")) {
+      return false;
+    }
+    return compression.filter(req, res);
+  },
+}));
 
 // ── Body Parsing ────────────────────────────────────────
 app.use(express.json({ limit: "1mb" }));
+
+// ── UTF-8 Charset ───────────────────────────────────────
+app.use((_req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body: unknown) => {
+    if (!res.getHeader("Content-Type")) {
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+    }
+    return originalJson(body);
+  };
+  next();
+});
 
 // ── Audit Info Capture ──────────────────────────────────
 app.use(auditMiddleware);
@@ -89,6 +116,7 @@ app.use("/api/benchmarking", benchmarkingRoutes);
 app.use("/api/simulations", simulationsRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/optimus", optimusSuggestionsRoutes);
+app.use("/api/reports", reportsRoutes);
 
 // ── Error Handler ───────────────────────────────────────
 app.use(errorHandler);
@@ -108,6 +136,9 @@ const server = app.listen(env.PORT, () => {
 
   // Initialize Background Jobs
   setupDailyCrons();
+  void ScheduledReportsQueueService.syncActiveSchedules().catch((error) => {
+    console.error("[ScheduledReports] Failed to sync active schedules on boot:", error);
+  });
 });
 
 // ── Graceful Shutdown + Self-Healing ────────────────────

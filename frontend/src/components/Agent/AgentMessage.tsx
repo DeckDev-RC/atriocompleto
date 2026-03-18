@@ -33,12 +33,13 @@ export function AgentMessage({ role, content, timestamp, isLoading, tokenUsage, 
   const isUser = role === 'user';
   const brandPrimaryColor = useBrandPrimaryColor();
   const { formatInteger } = useFormatting();
+  const repairedContent = useMemo(() => repairTextArtifacts(content), [content]);
 
-  const { text: textContent, charts } = useMemo(() => extractCharts(content), [content]);
+  const { text: textContent, charts } = useMemo(() => extractCharts(repairedContent), [repairedContent]);
 
   const renderContent = () => {
     if (charts.length === 0) {
-      return <MarkdownBlock text={content} />;
+      return <MarkdownBlock text={repairedContent} />;
     }
 
     const parts = textContent.split(/(%%CHART_\d+%%)/);
@@ -175,6 +176,26 @@ export function AgentMessage({ role, content, timestamp, isLoading, tokenUsage, 
   );
 }
 
+function repairTextArtifacts(text: string) {
+  if (!/[\u00c3\u00c2\u00e2\u00f0\uFFFD]/.test(text)) {
+    return text;
+  }
+
+  try {
+    const bytes = Uint8Array.from(Array.from(text, (char) => char.charCodeAt(0) & 0xff));
+    const decoded = new TextDecoder('utf-8').decode(bytes);
+    if (decoded && decoded !== text) {
+      return decoded.replace(/\u00c2(?=[!-/:-@[-`{-~])/g, '');
+    }
+  } catch {
+    // Ignore decode failures and fall back to the original text.
+  }
+
+  return text
+    .replace(/\u00c2\u00b7/g, '·')
+    .replace(/\u00c2(?=[!-/:-@[-`{-~])/g, '');
+}
+
 function MarkdownBlock({ text }: { text: string }) {
   const brandPrimaryColor = useBrandPrimaryColor();
 
@@ -209,6 +230,17 @@ function MarkdownBlock({ text }: { text: string }) {
         h3: ({ children }) => <h3>{children}</h3>,
         hr: () => <hr />,
         blockquote: ({ children }) => <blockquote className="text-secondary">{children}</blockquote>,
+        a: ({ href, children }) => (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium underline underline-offset-2"
+            style={{ color: brandPrimaryColor || 'var(--color-brand-primary)' }}
+          >
+            {children}
+          </a>
+        ),
         table: ({ children }) => (
           <div className="overflow-x-auto my-3 rounded-xl border border-border">
             <table>{children}</table>

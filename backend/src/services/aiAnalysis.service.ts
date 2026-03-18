@@ -8,6 +8,15 @@ import type { Content, FunctionDeclaration, Type } from "@google/genai";
 import { DataContextService } from "./dataContext.service";
 import { AnomalyExplainerService } from "./optimus/anomalyExplainer";
 import { ForecasterService } from "./optimus/forecaster";
+import { ProductAnalyzer } from "./optimus/productAnalyzer";
+import { buildGenericAnalysisDocument } from "./reportDocumentBuilder.service";
+import { ReportExporterService } from "./reportExporter.service";
+import {
+  buildChatExportTitle,
+  parseRequestedExportFormat,
+  repairTextArtifacts,
+  sanitizeModelExportText,
+} from "./aiTextUtils";
 
 // ── Cached metadata (Redis-backed) ──────────────────────
 const METADATA_CACHE_KEY = "agent:metadata";
@@ -371,6 +380,38 @@ const functionDeclarations: FunctionDeclaration[] = [
       }
     },
   },
+  // ── Optimus (Inventory & Products) ──────────────────────────
+  {
+    name: "query_optimus_data",
+    // Extended catalog + inventory capabilities.
+    description: "Consulta informações sobre produtos, categorias, preços e níveis de estoque no banco de dados. Use esta ferramenta para responder perguntas sobre o inventário, performance de produtos e alertas de estoque.",
+    parameters: {
+      type: "object" as Type,
+      properties: {
+        productId: { type: "string" as Type, description: "ID interno do produto quando o contexto ja conhece o item exato." },
+        minMargin: { type: "number" as Type, description: "Filtrar por margem minima em percentual." },
+        maxMargin: { type: "number" as Type, description: "Filtrar por margem maxima em percentual." },
+        outOfStock: { type: "boolean" as Type, description: "Se verdadeiro, retorna apenas produtos sem estoque." },
+        excessStock: { type: "boolean" as Type, description: "Se verdadeiro, retorna apenas produtos com excesso de estoque." },
+        stockBelow: { type: "number" as Type, description: "Filtrar produtos com estoque abaixo deste valor." },
+        stockAbove: { type: "number" as Type, description: "Filtrar produtos com estoque acima deste valor." },
+        withoutSalesDays: { type: "number" as Type, description: "Retorna produtos sem venda ha X dias ou mais." },
+        trend: { type: "string" as Type, description: "Filtrar por tendencia de demanda: accelerating, stable, decelerating." },
+        includeSummary: { type: "boolean" as Type, description: "Se verdadeiro, inclui resumo agregado e recomendacoes." },
+        includeSimilar: { type: "boolean" as Type, description: "Se verdadeiro, sugere produtos similares quando nao houver match exato." },
+        sortBy: { type: "string" as Type, description: "Campo de ordenacao: name, sale_price, stock_level, margin_percent, last_sale_at, days_since_last_sale, units_sold_30d, revenue_90d, stock_coverage_days." },
+        sortOrder: { type: "string" as Type, description: "Direcao da ordenacao: asc ou desc." },
+        nameSearch: { type: "string" as Type, description: "Nome ou parte do nome do produto para busca (fuzzy search)." },
+        category: { type: "string" as Type, description: "Filtrar por uma categoria específica (ex: 'Eletrônicos', 'Moda')." },
+        sku: { type: "string" as Type, description: "Código SKU exato do produto." },
+        minPrice: { type: "number" as Type, description: "Filtrar produtos com preço de venda maior ou igual a este valor." },
+        maxPrice: { type: "number" as Type, description: "Filtrar produtos com preço de venda menor ou igual a este valor." },
+        lowStock: { type: "boolean" as Type, description: "Se verdadeiro, retorna apenas produtos com estoque crítico ou abaixo do mínimo." },
+        includeHealth: { type: "boolean" as Type, description: "Se verdadeiro, inclui um resumo geral da saúde do estoque (contagem de itens OK, WARNING e CRITICAL)." },
+        limit: { type: "number" as Type, description: "Número máximo de resultados (padrão 10)." }
+      }
+    },
+  },
   // ── Anomaly Explainer ─────────────────────────────────────────
   {
     name: "explainAnomaly",
@@ -476,6 +517,20 @@ VOCE E PROIBIDO DE INVENTAR, ESTIMAR, APROXIMAR OU FABRICAR QUALQUER NUMERO SE N
   2. ordersByStatus({start_date: ..., end_date: ...}) — para o breakdown completo de todos os status
   Isso garante dados reais para AMBOS: faturamento e breakdown.
 
+## 📦 OPTIMUS — ESPECIALISTA EM PRODUTOS E INVENTARIO
+Voce e o Optimus, o modulo de inteligencia de estoque e produtos. 
+- Quando o usuario perguntar sobre produtos, estoque, precos de venda/custo ou margem:
+  → SEMPRE use a ferramenta query_optimus_data
+- Se o resultado retornar produtos com stock_status "CRITICAL", alerte o usuario imediatamente.
+- FORMATO DE RESPOSTA: SEMPRE use TABELAS MARKDOWN para listar produtos. Inclua SKU, Nome, Preco, Estoque e Status.
+- Se o usuario perguntar por um produto especifico (ex: "temos iPhone?"), use nameSearch="iPhone".
+- Se o usuario perguntar por produtos acabando, use lowStock=true.
+- Se o usuario perguntar por produtos sem estoque, use outOfStock=true.
+- Se o usuario perguntar por margem, use minMargin/maxMargin.
+- Se o usuario perguntar por produtos sem venda, use withoutSalesDays.
+- Se o usuario perguntar por tendencia de demanda, use trend.
+- Quando a ferramenta retornar summary ou recommendations, destaque os riscos e a proxima acao sugerida.
+
 ## Contexto de Negocio
 A Ambro vende em 5 canais com ~39.943 pedidos em 2025. Voce tem acesso a dados de pedidos (marketplace, status, valor, data).
 
@@ -559,6 +614,13 @@ C) Para pedidos amplos ("relatorio", "resumo", "como estao os numeros", "me da o
     - Utilize 💰 para valores de faturamento e coisas financeiras
     - Compare valores e enriqueça o contexto com emojis adequados (💡, 🚀, ⚠️, 🚨)
     - Quando o usuario pergunta sobre cancelados, aplique os emojis corretos (como 🔴) e explique valor total perdido e taxa, nao apenas contagem
+
+16. EXPORTACAO DE RELATORIOS:
+    - Quando o usuario pedir para exportar, baixar, gerar arquivo, montar relatorio ou entregar em PDF, Excel/XLSX, CSV, HTML ou JSON, SEMPRE busque os dados estruturados primeiro com uma funcao analitica
+    - O sistema pode gerar o arquivo automaticamente a partir do resultado estruturado; portanto, nao diga que nao consegue exportar se houver dados suficientes
+    - Se o usuario pedir explicitamente PDF/Excel/CSV/HTML/JSON, responda normalmente com a analise e diga apenas que o arquivo foi gerado quando isso acontecer
+    - NUNCA invente URL, link markdown, nome de arquivo, botao de download ou texto "Relatorio pronto"
+    - O sistema anexara UM unico link oficial ao final da resposta quando houver exportacao; portanto, nao repita isso no corpo da analise
 
 ## Estilo
 Profissional e direto, porem engajador com uso inteligente de emojis. Use termos de negocio (faturamento, ticket medio, taxa de conversao, mix de canais, sazonalidade). Apresente dados de forma organizada e termine com um insight util e contextualmente rico.
@@ -775,14 +837,48 @@ async function executeAdHocSQL(sql: string, tenantId?: string): Promise<unknown>
   return { data, row_count: Array.isArray(data) ? data.length : 0 };
 }
 
-function truncateForGemini(result: unknown): Record<string, unknown> {
+async function runOptimusQuery(args: Record<string, unknown> | undefined, tenantId?: string) {
+  return ProductAnalyzer.queryProducts({
+    ...(args || {}),
+    tenantId,
+    includeSummary: true,
+  });
+}
+
+function truncateForGemini(result: unknown): unknown {
   const str = JSON.stringify(result);
-  if (str.length < 15000) return result as Record<string, unknown>;
-  const obj = result as Record<string, unknown>;
-  if (obj.data && Array.isArray(obj.data) && obj.data.length > 50) {
-    return { ...obj, data: obj.data.slice(0, 50), _truncated: true, _total_rows: obj.data.length };
+  if (str.length < 15000) return result;
+
+  if (Array.isArray(result)) {
+    return {
+      output: result.slice(0, 50),
+      _truncated: true,
+      _total_rows: result.length,
+    };
   }
-  return result as Record<string, unknown>;
+
+  if (result && typeof result === "object") {
+    const obj = result as Record<string, unknown>;
+
+    for (const key of ["data", "products", "output"]) {
+      const value = obj[key];
+      if (Array.isArray(value) && value.length > 50) {
+        return { ...obj, [key]: value.slice(0, 50), _truncated: true, _total_rows: value.length };
+      }
+    }
+  }
+
+  return result;
+}
+
+function toFunctionResponsePayload(result: unknown): Record<string, unknown> {
+  const truncated = truncateForGemini(result);
+
+  if (truncated && typeof truncated === "object" && !Array.isArray(truncated)) {
+    return truncated as Record<string, unknown>;
+  }
+
+  return { output: truncated };
 }
 
 // ── Fallback Formatter ──────────────────────────────────
@@ -1427,6 +1523,58 @@ export interface ProcessMessageResult {
   suggestions?: string[];
 }
 
+interface PromptAugmentation {
+  extraSystemContext?: string;
+}
+
+interface AgentExecutionContext {
+  userId?: string;
+  tenantId?: string;
+}
+
+function getRepairedSuggestions(functionName?: string) {
+  const suggestions = functionName ? SUGGESTIONS_MAP[functionName] : undefined;
+  return suggestions?.map((item) => repairTextArtifacts(item));
+}
+
+async function maybeGenerateChatExport(params: {
+  userMessage: string;
+  functionName?: string;
+  functionResult: unknown;
+  executionContext?: AgentExecutionContext;
+}) {
+  const format = parseRequestedExportFormat(params.userMessage);
+  if (!format) return null;
+  if (!params.functionName) return null;
+  if (!params.executionContext?.userId || !params.executionContext.tenantId) return null;
+  if (params.functionResult && typeof params.functionResult === "object" && "error" in (params.functionResult as Record<string, unknown>)) {
+    return null;
+  }
+
+  const title = buildChatExportTitle(params.functionName, params.userMessage);
+  const document = buildGenericAnalysisDocument({
+    title,
+    functionName: params.functionName,
+    result: params.functionResult,
+    question: params.userMessage,
+  });
+
+  return ReportExporterService.generateAdHocExport({
+    tenantId: params.executionContext.tenantId,
+    userId: params.executionContext.userId,
+    title,
+    format,
+    document,
+    options: {
+      include_summary: true,
+      include_graphs: true,
+      watermark: false,
+      orientation: "portrait",
+      presentation: "professional",
+    },
+  });
+}
+
 // ── Contextual Suggestions Map ─────────────────────────
 // Sugestões determinísticas baseadas na função chamada — zero custo de tokens
 const SUGGESTIONS_MAP: Record<string, string[]> = {
@@ -1561,6 +1709,11 @@ const SUGGESTIONS_MAP: Record<string, string[]> = {
     "Velocidade de venda dos meus produtos?",
     "Vou bater a meta de R$200k?",
   ],
+  query_optimus_data: [
+    "Quais produtos estão com estoque baixo?",
+    "Me mostre os produtos mais caros",
+    "Análise de saúde do inventário",
+  ],
 };
 
 // Gemini 2.5 Flash pricing (per 1M tokens) - May 2025
@@ -1579,10 +1732,13 @@ const MAX_FUNCTION_CALLS = 5;
 export async function processMessage(
   userMessage: string,
   conversationHistory: ChatMessage[],
-  tenantId?: string
+  tenantId?: string,
+  promptAugmentation: PromptAugmentation = {},
+  executionContext?: AgentExecutionContext,
 ): Promise<ProcessMessageResult> {
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
+  let lastFnResult: unknown;
 
   try {
     checkCircuitBreaker();
@@ -1596,6 +1752,12 @@ export async function processMessage(
       const summaryText = DataContextService.formatSummaryForPrompt(summary);
       systemPrompt = `${systemPrompt}\n\n${summaryText}`;
     }
+
+    if (promptAugmentation.extraSystemContext?.trim()) {
+      systemPrompt = `${systemPrompt}\n\n${promptAugmentation.extraSystemContext.trim()}`;
+    }
+    systemPrompt = repairTextArtifacts(systemPrompt);
+    systemPrompt = repairTextArtifacts(systemPrompt);
 
     // Build the initial conversation contents
     const contents: Content[] = [...history, { role: "user", parts: [{ text: userMessage }] }];
@@ -1658,6 +1820,8 @@ export async function processMessage(
             fnResult = await ForecasterService.forecastComparison({ ...args, _tenant_id: tenantId } as QueryParams);
           } else if (name === "runWhatIfScenario") {
             fnResult = await ForecasterService.runWhatIfScenario({ ...args, _tenant_id: tenantId } as any);
+          } else if (name === "query_optimus_data") {
+            fnResult = await runOptimusQuery(args as Record<string, unknown> | undefined, tenantId);
           } else if (name && queryFunctions[name]) {
             fnResult = await queryFunctions[name]({ ...args, _tenant_id: tenantId } as QueryParams);
           } else {
@@ -1669,12 +1833,13 @@ export async function processMessage(
         }
 
         console.log("[Agent] Result:", JSON.stringify(fnResult).substring(0, 500));
-        const truncated = truncateForGemini(fnResult);
+        lastFnResult = fnResult;
+        const functionResponse = toFunctionResponsePayload(fnResult);
 
         // Append function call + response to the conversation and continue loop
         contents.push(
           { role: "model", parts: [{ functionCall: { name: name!, args: args || {} } }] },
-          { role: "user", parts: [{ functionResponse: { name: name!, response: truncated } }] },
+          { role: "user", parts: [{ functionResponse: { name: name!, response: functionResponse } }] },
         );
         continue;
       }
@@ -1688,15 +1853,30 @@ export async function processMessage(
         estimatedCostUSD: calculateCost(totalInputTokens, totalOutputTokens),
       };
 
-      if (text && text.trim().length > 0) {
+      let finalText = repairTextArtifacts(sanitizeModelExportText(text));
+      const exportArtifact = await maybeGenerateChatExport({
+        userMessage,
+        functionName: lastFnName,
+        functionResult: lastFnResult,
+        executionContext: executionContext || { tenantId },
+      }).catch((error) => {
+        console.error("[Agent] Export generation error:", error);
+        return null;
+      });
+
+      if (exportArtifact?.url) {
+        finalText += `\n\n📎 **Relatório pronto:** [Baixar ${exportArtifact.fileName}](${exportArtifact.url})`;
+      }
+
+      if (finalText && finalText.trim().length > 0) {
         recordSuccess();
-        return { text, tokenUsage, suggestions: lastFnName ? SUGGESTIONS_MAP[lastFnName] : undefined };
+        return { text: finalText, tokenUsage, suggestions: getRepairedSuggestions(lastFnName) };
       }
       recordSuccess();
       return {
-        text: "Nao consegui gerar resposta. Reformule a pergunta.",
+        text: finalText || "Nao consegui gerar resposta. Reformule a pergunta.",
         tokenUsage,
-        suggestions: lastFnName ? SUGGESTIONS_MAP[lastFnName] : undefined,
+        suggestions: getRepairedSuggestions(lastFnName),
       };
     }
 
@@ -1718,10 +1898,13 @@ export async function processMessage(
 export async function* processMessageStream(
   userMessage: string,
   conversationHistory: ChatMessage[],
-  tenantId?: string
+  tenantId?: string,
+  promptAugmentation: PromptAugmentation = {},
+  executionContext?: AgentExecutionContext,
 ) {
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
+  const exportRequested = parseRequestedExportFormat(userMessage) !== null;
 
   try {
     checkCircuitBreaker();
@@ -1736,8 +1919,16 @@ export async function* processMessageStream(
       systemPrompt = `${systemPrompt}\n\n${summaryText}`;
     }
 
+    if (promptAugmentation.extraSystemContext?.trim()) {
+      systemPrompt = `${systemPrompt}\n\n${promptAugmentation.extraSystemContext.trim()}`;
+    }
+
+    // Use generateContent (non-streaming) instead of generateContentStream.
+    // The @google/genai SDK's streaming parser corrupts multi-byte UTF-8
+    // characters (Portuguese accents á,é,ã,ç) into U+FFFD replacement chars.
+    // Non-streaming parses the full JSON response at once, avoiding this bug.
     const result = await callWithRetry(
-      () => genai.models.generateContentStream({
+      () => genai.models.generateContent({
         model: GEMINI_MODEL,
         contents: [...history, { role: "user", parts: [{ text: userMessage }] }],
         config: { systemInstruction: systemPrompt, tools: [{ functionDeclarations }], temperature: 0.3, maxOutputTokens: 8192 },
@@ -1745,20 +1936,28 @@ export async function* processMessageStream(
       "AgentStream"
     );
 
+    if (result.usageMetadata) {
+      totalInputTokens += result.usageMetadata.promptTokenCount || 0;
+      totalOutputTokens += result.usageMetadata.candidatesTokenCount || 0;
+    }
+
     let functionCall: { name: string; args: any } | null = null;
+    let firstPassText = "";
 
-    for await (const chunk of result) {
-      if (chunk.usageMetadata) {
-        totalInputTokens += chunk.usageMetadata.promptTokenCount || 0;
-        totalOutputTokens += chunk.usageMetadata.candidatesTokenCount || 0;
+    const candidate = result.candidates?.[0];
+    if (candidate?.content?.parts) {
+      for (const part of candidate.content.parts) {
+        if (part.text) {
+          firstPassText += part.text;
+        } else if (part.functionCall) {
+          functionCall = { name: part.functionCall.name as string, args: part.functionCall.args };
+        }
       }
+    }
 
-      const part = chunk.candidates?.[0]?.content?.parts?.[0];
-      if (part?.text) {
-        yield { type: "text", content: part.text };
-      } else if (part?.functionCall) {
-        functionCall = { name: part.functionCall.name as string, args: part.functionCall.args };
-      }
+    // Emit repaired text from first pass (if no function call was made)
+    if (firstPassText && !functionCall) {
+      yield { type: "text", content: repairTextArtifacts(firstPassText) };
     }
 
     if (functionCall) {
@@ -1787,6 +1986,8 @@ export async function* processMessageStream(
           fnResult = await ForecasterService.forecastComparison({ ...args, _tenant_id: tenantId } as QueryParams);
         } else if (name === "runWhatIfScenario") {
           fnResult = await ForecasterService.runWhatIfScenario({ ...args, _tenant_id: tenantId } as any);
+        } else if (name === "query_optimus_data") {
+          fnResult = await runOptimusQuery(args as Record<string, unknown> | undefined, tenantId);
         } else if (name && (queryFunctions as any)[name]) {
           fnResult = await (queryFunctions as any)[name]({ ...args, _tenant_id: tenantId } as QueryParams);
         } else {
@@ -1796,29 +1997,64 @@ export async function* processMessageStream(
         fnResult = { error: (e instanceof Error ? e.message : "erro") };
       }
 
-      const truncated = truncateForGemini(fnResult);
+      const functionResponse = toFunctionResponsePayload(fnResult);
 
+      // Use generateContent (non-streaming) for the final response instead of
+      // generateContentStream. The @google/genai SDK's streaming parser corrupts
+      // multi-byte UTF-8 characters (Portuguese accents á,é,ã,ç,etc.) into U+FFFD.
+      // The non-streaming API does not have this bug since it parses the full JSON
+      // response at once without byte-level chunking.
       const finalResult = await callWithRetry(
-        () => genai.models.generateContentStream({
+        () => genai.models.generateContent({
           model: GEMINI_MODEL,
           contents: [
             ...history,
             { role: "user", parts: [{ text: userMessage }] },
             { role: "model", parts: [{ functionCall: { name: name!, args: args || {} } }] },
-            { role: "user", parts: [{ functionResponse: { name: name!, response: truncated } }] },
+            { role: "user", parts: [{ functionResponse: { name: name!, response: functionResponse } }] },
           ],
           config: { systemInstruction: systemPrompt, temperature: 0.3, maxOutputTokens: 8192 },
         }),
         "AgentStream"
       );
 
-      for await (const chunk of finalResult) {
-        if (chunk.usageMetadata) {
-          totalInputTokens += chunk.usageMetadata.promptTokenCount || 0;
-          totalOutputTokens += chunk.usageMetadata.candidatesTokenCount || 0;
-        }
-        const text = chunk.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) yield { type: "text", content: text };
+      if (finalResult.usageMetadata) {
+        totalInputTokens += finalResult.usageMetadata.promptTokenCount || 0;
+        totalOutputTokens += finalResult.usageMetadata.candidatesTokenCount || 0;
+      }
+
+      const bufferedFinalText = finalResult.candidates?.[0]?.content?.parts
+        ?.map((p: any) => p.text)
+        .filter(Boolean)
+        .join("") || "";
+
+      const exportArtifact = await maybeGenerateChatExport({
+        userMessage,
+        functionName: name,
+        functionResult: fnResult,
+        executionContext: executionContext || { tenantId },
+      }).catch((error) => {
+        console.error("[AgentStream] Export generation error:", error);
+        return null;
+      });
+
+      let finalText = exportRequested
+        ? repairTextArtifacts(sanitizeModelExportText(bufferedFinalText))
+        : repairTextArtifacts(bufferedFinalText);
+
+      if (exportArtifact?.url) {
+        // Extra safety: strip any remaining model-invented export links before appending the real one
+        finalText = finalText
+          .split(/\r?\n/)
+          .filter((line) => !/📎.*relat[oó]rio\s+pronto/i.test(line) && !/\[.*[Bb]aixar.*\]\(.*\)/i.test(line))
+          .join("\n")
+          .replace(/\n{3,}/g, "\n\n")
+          .trimEnd();
+        finalText += `\n\n📎 **Relatório pronto:** [Baixar ${exportArtifact.fileName}](${exportArtifact.url})`;
+      }
+
+      if (finalText.trim()) {
+        yield { type: "text", content: finalText };
       }
 
       recordSuccess();
@@ -1830,9 +2066,30 @@ export async function* processMessageStream(
           totalTokens: totalInputTokens + totalOutputTokens,
           estimatedCostUSD: calculateCost(totalInputTokens, totalOutputTokens)
         },
-        suggestions: SUGGESTIONS_MAP[name]
+        suggestions: getRepairedSuggestions(name)
       };
     } else {
+      // No function was called. If the user requested an export (PDF/XLSX/etc.)
+      // the model just replied with text without fetching data → generate the
+      // export from a default executiveSummary call so the user actually gets a file.
+      if (exportRequested && executionContext?.tenantId) {
+        try {
+          const fallbackFn = "executiveSummary";
+          const fallbackResult = await (queryFunctions as any)[fallbackFn]({ _tenant_id: executionContext.tenantId } as QueryParams);
+          const exportArtifact = await maybeGenerateChatExport({
+            userMessage,
+            functionName: fallbackFn,
+            functionResult: fallbackResult,
+            executionContext,
+          });
+          if (exportArtifact?.url) {
+            yield { type: "text", content: `\n\n📎 **Relatório pronto:** [Baixar ${exportArtifact.fileName}](${exportArtifact.url})` };
+          }
+        } catch (exportErr) {
+          console.error("[AgentStream] Fallback export error:", exportErr);
+        }
+      }
+
       recordSuccess();
       yield {
         type: "done",
@@ -1853,4 +2110,7 @@ export async function* processMessageStream(
     yield { type: "error", content: msg };
   }
 }
+
+
+
 
