@@ -81,7 +81,7 @@ export function Sidebar() {
             { icon: FileText, label: 'Relatórios', path: '/relatorios', permission: 'visualizar_relatorios' },
             { icon: Megaphone, label: 'Campanhas', path: '/campanhas', permission: 'acessar_agente' },
             { icon: BarChart3, label: 'Benchmarking', path: '/benchmarking', permission: 'acessar_agente' },
-            { icon: Calculator, label: 'Simulações', path: '/simulacoes', permission: 'acessar_agente' },
+            { icon: Calculator, label: 'Calculadora', path: '/simulacoes', permission: 'acessar_agente' },
             { icon: Package, label: 'Estoque EOQ', path: '/simulacoes/inventory', permission: 'acessar_agente' },
           ],
         },

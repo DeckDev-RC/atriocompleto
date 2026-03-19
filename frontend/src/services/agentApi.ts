@@ -1529,6 +1529,30 @@ class AgentApiService {
     return this.request(`/api/simulations/${id}`, { method: 'DELETE' });
   }
 
+  async generateMarketplaceDescriptions(payload: {
+    product_name: string;
+    marketplace?: string;
+    category?: string;
+    keywords?: string;
+    features?: string;
+  }) {
+    return this.request<{
+      recommendation?: string;
+      variations: Array<{
+        id: string;
+        angle: string;
+        title: string;
+        description: string;
+        bulletPoints: string[];
+        tags: string[];
+        seoScore: number;
+      }>;
+    }>('/api/simulations/marketplace-description', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
   // ══════════════════════════════════════════════════════
   // INVENTORY SIMULATION (What-If Analysis)
   // ══════════════════════════════════════════════════════

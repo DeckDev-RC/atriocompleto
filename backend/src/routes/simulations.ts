@@ -3,6 +3,7 @@ import { requireAuth } from "../middleware/auth";
 import { requirePermission } from "../middleware/rbac";
 import { aiLimiter, aiReadLimiter } from "../middleware/rate-limit";
 import { ScenarioSimulationService } from "../services/scenarioSimulation.service";
+import { MarketplaceCalculatorService } from "../services/marketplaceCalculator.service";
 
 const router = Router();
 
@@ -40,6 +41,30 @@ router.post("/analysis", aiLimiter, async (req: Request, res: Response) => {
         res.json({ success: true, data });
     } catch (error: any) {
         console.error("Erro ao gerar análise do cenário:", error);
+        res.status(500).json({ success: false, error: error.message || "Erro interno" });
+    }
+});
+
+// POST /api/simulations/marketplace-description
+router.post("/marketplace-description", aiLimiter, async (req: Request, res: Response) => {
+    try {
+        const { product_name, marketplace, category, keywords, features } = req.body ?? {};
+
+        if (!product_name || typeof product_name !== "string" || !product_name.trim()) {
+            return res.status(400).json({ success: false, error: "Nome do produto é obrigatório." });
+        }
+
+        const data = await MarketplaceCalculatorService.generateDescriptions({
+            productName: product_name.trim(),
+            marketplace: typeof marketplace === "string" ? marketplace.trim() : "",
+            category: typeof category === "string" ? category.trim() : "",
+            keywords: typeof keywords === "string" ? keywords.trim() : "",
+            features: typeof features === "string" ? features.trim() : "",
+        });
+
+        res.json({ success: true, data });
+    } catch (error: any) {
+        console.error("Erro ao gerar descrições da calculadora:", error);
         res.status(500).json({ success: false, error: error.message || "Erro interno" });
     }
 });
