@@ -30,6 +30,7 @@ import {
   Wand2,
 } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
+import { Header } from '../../components/Header';
 import {
   Bar,
   BarChart,
@@ -1154,17 +1155,7 @@ export default function WhatIfAnalysis() {
   return (
     <div className="min-h-screen bg-body p-4 sm:p-6">
       <div className="mx-auto flex max-w-[1080px] flex-col gap-4">
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--color-brand-primary)] text-white">
-                <Calculator size={16} />
-              </div>
-              <h1 className="text-[22px] font-extrabold tracking-tight text-primary">Calculadora</h1>
-            </div>
-            <p className="mt-1 text-[12px] text-muted">Taxas de marketplace, códigos EAN e NCM em um só lugar.</p>
-          </div>
-        </header>
+        <Header title="Calculadora" subtitle="Taxas de marketplace, códigos EAN e NCM em um só lugar." />
 
         <nav className="flex gap-1 rounded-xl border border-border bg-card p-1">
           {TAB_ITEMS.map((tab) => {

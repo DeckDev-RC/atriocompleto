@@ -325,7 +325,7 @@ export function PeriodFilter({
       {/* Dropdown */}
       {open && (
         <div
-          className="absolute right-0 top-full mt-2 z-50 w-[320px] rounded-2xl border border-border bg-card shadow-float dark:shadow-dark-float overflow-hidden"
+          className="absolute right-0 max-sm:-left-2 max-sm:right-auto top-full mt-2 z-50 w-[320px] max-w-[calc(100vw-24px)] rounded-2xl border border-border bg-card shadow-float dark:shadow-dark-float overflow-hidden"
           style={{ animation: 'fade-in 0.15s ease-out both' }}
         >
           {/* Presets */}
