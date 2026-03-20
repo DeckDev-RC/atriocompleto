@@ -4,7 +4,7 @@ export interface AuditLogData {
     userId: string | null;
     action: string;
     resource: string;
-    entityId?: string;
+    entityId?: string | number;
     ipAddress?: string;
     userAgent?: string;
     details?: {

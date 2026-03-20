@@ -20,6 +20,7 @@ interface AuthSessionPayload {
     tenant_name: string | null;
     avatar_url: string | null;
     permissions: Record<string, any>;
+    enabled_features: Record<string, boolean>;
     two_factor_enabled: boolean;
   };
 }
@@ -201,6 +202,7 @@ class AgentApiService {
       tenant_id: string | null;
       tenant_name: string | null;
       permissions: Record<string, any>;
+      enabled_features: Record<string, boolean>;
       two_factor_enabled: boolean;
     }>('/api/auth/me');
   }
