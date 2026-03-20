@@ -7,6 +7,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   AlertCircle,
+  ShoppingCart,
 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { Banner } from '../components/Banner';
@@ -14,6 +15,7 @@ import { PeriodFilter } from '../components/PeriodFilter';
 import { StatusFilter } from '../components/StatusFilter';
 import { OrderDistributionChart, MonthlyRevenueChart } from '../components/Charts';
 import { SkeletonBanner, SkeletonCard } from '../components/Skeleton';
+import { EmptyState } from '../components/EmptyState';
 import { useDashboard } from '../hooks/useDashboard';
 import { useAuth } from '../contexts/AuthContext';
 import { useBrandPrimaryColor, getBrandPrimaryWithOpacity } from '../hooks/useBrandPrimaryColor';
@@ -85,7 +87,13 @@ export function DashboardPage() {
               Vincule uma empresa na seção de Administração para visualizar seus dados de venda aqui.
             </p>
           </div>
-        ) : data ? (
+        ) : !data ? (
+          <EmptyState
+            icon={ShoppingCart}
+            title="Sem dados ainda"
+            description="Quando houver pedidos registrados, seus indicadores de vendas aparecerão aqui."
+          />
+        ) : (
           <>
             <Banner
               totalRevenue={data.banner.totalRevenue}
@@ -151,7 +159,7 @@ export function DashboardPage() {
               </div>
             </section>
           </>
-        ) : null}
+        )}
       </div>
     </div>
   );

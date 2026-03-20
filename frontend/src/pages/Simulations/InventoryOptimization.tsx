@@ -130,7 +130,7 @@ export default function InventoryOptimization() {
     };
 
     return (
-        <div className="flex-1 space-y-6 p-8 bg-zinc-50/50 dark:bg-zinc-900 min-h-screen">
+        <div className="flex-1 space-y-6 p-8 max-md:p-5 max-sm:p-4 bg-zinc-50/50 dark:bg-zinc-900 min-h-screen">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div className="flex items-center space-x-4">
                     <button onClick={() => navigate('/simulacoes')} className="p-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg hover:bg-zinc-300 dark:hover:bg-zinc-700 transition">
@@ -152,11 +152,11 @@ export default function InventoryOptimization() {
 
                 {/* Inputs do Simulador */}
                 <div className="md:col-span-4 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm bg-white dark:bg-zinc-900 overflow-hidden">
-                    <div className="p-6 border-b border-zinc-100 dark:border-zinc-800">
+                    <div className="p-6 max-sm:p-4 border-b border-zinc-100 dark:border-zinc-800">
                         <h3 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">Parâmetros do Produto</h3>
                         <p className="text-sm text-zinc-500">Configure os dados base para calcular o cenário.</p>
                     </div>
-                    <div className="p-6 space-y-6">
+                    <div className="p-6 max-sm:p-4 space-y-6">
 
                         <div className="space-y-4">
                             <h4 className="font-semibold text-sm text-zinc-500 uppercase tracking-wider">Demanda & Operação</h4>
@@ -230,7 +230,7 @@ export default function InventoryOptimization() {
                 {/* Saved Scenarios */}
                 {savedScenarios.length > 0 && (
                     <div className="md:col-span-4 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-sm bg-white dark:bg-zinc-900 overflow-hidden">
-                        <div className="p-6 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-2">
+                        <div className="p-6 max-sm:p-4 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-2">
                             <Bookmark size={16} className="text-zinc-500" />
                             <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Cenários Salvos</h3>
                         </div>
@@ -272,21 +272,21 @@ export default function InventoryOptimization() {
 
                             {/* Key Metrics Otimizadas */}
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                                <div className="bg-linear-to-br from-indigo-500 to-purple-600 text-white border-0 shadow-md overflow-hidden relative rounded-xl flex flex-col p-6">
+                                <div className="bg-linear-to-br from-indigo-500 to-purple-600 text-white border-0 shadow-md overflow-hidden relative rounded-xl flex flex-col p-6 max-sm:p-4">
                                     <div className="absolute top-0 right-0 p-4 opacity-10"><Package className="h-16 w-16" /></div>
                                     <p className="text-white/80 font-medium text-sm mb-1 z-10">Lote Econômico (EOQ)</p>
                                     <h3 className="text-3xl font-bold mb-2 z-10">{result.baseline.eoq} <span className="text-lg font-normal">un.</span></h3>
                                     <p className="text-sm text-white/90 z-10 mt-auto">Quantidade ideal por pedido a cada {result.baseline.orderFrequencyDays} dias</p>
                                 </div>
 
-                                <div className="bg-linear-to-br from-amber-500 to-orange-600 text-white border-none shadow-md overflow-hidden relative rounded-xl flex flex-col p-6">
+                                <div className="bg-linear-to-br from-amber-500 to-orange-600 text-white border-none shadow-md overflow-hidden relative rounded-xl flex flex-col p-6 max-sm:p-4">
                                     <div className="absolute top-0 right-0 p-4 opacity-10"><AlertTriangle className="h-16 w-16" /></div>
                                     <p className="text-white/80 font-medium text-sm mb-1 z-10">Ponto de Reposição (ROP)</p>
                                     <h3 className="text-3xl font-bold mb-2 z-10">{result.baseline.reorderPoint} <span className="text-lg font-normal">un.</span></h3>
                                     <p className="text-sm text-white/90 z-10 mt-auto">Inclui {result.baseline.safetyStock} de Safety Stock</p>
                                 </div>
 
-                                <div className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-sm rounded-xl p-6 flex flex-col">
+                                <div className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-sm rounded-xl p-6 max-sm:p-4 flex flex-col">
                                     <p className="font-medium text-zinc-500 text-sm mb-1">Custo Total Anual</p>
                                     <h3 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100 mb-2">{formatCurrency(result.baseline.totalAnnualCost)}</h3>
                                     <p className="text-sm text-zinc-500 flex items-center mt-auto">
@@ -295,7 +295,7 @@ export default function InventoryOptimization() {
                                     </p>
                                 </div>
 
-                                <div className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-sm rounded-xl p-6 flex flex-col">
+                                <div className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-sm rounded-xl p-6 max-sm:p-4 flex flex-col">
                                     <p className="font-medium text-zinc-500 text-sm mb-1">Giro de Estoque</p>
                                     <h3 className="text-3xl font-bold text-emerald-600 dark:text-emerald-400 mb-2">{result.baseline.inventoryTurnover.toFixed(1)}x</h3>
                                     <p className="text-sm text-zinc-500 flex items-center mt-auto">
@@ -324,11 +324,11 @@ export default function InventoryOptimization() {
 
                                 {activeTab === 'chart' && (
                                     <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm">
-                                        <div className="p-6 border-b border-zinc-100 dark:border-zinc-800">
+                                        <div className="p-6 max-sm:p-4 border-b border-zinc-100 dark:border-zinc-800">
                                             <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Comportamento do Estoque (Cenário Otimizado EOQ)</h3>
                                             <p className="text-sm text-zinc-500">Simulação de 90 dias com demanda estocástica (variável).</p>
                                         </div>
-                                        <div className="p-6">
+                                        <div className="p-6 max-sm:p-4">
                                             <div className="h-[400px] w-full">
                                                 <ResponsiveContainer width="100%" height="100%">
                                                     <AreaChart data={result.chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
@@ -364,11 +364,11 @@ export default function InventoryOptimization() {
                                                         Vencedor Matemático
                                                     </div>
                                                 )}
-                                                <div className="p-6 border-b border-zinc-100 dark:border-zinc-800">
+                                                <div className="p-6 max-sm:p-4 border-b border-zinc-100 dark:border-zinc-800">
                                                     <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{policy.policyName}</h3>
                                                     <p className="text-sm text-zinc-500">Target Nível de Serviço: {(policy.serviceLevel! * 100).toFixed(1)}%</p>
                                                 </div>
-                                                <div className="p-6 space-y-5">
+                                                <div className="p-6 max-sm:p-4 space-y-5">
                                                     <div>
                                                         <div className="flex justify-between text-sm mb-1.5">
                                                             <span className="text-zinc-500">Custo Total / Ano</span>

@@ -4,8 +4,8 @@ import { agentApi } from '../services/agentApi';
 import { useAuth } from '../contexts/AuthContext';
 import { PasswordStrengthIndicator } from '../components/PasswordStrengthIndicator';
 import { AuditLogPanel } from '../components/Admin/AuditLogPanel';
-
 import { AccessControlPanel } from '../components/Admin/AccessControlPanel';
+import { FEATURE_REGISTRY, type FeatureKey } from '../constants/feature-flags';
 
 type RoleType = 'master' | 'user';
 type Tab = 'tenants' | 'users' | 'requests' | 'audit' | 'security' | 'access';
@@ -17,6 +17,7 @@ interface Tenant {
   ai_rate_limit: number;
   created_at: string;
   user_count: number;
+  enabled_features: Record<string, boolean>;
 }
 
 interface UserProfile {
@@ -50,12 +51,12 @@ export function AdminPage() {
       <Header title="Administração" subtitle="Gerenciar empresas, usuários e acessos" />
 
       <div className="mt-6 mb-6 flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-        <button className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors ${tab === 'tenants' ? 'bg-card border border-border shadow-sm text-brand-primary font-medium' : 'text-muted hover:text-body-content'}`} onClick={() => setTab('tenants')}>Empresas</button>
-        <button className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors ${tab === 'users' ? 'bg-card border border-border shadow-sm text-brand-primary font-medium' : 'text-muted hover:text-body-content'}`} onClick={() => setTab('users')}>Usuários</button>
-        <button className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors ${tab === 'access' ? 'bg-card border border-border shadow-sm text-brand-primary font-medium' : 'text-muted hover:text-body-content'}`} onClick={() => setTab('access')}>Controle de Acessos</button>
-        <button className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors ${tab === 'requests' ? 'bg-card border border-border shadow-sm text-brand-primary font-medium' : 'text-muted hover:text-body-content'}`} onClick={() => setTab('requests')}>Solicitações</button>
-        <button className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors ${tab === 'audit' ? 'bg-card border border-border shadow-sm text-brand-primary font-medium' : 'text-muted hover:text-body-content'}`} onClick={() => setTab('audit')}>Auditoria</button>
-        <button className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors ${tab === 'security' ? 'bg-card border border-border shadow-sm text-brand-primary font-medium' : 'text-muted hover:text-body-content'}`} onClick={() => setTab('security')}>Segurança</button>
+        <button className={`whitespace-nowrap rounded-lg px-3 py-2 max-md:py-3 text-sm transition-colors ${tab === 'tenants' ? 'bg-card border border-border shadow-sm text-brand-primary font-medium' : 'text-muted hover:text-body-content'}`} onClick={() => setTab('tenants')}>Empresas</button>
+        <button className={`whitespace-nowrap rounded-lg px-3 py-2 max-md:py-3 text-sm transition-colors ${tab === 'users' ? 'bg-card border border-border shadow-sm text-brand-primary font-medium' : 'text-muted hover:text-body-content'}`} onClick={() => setTab('users')}>Usuários</button>
+        <button className={`whitespace-nowrap rounded-lg px-3 py-2 max-md:py-3 text-sm transition-colors ${tab === 'access' ? 'bg-card border border-border shadow-sm text-brand-primary font-medium' : 'text-muted hover:text-body-content'}`} onClick={() => setTab('access')}>Controle de Acessos</button>
+        <button className={`whitespace-nowrap rounded-lg px-3 py-2 max-md:py-3 text-sm transition-colors ${tab === 'requests' ? 'bg-card border border-border shadow-sm text-brand-primary font-medium' : 'text-muted hover:text-body-content'}`} onClick={() => setTab('requests')}>Solicitações</button>
+        <button className={`whitespace-nowrap rounded-lg px-3 py-2 max-md:py-3 text-sm transition-colors ${tab === 'audit' ? 'bg-card border border-border shadow-sm text-brand-primary font-medium' : 'text-muted hover:text-body-content'}`} onClick={() => setTab('audit')}>Auditoria</button>
+        <button className={`whitespace-nowrap rounded-lg px-3 py-2 max-md:py-3 text-sm transition-colors ${tab === 'security' ? 'bg-card border border-border shadow-sm text-brand-primary font-medium' : 'text-muted hover:text-body-content'}`} onClick={() => setTab('security')}>Segurança</button>
       </div>
 
       <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -76,6 +77,8 @@ function TenantsPanel() {
   const [name, setName] = useState('');
   const [aiLimit, setAiLimit] = useState(20);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [featuresOpenId, setFeaturesOpenId] = useState<string | null>(null);
+  const [savingFeatures, setSavingFeatures] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -104,12 +107,46 @@ function TenantsPanel() {
     load();
   };
 
+  const toggleFeature = async (tenantId: string, featureKey: string, currentValue: boolean) => {
+    const tenant = tenants.find(t => t.id === tenantId);
+    if (!tenant) return;
+
+    const currentFlags = tenant.enabled_features || {};
+    // If flags are empty, initialize all as true first
+    const allKeys = Object.keys(FEATURE_REGISTRY) as FeatureKey[];
+    const baseFlags: Record<string, boolean> = {};
+    if (Object.keys(currentFlags).length === 0) {
+      allKeys.forEach(k => { baseFlags[k] = true; });
+    } else {
+      Object.assign(baseFlags, currentFlags);
+    }
+    baseFlags[featureKey] = !currentValue;
+
+    setSavingFeatures(true);
+    const result = await agentApi.updateTenantFeatures(tenantId, baseFlags);
+    setSavingFeatures(false);
+
+    if (result.success) {
+      setTenants(prev => prev.map(t =>
+        t.id === tenantId ? { ...t, enabled_features: baseFlags } : t
+      ));
+    } else {
+      alert(result.error || 'Erro ao atualizar features');
+    }
+  };
+
+  const getFeatureEnabled = (tenant: Tenant, key: string): boolean => {
+    const flags = tenant.enabled_features || {};
+    if (Object.keys(flags).length === 0) return true;
+    return flags[key] !== false;
+  };
+
   return (
     <div className="grid gap-4">
       <form onSubmit={submit} className="rounded-xl border border-border bg-card p-4">
         <p className="mb-2 text-sm font-semibold">{editingId ? 'Editar empresa' : 'Nova empresa'}</p>
         <div className="flex gap-2 items-end flex-wrap md:flex-nowrap">
-          <div className="flex-1 min-w-[200px]">
+          <div className="flex-1 min-w-0 sm:min-w-[200px]">
             <label className="text-xs text-muted mb-1 block">Nome da Empresa</label>
             <input className="w-full rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" value={name} onChange={(e) => setName(e.target.value)} placeholder="Agência..." required />
           </div>
@@ -132,10 +169,36 @@ function TenantsPanel() {
               </div>
             </div>
             <div className="flex gap-2">
-              <button className="rounded-md border border-border px-2 py-1 text-xs" onClick={() => { setEditingId(tenant.id); setName(tenant.name); setAiLimit(tenant.ai_rate_limit); }}>Editar</button>
-              <button className="rounded-md border border-danger/30 px-2 py-1 text-xs text-danger" onClick={() => remove(tenant)}>Excluir</button>
+              <button className="rounded-md border border-border px-3 py-2 text-xs" onClick={() => setFeaturesOpenId(featuresOpenId === tenant.id ? null : tenant.id)}>Features</button>
+              <button className="rounded-md border border-border px-3 py-2 text-xs" onClick={() => { setEditingId(tenant.id); setName(tenant.name); setAiLimit(tenant.ai_rate_limit); }}>Editar</button>
+              <button className="rounded-md border border-danger/30 px-3 py-2 text-xs text-danger" onClick={() => remove(tenant)}>Excluir</button>
             </div>
           </div>
+          {featuresOpenId === tenant.id && (
+            <div className="mt-3 pt-3 border-t border-border">
+              <p className="text-xs font-semibold text-muted mb-2">Funcionalidades habilitadas</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                {(Object.entries(FEATURE_REGISTRY) as [FeatureKey, { label: string }][]).map(([key, { label }]) => {
+                  const enabled = getFeatureEnabled(tenant, key);
+                  return (
+                    <button
+                      key={key}
+                      disabled={savingFeatures}
+                      onClick={() => toggleFeature(tenant.id, key, enabled)}
+                      className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-colors ${
+                        enabled
+                          ? 'border-brand-primary/30 bg-brand-primary/5 text-brand-primary'
+                          : 'border-border bg-body/40 text-muted'
+                      } ${savingFeatures ? 'opacity-50 cursor-wait' : 'cursor-pointer hover:opacity-80'}`}
+                    >
+                      <div className={`h-2.5 w-2.5 rounded-full transition-colors ${enabled ? 'bg-brand-primary' : 'bg-muted/30'}`} />
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       ))}
     </div>

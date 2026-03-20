@@ -34,7 +34,7 @@ export function Header({
         {/* Left */}
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <button
-            className="hidden max-md:flex shrink-0 items-center justify-center rounded-xl p-2 text-secondary transition-all duration-200 hover:bg-border hover:text-primary active:scale-90"
+            className="hidden max-md:flex shrink-0 items-center justify-center rounded-xl p-3 text-secondary transition-all duration-200 hover:bg-border hover:text-primary active:scale-90"
             onClick={toggleSidebar}
             aria-label="Abrir menu"
           >
@@ -52,7 +52,7 @@ export function Header({
         </div>
 
         {/* Right: filtros no desktop; no mobile só ícones */}
-        <div className="flex shrink-0 items-center gap-1 md:gap-2">
+        <div className="flex shrink-0 items-center gap-1.5 md:gap-2">
           {children && (
             <div className="hidden md:flex items-center gap-2 md:gap-3">
               {children}
@@ -60,7 +60,7 @@ export function Header({
           )}
 
           {/* Notification bell */}
-          <button className="relative flex h-9 w-9 items-center justify-center rounded-full text-secondary transition-all duration-200 hover:bg-card hover:text-primary hover:shadow-soft active:scale-95">
+          <button className="relative flex h-9 w-9 max-md:h-11 max-md:w-11 items-center justify-center rounded-full text-secondary transition-all duration-200 hover:bg-card hover:text-primary hover:shadow-soft active:scale-95">
             <Bell size={18} strokeWidth={2} />
             <span
               className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full ring-2 ring-body"
@@ -72,7 +72,7 @@ export function Header({
           <button
             onClick={toggleTheme}
             aria-label={theme === 'light' ? 'Ativar tema escuro' : 'Ativar tema claro'}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-secondary transition-all duration-300 hover:bg-card hover:text-primary hover:shadow-soft active:scale-95"
+            className="flex h-9 w-9 max-md:h-11 max-md:w-11 items-center justify-center rounded-full text-secondary transition-all duration-300 hover:bg-card hover:text-primary hover:shadow-soft active:scale-95"
           >
             {theme === 'light' ? (
               <Moon size={18} strokeWidth={2} />
@@ -86,7 +86,7 @@ export function Header({
             onClick={handleLogout}
             disabled={isLoggingOut}
             aria-label="Sair do sistema"
-            className="flex h-9 w-9 items-center justify-center rounded-full text-secondary transition-all duration-200 hover:bg-danger/10 hover:text-danger active:scale-95 disabled:opacity-50"
+            className="flex h-9 w-9 max-md:h-11 max-md:w-11 items-center justify-center rounded-full text-secondary transition-all duration-200 hover:bg-danger/10 hover:text-danger active:scale-95 disabled:opacity-50"
           >
             <LogOut size={18} strokeWidth={2} />
           </button>

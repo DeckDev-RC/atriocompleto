@@ -123,7 +123,7 @@ export function InsightDetailModal({ isOpen, onClose, insight, onStatusUpdate }:
                     </button>
                 </div>
 
-                <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                <div className="p-8 max-sm:p-4 space-y-8 max-h-[70vh] max-sm:max-h-[80vh] overflow-y-auto custom-scrollbar">
                     {/* Main Content */}
                     <div className="space-y-4">
                         <h2 className="text-[22px] font-extrabold text-primary leading-tight tracking-tight">

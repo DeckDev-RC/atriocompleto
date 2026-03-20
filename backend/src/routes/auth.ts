@@ -69,6 +69,16 @@ async function getTenantName(tenantId: string | null): Promise<string | null> {
   return data?.name || null;
 }
 
+async function getTenantFeatures(tenantId: string | null): Promise<Record<string, boolean>> {
+  if (!tenantId) return {};
+  const { data } = await supabaseAdmin
+    .from("tenants")
+    .select("enabled_features")
+    .eq("id", tenantId)
+    .single();
+  return data?.enabled_features || {};
+}
+
 const loginSchema = z.object({
   email: z.string().email("Email inválido"),
   password: z.string().min(1, "Senha obrigatória"),
@@ -116,17 +126,19 @@ router.post("/login", authLimiter, async (req: Request, res: Response) => {
       return;
     }
 
+    // Auto-verify email on first login
     if (!profile.email_verified) {
-      res.status(403).json({
-        success: false,
-        requires_verification: true,
-        error: "Por favor, verifique seu email antes de fazer login.",
-      });
-      return;
+      await supabaseAdmin
+        .from("profiles")
+        .update({ email_verified: true })
+        .eq("id", profile.id);
     }
 
     if (profile.bypass_2fa) {
-      const tenant_name = await getTenantName(profile.tenant_id);
+      const [tenant_name, enabled_features] = await Promise.all([
+        getTenantName(profile.tenant_id),
+        getTenantFeatures(profile.tenant_id),
+      ]);
 
       const expiresAt = data.session.expires_at
         ? Math.floor(new Date(data.session.expires_at * 1000).getTime() / 1000)
@@ -150,6 +162,7 @@ router.post("/login", authLimiter, async (req: Request, res: Response) => {
               ...(profile.permissions || {}),
               ...(await AccessControlService.getUserPermissions(profile.id)),
             },
+            enabled_features,
             two_factor_enabled: profile.two_factor_enabled,
           },
         },
@@ -554,7 +567,10 @@ router.post("/verify-2fa", authLimiter, async (req: Request, res: Response) => {
       return;
     }
 
-    const tenant_name = await getTenantName(profile.tenant_id);
+    const [tenant_name, enabled_features] = await Promise.all([
+      getTenantName(profile.tenant_id),
+      getTenantFeatures(profile.tenant_id),
+    ]);
     await supabaseAdmin.from("auth_login_challenges").delete().eq("id", challenge.id);
 
     const expiresAt = challenge.session_expires_at
@@ -579,6 +595,7 @@ router.post("/verify-2fa", authLimiter, async (req: Request, res: Response) => {
             ...(profile.permissions || {}),
             ...(await AccessControlService.getUserPermissions(profile.id)),
           },
+          enabled_features,
           two_factor_enabled: profile.two_factor_enabled,
         },
       },
@@ -997,6 +1014,7 @@ router.get("/me", requireAuth, async (req: Request, res: Response) => {
         tenant_name,
         avatar_url: user.avatar_url,
         permissions: user.permissions,
+        enabled_features: user.enabled_features,
         two_factor_enabled: user.two_factor_enabled,
       },
     });

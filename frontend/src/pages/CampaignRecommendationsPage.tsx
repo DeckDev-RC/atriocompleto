@@ -331,7 +331,7 @@ export default function CampaignRecommendationsPage() {
                 <button
                     onClick={handleGenerate}
                     disabled={generating}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all duration-200 hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.97]"
+                    className="flex items-center gap-2 px-5 py-2.5 max-sm:py-3 rounded-xl text-[13px] font-semibold text-white transition-all duration-200 hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.97]"
                     style={{ background: 'linear-gradient(135deg, #a855f7, #ec4899)' }}
                 >
                     {generating ? (
@@ -377,7 +377,7 @@ export default function CampaignRecommendationsPage() {
                     <button
                         onClick={handleGenerate}
                         disabled={generating}
-                        className="flex items-center gap-2 px-6 py-3 rounded-xl text-[13px] font-semibold text-white transition-all hover:shadow-lg disabled:opacity-60 active:scale-[0.97]"
+                        className="flex items-center gap-2 px-6 py-3 max-sm:py-3.5 rounded-xl text-[13px] font-semibold text-white transition-all hover:shadow-lg disabled:opacity-60 active:scale-[0.97]"
                         style={{ background: 'linear-gradient(135deg, #a855f7, #ec4899)' }}
                     >
                         <Sparkles size={15} />
@@ -402,14 +402,14 @@ export default function CampaignRecommendationsPage() {
                             <div className="flex gap-2 ml-auto">
                                 <button
                                     onClick={() => handleStatusUpdate(data.id, 'approved')}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 max-sm:py-2.5 rounded-lg text-[12px] font-medium text-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors"
                                 >
                                     <Check size={13} />
                                     Aprovar
                                 </button>
                                 <button
                                     onClick={() => handleStatusUpdate(data.id, 'dismissed')}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-gray-400 bg-gray-500/10 hover:bg-gray-500/20 transition-colors"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 max-sm:py-2.5 rounded-lg text-[12px] font-medium text-gray-400 bg-gray-500/10 hover:bg-gray-500/20 transition-colors"
                                 >
                                     <X size={13} />
                                     Descartar

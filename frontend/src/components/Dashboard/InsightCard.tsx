@@ -41,7 +41,7 @@ export const InsightCard = memo(function InsightCard({ insight, onClick }: Insig
     return (
         <div
             onClick={() => onClick(insight)}
-            className="group relative flex flex-col min-w-[300px] max-w-[350px] h-[180px] p-5 rounded-2xl bg-card border border-border shadow-soft hover:shadow-soft-hover transition-all duration-300 cursor-pointer overflow-hidden"
+            className="group relative flex flex-col min-w-[260px] max-w-[350px] h-[180px] max-sm:min-w-0 max-sm:max-w-none max-sm:h-auto p-5 rounded-2xl bg-card border border-border shadow-soft hover:shadow-soft-hover transition-all duration-300 cursor-pointer overflow-hidden"
         >
             {/* Background Glow for High Priority */}
             {isPriorityHigh && (

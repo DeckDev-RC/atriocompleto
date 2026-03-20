@@ -34,6 +34,7 @@ interface SidebarMenuItem {
   path: string;
   icon: LucideIcon | null;
   imageSrc?: string;
+  featureKey?: string;
 }
 
 /** Larguras em px */
@@ -50,7 +51,7 @@ export function Sidebar() {
     toggleSidebarCollapse,
     theme,
   } = useApp();
-  const { user, isMaster, logout, hasPermission } = useAuth();
+  const { user, isMaster, logout, hasPermission, hasFeature } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -68,21 +69,21 @@ export function Sidebar() {
       ? [
         {
           section: 'Home',
-          items: [{ icon: ShoppingCart, label: 'E-Commerce', path: '/', permission: 'visualizar_venda' }],
+          items: [{ icon: ShoppingCart, label: 'E-Commerce', path: '/', permission: 'visualizar_venda', featureKey: 'ecommerce' }],
         },
         {
           section: 'APPS',
           items: [
-            { icon: Sparkles, label: 'Insights', path: '/insights', permission: 'acessar_agente' },
-            { icon: null, imageSrc: optimusSidebarIcon, label: 'Optimus', path: '/agente', permission: 'acessar_agente' },
-            { icon: Sparkles, label: 'Sugestões', path: '/optimus/sugestoes', permission: 'acessar_agente' },
-            { icon: Search, label: 'Padrões', path: '/analytics/patterns', permission: 'acessar_agente' },
-            { icon: Target, label: 'Estratégia', path: '/estrategia', permission: 'acessar_agente' },
-            { icon: FileText, label: 'Relatórios', path: '/relatorios', permission: 'visualizar_relatorios' },
-            { icon: Megaphone, label: 'Campanhas', path: '/campanhas', permission: 'acessar_agente' },
-            { icon: BarChart3, label: 'Benchmarking', path: '/benchmarking', permission: 'acessar_agente' },
-            { icon: Calculator, label: 'Calculadora', path: '/simulacoes', permission: 'acessar_agente' },
-            { icon: Package, label: 'Estoque EOQ', path: '/simulacoes/inventory', permission: 'acessar_agente' },
+            { icon: Sparkles, label: 'Insights', path: '/insights', permission: 'acessar_agente', featureKey: 'insights' },
+            { icon: null, imageSrc: optimusSidebarIcon, label: 'Optimus', path: '/agente', permission: 'acessar_agente', featureKey: 'optimus' },
+            { icon: Sparkles, label: 'Sugestões', path: '/optimus/sugestoes', permission: 'acessar_agente', featureKey: 'sugestoes' },
+            { icon: Search, label: 'Padrões', path: '/analytics/patterns', permission: 'acessar_agente', featureKey: 'padroes' },
+            { icon: Target, label: 'Estratégia', path: '/estrategia', permission: 'acessar_agente', featureKey: 'estrategia' },
+            { icon: FileText, label: 'Relatórios', path: '/relatorios', permission: 'visualizar_relatorios', featureKey: 'relatorios' },
+            { icon: Megaphone, label: 'Campanhas', path: '/campanhas', permission: 'acessar_agente', featureKey: 'campanhas' },
+            { icon: BarChart3, label: 'Benchmarking', path: '/benchmarking', permission: 'acessar_agente', featureKey: 'benchmarking' },
+            { icon: Calculator, label: 'Calculadora', path: '/simulacoes', permission: 'acessar_agente', featureKey: 'calculadora' },
+            { icon: Package, label: 'Estoque EOQ', path: '/simulacoes/inventory', permission: 'acessar_agente', featureKey: 'estoque_eoq' },
           ],
         },
       ]
@@ -97,7 +98,10 @@ export function Sidebar() {
 
   const filteredSections = menuSections.map(section => ({
     ...section,
-    items: section.items.filter(item => !item.permission || hasPermission(item.permission))
+    items: section.items.filter(item =>
+      (!item.permission || hasPermission(item.permission)) &&
+      (!item.featureKey || hasFeature(item.featureKey))
+    )
   })).filter(section => section.items.length > 0);
 
   const initials = user?.full_name
@@ -126,7 +130,7 @@ export function Sidebar() {
           dark:bg-[#0f1015]/95 dark:backdrop-blur-xl dark:border-[rgba(255,255,255,0.06)]
           py-5 transition-[width,padding,transform] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]
           ${collapsed ? 'px-2' : 'px-4'}
-          max-md:-translate-x-full max-md:w-[232px] max-md:px-4
+          max-md:-translate-x-full max-md:w-[85vw] max-md:max-w-[280px] max-md:px-4
           ${sidebarOpen ? 'max-md:translate-x-0' : ''}
         `}
         style={{ width: collapsed ? SIDEBAR_COLLAPSED_W : SIDEBAR_W, willChange: 'width' }}
@@ -157,7 +161,7 @@ export function Sidebar() {
                 <img
                   src={theme === 'dark' ? logoAtrioBranca : logoAtrio}
                   alt="Átrio"
-                  className="h-14 w-auto object-contain"
+                  className="h-14 max-sm:h-10 w-auto object-contain"
                 />
                 {/* Logo da Agregar movida para a área inferior, abaixo do botão Sair */}
               </div>
@@ -165,7 +169,7 @@ export function Sidebar() {
 
             {/* Close btn — mobile */}
             <button
-              className="hidden max-md:flex shrink-0 items-center justify-center rounded-full p-1.5 text-secondary transition-[background-color,color] duration-150 hover:bg-border hover:text-primary active:scale-90"
+              className="hidden max-md:flex shrink-0 items-center justify-center rounded-full p-3 text-secondary transition-[background-color,color] duration-150 hover:bg-border hover:text-primary active:scale-90"
               onClick={closeSidebar}
               aria-label="Fechar menu"
             >
@@ -199,7 +203,7 @@ export function Sidebar() {
                         transition-[background-color,color] duration-150
                         ${collapsed
                           ? 'justify-center px-0 py-2.5'
-                          : 'px-4 py-2'}
+                          : 'px-4 py-2 max-md:py-3'}
                         ${active
                           ? 'bg-gray-50 dark:bg-primary/5'
                           : 'text-secondary/80 hover:bg-border/40 hover:text-primary'}

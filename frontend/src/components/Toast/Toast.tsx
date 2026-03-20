@@ -118,7 +118,7 @@ function ToastItem({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: num
     <div
       className={`
         relative flex items-center gap-3 rounded-xl border px-4 py-3 pr-10 shadow-float dark:shadow-dark-float
-        backdrop-blur-xl overflow-hidden min-w-[280px] max-w-[420px]
+        backdrop-blur-xl overflow-hidden min-w-0 sm:min-w-[280px] max-w-[420px]
         ${config.bgClass} ${config.borderClass}
         ${toast.exiting ? 'animate-toast-exit' : 'animate-toast-enter'}
       `}

@@ -317,6 +317,13 @@ class AgentApiService {
     return this.request(`/api/admin/tenants/${id}`, { method: 'DELETE' });
   }
 
+  async updateTenantFeatures(id: string, enabledFeatures: Record<string, boolean>) {
+    return this.request(`/api/admin/tenants/${id}/features`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled_features: enabledFeatures }),
+    });
+  }
+
   // ══════════════════════════════════════════════════════
   // ADMIN — Users
   // ══════════════════════════════════════════════════════

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { agentApi } from '../services/agentApi';
 import { SkeletonCard } from '../components/Skeleton';
+import { EmptyState } from '../components/EmptyState';
 
 // ── Types ───────────────────────────────────────────────
 interface BCGProduct {
@@ -82,19 +83,6 @@ const TIMEFRAME_LABELS: Record<string, string> = {
     longo_prazo: '🗓️ Longo prazo',
 };
 
-// ── Empty State ─────────────────────────────────────────
-function EmptyState({ title, description }: { title: string; description: string }) {
-    return (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/5 mb-4">
-                <Inbox size={28} className="text-muted" />
-            </div>
-            <h3 className="text-[15px] font-semibold text-primary mb-1">{title}</h3>
-            <p className="text-[13px] text-muted max-w-sm">{description}</p>
-        </div>
-    );
-}
-
 // ── BCG Scatter Plot (Canvas) ───────────────────────────
 function BCGScatterPlot({ products }: { products: BCGProduct[] }) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -108,18 +96,22 @@ function BCGScatterPlot({ products }: { products: BCGProduct[] }) {
 
         const dpr = window.devicePixelRatio || 1;
         const rect = container.getBoundingClientRect();
+        const isMobile = rect.width < 640;
+        const chartHeight = isMobile ? 280 : 400;
         canvas.width = rect.width * dpr;
-        canvas.height = 400 * dpr;
+        canvas.height = chartHeight * dpr;
         canvas.style.width = `${rect.width}px`;
-        canvas.style.height = '400px';
+        canvas.style.height = `${chartHeight}px`;
 
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
         ctx.scale(dpr, dpr);
 
         const W = rect.width;
-        const H = 400;
-        const PADDING = { top: 30, right: 30, bottom: 50, left: 60 };
+        const H = chartHeight;
+        const PADDING = isMobile
+            ? { top: 20, right: 15, bottom: 40, left: 40 }
+            : { top: 30, right: 30, bottom: 50, left: 60 };
         const plotW = W - PADDING.left - PADDING.right;
         const plotH = H - PADDING.top - PADDING.bottom;
 
@@ -253,7 +245,7 @@ function BCGScatterPlot({ products }: { products: BCGProduct[] }) {
         return () => canvas.removeEventListener('mousemove', handleMouseMove);
     }, [products]);
 
-    if (products.length === 0) return <EmptyState title="Sem dados BCG" description="Precisa de dados de vendas em pelo menos 2 períodos para gerar a Matriz BCG." />;
+    if (products.length === 0) return <EmptyState icon={Inbox} title="Sem dados BCG" description="Precisa de dados de vendas em pelo menos 2 períodos para gerar a Matriz BCG." />;
 
     return (
         <div ref={containerRef} className="relative w-full">
@@ -400,7 +392,7 @@ export default function StrategicReportPage() {
 
     if (loading) {
         return (
-            <div className="p-6 space-y-6 max-w-7xl mx-auto">
+            <div className="p-6 max-md:p-4 max-sm:p-3 space-y-6 max-w-7xl mx-auto">
                 <SkeletonCard /><SkeletonCard /><SkeletonCard />
             </div>
         );
@@ -410,7 +402,7 @@ export default function StrategicReportPage() {
     const reportData = report?.report_data;
 
     return (
-        <div className="p-6 space-y-6 max-w-7xl mx-auto">
+        <div className="p-6 max-md:p-4 max-sm:p-3 space-y-6 max-w-7xl mx-auto">
             {/* Header */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
@@ -463,12 +455,12 @@ export default function StrategicReportPage() {
             {/* BCG Matrix */}
             <div className="rounded-2xl border border-border bg-card overflow-hidden">
                 <div className="px-6 py-4 border-b border-border/50">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                         <div>
                             <h2 className="text-[16px] font-semibold text-primary">Matriz BCG — Portfólio de Produtos</h2>
                             <p className="text-[12px] text-muted mt-0.5">Crescimento vs Participação de mercado (últimos 12 meses)</p>
                         </div>
-                        <div className="flex gap-3">
+                        <div className="flex flex-wrap gap-3">
                             {Object.entries(QUADRANT_LABELS).map(([key, val]) => (
                                 <div key={key} className="flex items-center gap-1.5 text-[11px] text-muted">
                                     <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: QUADRANT_COLORS[key]?.dot }} />
@@ -569,6 +561,7 @@ export default function StrategicReportPage() {
             {!reportData && !loading && actions.length === 0 && (
                 <div className="rounded-2xl border border-border bg-card">
                     <EmptyState
+                        icon={Target}
                         title="Nenhum relatório estratégico"
                         description="Clique em 'Gerar Relatório' para criar sua primeira análise estratégica com IA."
                     />

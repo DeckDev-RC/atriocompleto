@@ -112,7 +112,7 @@ function CompetitorModal({
                             placeholder="https://..."
                         />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-[12px] font-medium text-muted mb-1.5">Categoria</label>
                             <select
@@ -225,7 +225,7 @@ function ProductModal({
                             placeholder="Nome do seu produto equivalente"
                         />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-[12px] font-medium text-muted mb-1.5">Preço Concorrente (R$)</label>
                             <input
@@ -389,13 +389,13 @@ function CompetitorsTab() {
                                 <div className="flex items-center gap-2">
                                     <button
                                         onClick={(e) => { e.stopPropagation(); setEditingCompetitor(c); setShowCompetitorModal(true); }}
-                                        className="p-1.5 rounded-lg hover:bg-border/40 text-muted transition-colors"
+                                        className="p-2 rounded-lg hover:bg-border/40 text-muted transition-colors"
                                     >
                                         <Pencil size={14} />
                                     </button>
                                     <button
                                         onClick={(e) => { e.stopPropagation(); handleDeleteCompetitor(c.id); }}
-                                        className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted hover:text-red-400 transition-colors"
+                                        className="p-2 rounded-lg hover:bg-red-500/10 text-muted hover:text-red-400 transition-colors"
                                     >
                                         <Trash2 size={14} />
                                     </button>
@@ -446,13 +446,13 @@ function CompetitorsTab() {
                                                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                                 <button
                                                                     onClick={() => { setEditingProduct(p); setShowProductModal(c.id); }}
-                                                                    className="p-1 rounded hover:bg-border/40 text-muted"
+                                                                    className="p-2 rounded hover:bg-border/40 text-muted"
                                                                 >
                                                                     <Pencil size={12} />
                                                                 </button>
                                                                 <button
                                                                     onClick={() => handleDeleteProduct(p.id, c.id)}
-                                                                    className="p-1 rounded hover:bg-red-500/10 text-muted hover:text-red-400"
+                                                                    className="p-2 rounded hover:bg-red-500/10 text-muted hover:text-red-400"
                                                                 >
                                                                     <Trash2 size={12} />
                                                                 </button>
@@ -1303,7 +1303,7 @@ export default function BenchmarkingPage() {
     const [activeTab, setActiveTab] = useState<TabId>('competitors');
 
     return (
-        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 max-md:py-5 max-sm:py-4 max-sm:px-3">
             {/* Header */}
             <div className="flex items-center gap-3 mb-8">
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-linear-to-br from-blue-500/20 to-indigo-600/10">

@@ -196,7 +196,7 @@ const InsightsHistoryPage: React.FC = () => {
                             <button
                                 disabled={page === 1}
                                 onClick={() => setPage(p => p - 1)}
-                                className="px-6 py-2.5 bg-muted/10 border border-border rounded-xl font-bold text-sm text-secondary hover:bg-muted/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-sm"
+                                className="px-4 py-2 max-sm:px-3 bg-muted/10 border border-border rounded-xl font-bold text-sm text-secondary hover:bg-muted/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-sm"
                             >
                                 Anterior
                             </button>
@@ -206,7 +206,7 @@ const InsightsHistoryPage: React.FC = () => {
                             <button
                                 disabled={page === totalPages}
                                 onClick={() => setPage(p => p + 1)}
-                                className="px-6 py-2.5 bg-muted/10 border border-border rounded-xl font-bold text-sm text-secondary hover:bg-muted/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-sm"
+                                className="px-4 py-2 max-sm:px-3 bg-muted/10 border border-border rounded-xl font-bold text-sm text-secondary hover:bg-muted/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-sm"
                             >
                                 Próxima
                             </button>

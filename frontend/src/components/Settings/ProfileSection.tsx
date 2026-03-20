@@ -240,7 +240,7 @@ export function ProfileSection() {
                 onKeyDown={handleNameKeyDown}
                 maxLength={100}
                 disabled={savingName}
-                className="text-[16px] font-semibold text-primary bg-transparent border-b-2 border-(--color-brand-primary) outline-none py-0.5 min-w-0 w-full max-w-[220px] transition-colors duration-200 placeholder:text-muted/40"
+                className="text-[16px] font-semibold text-primary bg-transparent border-b-2 border-(--color-brand-primary) outline-none py-0.5 min-w-0 w-full max-w-full sm:max-w-[220px] transition-colors duration-200 placeholder:text-muted/40"
                 placeholder="Seu nome completo"
               />
               <button

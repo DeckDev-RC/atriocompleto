@@ -14,18 +14,7 @@ import {
 } from 'lucide-react';
 import { agentApi } from '../services/agentApi';
 import { SkeletonCard } from '../components/Skeleton';
-
-function EmptyState({ icon: Icon, title, description }: { icon: any, title: string, description: string }) {
-    return (
-        <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="p-4 rounded-2xl bg-muted/10 mb-4">
-                <Icon size={28} className="text-muted" />
-            </div>
-            <p className="text-sm font-bold text-secondary">{title}</p>
-            <p className="text-xs text-muted mt-1 max-w-xs">{description}</p>
-        </div>
-    );
-}
+import { EmptyState } from '../components/EmptyState';
 
 export default function PatternDiscoveryPage() {
     const [loading, setLoading] = useState(true);
@@ -54,7 +43,7 @@ export default function PatternDiscoveryPage() {
 
     if (loading) {
         return (
-            <div className="p-8 space-y-6">
+            <div className="p-8 max-md:p-5 max-sm:p-4 space-y-6">
                 <SkeletonCard minHeight="200px" />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <SkeletonCard minHeight="300px" />
@@ -67,8 +56,10 @@ export default function PatternDiscoveryPage() {
     const { correlation, rfm, basket, top_products } = data || {};
     const { churn_risk, upsell_candidates } = segments || {};
 
+    const hasNoData = !data && !segments;
+
     return (
-        <div className="p-8 pb-20 max-w-7xl mx-auto animate-in fade-in duration-500">
+        <div className="p-8 max-md:p-5 max-sm:p-4 pb-20 max-w-7xl mx-auto animate-in fade-in duration-500">
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10">
                 <div>
@@ -99,6 +90,15 @@ export default function PatternDiscoveryPage() {
                 </div>
             </div>
 
+            {hasNoData && (
+                <EmptyState
+                    icon={Search}
+                    title="Sem dados de padrões"
+                    description="Quando houver dados de vendas e clientes suficientes, os padrões identificados aparecerão aqui."
+                />
+            )}
+
+            {!hasNoData && <>
             {/* Core Correlation Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
                 <CorrelationCard
@@ -120,7 +120,7 @@ export default function PatternDiscoveryPage() {
 
             {/* Top Products */}
             {top_products && top_products.length > 0 && (
-                <div className="bg-card border border-border rounded-3xl p-8 shadow-soft mb-10">
+                <div className="bg-card border border-border rounded-3xl p-8 max-sm:p-5 shadow-soft mb-10">
                     <div className="flex items-center justify-between mb-8">
                         <div>
                             <div className="flex items-center gap-2 mb-1">
@@ -186,7 +186,7 @@ export default function PatternDiscoveryPage() {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
                 {/* RFM Distribution */}
-                <div className="bg-card border border-border rounded-3xl p-8 shadow-soft">
+                <div className="bg-card border border-border rounded-3xl p-8 max-sm:p-5 shadow-soft">
                     <div className="flex items-center justify-between mb-8">
                         <div>
                             <h3 className="text-lg font-bold text-primary">Saúde da Base</h3>
@@ -221,7 +221,7 @@ export default function PatternDiscoveryPage() {
                 </div>
 
                 {/* Market Basket List */}
-                <div className="bg-card border border-border rounded-3xl p-8 shadow-soft">
+                <div className="bg-card border border-border rounded-3xl p-8 max-sm:p-5 shadow-soft">
                     <div className="flex items-center justify-between mb-8">
                         <div>
                             <h3 className="text-lg font-bold text-primary">Afinidade de Produtos</h3>
@@ -261,7 +261,7 @@ export default function PatternDiscoveryPage() {
             {/* Smart Segments / Actionable Lists */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Churn Risk */}
-                <div className="bg-shopee/5 border border-shopee/10 rounded-3xl p-8">
+                <div className="bg-shopee/5 border border-shopee/10 rounded-3xl p-8 max-sm:p-5">
                     <div className="flex items-center gap-3 mb-6">
                         <div className="p-2 rounded-xl bg-shopee/10 text-shopee">
                             <AlertTriangle size={20} />
@@ -292,7 +292,7 @@ export default function PatternDiscoveryPage() {
                 </div>
 
                 {/* Upsell Candidates */}
-                <div className="bg-success/5 border border-success/10 rounded-3xl p-8">
+                <div className="bg-success/5 border border-success/10 rounded-3xl p-8 max-sm:p-5">
                     <div className="flex items-center gap-3 mb-6">
                         <div className="p-2 rounded-xl bg-success/10 text-success">
                             <Zap size={20} />
@@ -322,6 +322,7 @@ export default function PatternDiscoveryPage() {
                     )}
                 </div>
             </div>
+            </>}
         </div>
     );
 }

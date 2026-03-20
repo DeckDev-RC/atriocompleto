@@ -7,6 +7,7 @@ export interface AuthUser {
     tenant_name: string | null;
     avatar_url: string | null;
     permissions: Record<string, any>;
+    enabled_features: Record<string, boolean>;
     two_factor_enabled: boolean;
 }
 
@@ -38,4 +39,5 @@ export interface AuthContextValue {
     logout: () => void;
     refreshUser: () => Promise<void>;
     hasPermission: (permission: string) => boolean;
+    hasFeature: (featureKey: string) => boolean;
 }

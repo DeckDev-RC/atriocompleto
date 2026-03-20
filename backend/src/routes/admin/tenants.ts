@@ -2,6 +2,8 @@ import { Router, Request, Response } from "express";
 import { z } from "zod";
 import { supabaseAdmin } from "../../config/supabase";
 import { AuditService } from "../../services/audit";
+import { VALID_FEATURE_KEYS } from "../../constants/feature-flags";
+import { invalidateAuthCache } from "../../middleware/auth";
 
 const router = Router();
 
@@ -14,7 +16,7 @@ router.get("/", async (req: Request, res: Response) => {
   try {
     const { data, error } = await supabaseAdmin
       .from("tenants")
-      .select("id, name, ai_rate_limit, created_at")
+      .select("id, name, ai_rate_limit, created_at, enabled_features")
       .order("name");
 
     if (error) throw error;
@@ -177,6 +179,81 @@ router.delete("/:id", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("[Admin] Delete tenant error:", error);
     res.status(500).json({ success: false, error: "Erro ao excluir empresa" });
+  }
+});
+
+// ── Feature flags management ────────────────────────────
+const featureFlagsSchema = z.object({
+  enabled_features: z.record(
+    z.enum(VALID_FEATURE_KEYS as [string, ...string[]]),
+    z.boolean()
+  ),
+});
+
+router.put("/:id/features", async (req: Request, res: Response) => {
+  try {
+    const parsed = featureFlagsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        success: false,
+        error: "Dados inválidos",
+        details: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const { data: previousTenant } = await supabaseAdmin
+      .from("tenants")
+      .select("enabled_features")
+      .eq("id", req.params.id)
+      .single();
+
+    if (!previousTenant) {
+      res.status(404).json({ success: false, error: "Empresa não encontrada" });
+      return;
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("tenants")
+      .update({ enabled_features: parsed.data.enabled_features })
+      .eq("id", req.params.id)
+      .select("id, enabled_features")
+      .single();
+
+    if (error || !data) {
+      res.status(500).json({ success: false, error: "Erro ao atualizar features" });
+      return;
+    }
+
+    // Invalidate auth cache for all users of this tenant
+    const { data: tenantUsers } = await supabaseAdmin
+      .from("profiles")
+      .select("id")
+      .eq("tenant_id", req.params.id);
+
+    if (tenantUsers) {
+      for (const u of tenantUsers) {
+        await invalidateAuthCache(u.id);
+      }
+    }
+
+    res.json({ success: true, data });
+
+    void AuditService.log({
+      userId: req.user!.id,
+      action: "tenant.update_features",
+      resource: "tenants",
+      entityId: String(req.params.id),
+      ipAddress: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent,
+      details: {
+        previous: previousTenant.enabled_features,
+        next: parsed.data.enabled_features,
+      },
+    });
+  } catch (error) {
+    console.error("[Admin] Update tenant features error:", error);
+    res.status(500).json({ success: false, error: "Erro ao atualizar features da empresa" });
   }
 });
 

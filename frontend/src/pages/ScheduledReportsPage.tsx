@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Clock3, Download, FileText, PauseCircle, PlayCircle, RefreshCw, Trash2, Pencil, Plus } from 'lucide-react';
+import { Clock3, Download, FileText, PauseCircle, PlayCircle, RefreshCw, Trash2, Pencil, Plus, CalendarClock } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { agentApi } from '../services/agentApi';
@@ -9,6 +9,7 @@ import { ReportExportModal } from '../components/reports/ReportExportModal';
 import { ScheduleForm, type ReportsMetadata, type ScheduleFormValues } from '../components/reports/ScheduleForm';
 import { ReportsModeToggle } from '../components/reports/ReportsModeToggle';
 import { TemplatesGallery, type ReportTemplateSummary } from '../components/reports/TemplatesGallery';
+import { EmptyState } from '../components/EmptyState';
 
 interface ReportExecutionItem {
   id: string;
@@ -363,8 +364,12 @@ export default function ScheduledReportsPage() {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <div className="space-y-4">
           {schedules.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted">
-              Nenhum relatório agendado ainda.
+            <div className="rounded-3xl border border-dashed border-border bg-card">
+              <EmptyState
+                icon={CalendarClock}
+                title="Nenhum relatório agendado"
+                description="Quando houver relatórios agendados, eles aparecerão aqui. Crie um novo agendamento para começar."
+              />
             </div>
           ) : (
             schedules.map((schedule) => (
@@ -386,19 +391,19 @@ export default function ScheduledReportsPage() {
 
                   {canManage && (
                     <div className="flex items-center gap-2">
-                      <button onClick={(event) => { event.stopPropagation(); setEditing(schedule); setShowForm(true); }} className="rounded-xl p-2 text-muted transition-colors hover:bg-muted/10 hover:text-primary">
+                      <button onClick={(event) => { event.stopPropagation(); setEditing(schedule); setShowForm(true); }} className="rounded-xl p-2 max-sm:p-2.5 text-muted transition-colors hover:bg-muted/10 hover:text-primary">
                         <Pencil size={16} />
                       </button>
-                      <button onClick={(event) => { event.stopPropagation(); void handleStatusToggle(schedule); }} className="rounded-xl p-2 text-muted transition-colors hover:bg-muted/10 hover:text-primary">
+                      <button onClick={(event) => { event.stopPropagation(); void handleStatusToggle(schedule); }} className="rounded-xl p-2 max-sm:p-2.5 text-muted transition-colors hover:bg-muted/10 hover:text-primary">
                         {schedule.status === 'active' ? <PauseCircle size={16} /> : <PlayCircle size={16} />}
                       </button>
-                      <button onClick={(event) => { event.stopPropagation(); setExportingSchedule(schedule); }} className="rounded-xl p-2 text-muted transition-colors hover:bg-muted/10 hover:text-primary">
+                      <button onClick={(event) => { event.stopPropagation(); setExportingSchedule(schedule); }} className="rounded-xl p-2 max-sm:p-2.5 text-muted transition-colors hover:bg-muted/10 hover:text-primary">
                         <Download size={16} />
                       </button>
-                      <button onClick={(event) => { event.stopPropagation(); void handleRunNow(schedule.id); }} className="rounded-xl p-2 text-muted transition-colors hover:bg-muted/10 hover:text-primary">
+                      <button onClick={(event) => { event.stopPropagation(); void handleRunNow(schedule.id); }} className="rounded-xl p-2 max-sm:p-2.5 text-muted transition-colors hover:bg-muted/10 hover:text-primary">
                         <PlayCircle size={16} />
                       </button>
-                      <button onClick={(event) => { event.stopPropagation(); void handleDelete(schedule); }} className="rounded-xl p-2 text-muted transition-colors hover:bg-danger/10 hover:text-danger">
+                      <button onClick={(event) => { event.stopPropagation(); void handleDelete(schedule); }} className="rounded-xl p-2 max-sm:p-2.5 text-muted transition-colors hover:bg-danger/10 hover:text-danger">
                         <Trash2 size={16} />
                       </button>
                     </div>

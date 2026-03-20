@@ -87,6 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const currentUser = {
           ...result.data,
           permissions: (result.data as any).permissions || {},
+          enabled_features: (result.data as any).enabled_features || {},
           two_factor_enabled: (result.data as any).two_factor_enabled || false,
         } as AuthUser;
         setUser(currentUser);
@@ -280,6 +281,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return !!user?.permissions?.[permission];
   }, [user]);
 
+  const hasFeature = useCallback((featureKey: string) => {
+    if (user?.role === 'master') return true;
+    const flags = user?.enabled_features || {};
+    // Empty object = all features enabled (backwards-compatible)
+    if (Object.keys(flags).length === 0) return true;
+    return flags[featureKey] !== false;
+  }, [user]);
+
   const value = useMemo<AuthContextValue>(() => ({
     user,
     isAuthenticated: !!user,
@@ -290,7 +299,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logout,
     refreshUser,
     hasPermission,
-  }), [user, isLoading, login, verify2FA, logout, refreshUser, hasPermission]);
+    hasFeature,
+  }), [user, isLoading, login, verify2FA, logout, refreshUser, hasPermission, hasFeature]);
 
   return (
     <AuthContext.Provider value={value}>

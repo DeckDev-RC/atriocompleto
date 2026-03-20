@@ -3,6 +3,12 @@
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
+/* WCAG 2.1 minimum touch target */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
 /* Date picker (PeriodFilter) — tema + restauração do layout em tabela */
 .rdp-root {
   --rdp-accent-color: var(--color-brand-primary);
@@ -801,6 +807,18 @@
   border-collapse: collapse;
   font-size: 13px;
   min-width: 360px;
+}
+
+@media (max-width: 639px) {
+  .agent-message-content table {
+    min-width: 280px;
+    font-size: 12px;
+  }
+  .agent-message-content td,
+  .agent-message-content th {
+    white-space: normal;
+    padding: 6px 8px;
+  }
 }
 
 .agent-message-content thead {

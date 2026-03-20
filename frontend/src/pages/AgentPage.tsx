@@ -543,7 +543,7 @@ export function AgentPage() {
       {/* Main Chat */}
       <div className="flex flex-1 flex-col min-w-0">
         {/* Header */}
-        <header className="flex h-[56px] shrink-0 items-center gap-3 border-b border-border px-5 max-sm:px-3">
+        <header className="flex h-[56px] shrink-0 items-center gap-3 border-b border-border px-5 max-sm:px-3 max-sm:gap-2">
           <button
             onClick={() => navigate('/')}
             className="flex h-8 w-8 items-center justify-center rounded-xl text-secondary transition-all duration-200 hover:bg-card hover:text-primary hover:shadow-soft active:scale-95"
@@ -602,7 +602,7 @@ export function AgentPage() {
               hasTenant={hasTenant}
             />
           ) : (
-            <div className="mx-auto max-w-[960px] px-4 lg:px-8">
+            <div className="mx-auto max-w-[960px] px-4 max-sm:px-2.5 lg:px-8">
               {messages.map((msg, i) => (
                 <div key={i}>
                   <AgentMessage
@@ -659,7 +659,7 @@ export function AgentPage() {
         </div>
 
         {uploadedFiles.length > 0 && (
-          <div className="mx-auto w-full max-w-[960px] px-4 pb-3 lg:px-8">
+          <div className="mx-auto w-full max-w-[960px] px-4 max-sm:px-2.5 pb-3 lg:px-8">
             <div className="mb-2 text-[11px] text-muted">
               Arquivos anexados a esta conversa. Quando estiverem prontos, voce pode perguntar sobre o conteudo normalmente.
             </div>

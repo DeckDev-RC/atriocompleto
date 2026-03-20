@@ -104,14 +104,14 @@ function AppRoutes() {
 
         <Route element={<DashboardLayout />}>
           <Route index element={
-            <ProtectedRoute permission="visualizar_venda">
+            <ProtectedRoute permission="visualizar_venda" featureKey="ecommerce">
               <ErrorBoundary name="Dashboard">
                 <DashboardPage />
               </ErrorBoundary>
             </ProtectedRoute>
           } />
           <Route path="agente" element={
-            <ProtectedRoute permission="acessar_agente">
+            <ProtectedRoute permission="acessar_agente" featureKey="optimus">
               <ErrorBoundary name="Agent">
                 <AgentPage />
               </ErrorBoundary>
@@ -128,52 +128,52 @@ function AppRoutes() {
             </ProtectedRoute>
           } />
           <Route path="insights" element={
-            <ProtectedRoute permission="acessar_agente">
+            <ProtectedRoute permission="acessar_agente" featureKey="insights">
               <InsightsHistoryPage />
             </ProtectedRoute>
           } />
           <Route path="analytics/patterns" element={
-            <ProtectedRoute permission="acessar_agente">
+            <ProtectedRoute permission="acessar_agente" featureKey="padroes">
               <PatternDiscoveryPage />
             </ProtectedRoute>
           } />
           <Route path="estrategia" element={
-            <ProtectedRoute permission="acessar_agente">
+            <ProtectedRoute permission="acessar_agente" featureKey="estrategia">
               <StrategicReportPage />
             </ProtectedRoute>
           } />
           <Route path="relatorios" element={
-            <ProtectedRoute permission="visualizar_relatorios">
+            <ProtectedRoute permission="visualizar_relatorios" featureKey="relatorios">
               <ScheduledReportsPage />
             </ProtectedRoute>
           } />
           <Route path="relatorios/customizados" element={
-            <ProtectedRoute permission="visualizar_relatorios">
+            <ProtectedRoute permission="visualizar_relatorios" featureKey="relatorios">
               <CustomReportsPage />
             </ProtectedRoute>
           } />
           <Route path="campanhas" element={
-            <ProtectedRoute permission="acessar_agente">
+            <ProtectedRoute permission="acessar_agente" featureKey="campanhas">
               <CampaignRecommendationsPage />
             </ProtectedRoute>
           } />
           <Route path="benchmarking" element={
-            <ProtectedRoute permission="acessar_agente">
+            <ProtectedRoute permission="acessar_agente" featureKey="benchmarking">
               <BenchmarkingPage />
             </ProtectedRoute>
           } />
           <Route path="simulacoes" element={
-            <ProtectedRoute permission="acessar_agente">
+            <ProtectedRoute permission="acessar_agente" featureKey="calculadora">
               <WhatIfAnalysisPage />
             </ProtectedRoute>
           } />
           <Route path="simulacoes/inventory" element={
-            <ProtectedRoute permission="acessar_agente">
+            <ProtectedRoute permission="acessar_agente" featureKey="estoque_eoq">
               <InventoryOptimizationPage />
             </ProtectedRoute>
           } />
           <Route path="optimus/sugestoes" element={
-            <ProtectedRoute permission="acessar_agente">
+            <ProtectedRoute permission="acessar_agente" featureKey="sugestoes">
               <ProactiveSuggestionsPage />
             </ProtectedRoute>
           } />

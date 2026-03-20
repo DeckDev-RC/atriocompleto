@@ -14,6 +14,7 @@ export interface AuthUser {
   full_name: string;
   avatar_url: string | null;
   permissions: Record<string, any>; // Granular permissions
+  enabled_features: Record<string, boolean>; // Feature flags per tenant
   two_factor_enabled: boolean;
 }
 
@@ -148,6 +149,16 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       ...rbacPermissions,
     };
 
+    // Fetch tenant feature flags
+    let enabledFeatures: Record<string, boolean> = {};
+    if (profile.tenant_id) {
+      const { data: tenantData } = await supabaseAdmin
+        .from("tenants")
+        .select("enabled_features")
+        .eq("id", profile.tenant_id)
+        .single();
+      enabledFeatures = tenantData?.enabled_features || {};
+    }
 
     const authUser: AuthUser = {
       id: profile.id,
@@ -157,6 +168,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       full_name: profile.full_name,
       avatar_url: profile.avatar_url || null,
       permissions: finalPermissions,
+      enabled_features: enabledFeatures,
       two_factor_enabled: profile.two_factor_enabled || false,
     };
 
