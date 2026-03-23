@@ -151,20 +151,6 @@ export interface MarketplaceConfigMap {
   kwai: KwaiConfig;
 }
 
-export interface CalculatorHistoryEntry {
-  id: string;
-  createdAt: string;
-  productName: string;
-  salePrice: number;
-  productCost: number;
-  packagingCost: number;
-  kitQuantity: number;
-  taxPercent: number;
-  grossMarginPercent: number;
-  inputs: CalculatorInputs;
-  configs: MarketplaceConfigMap;
-}
-
 export interface DescriptionVariation {
   id: string;
   angle: string;
@@ -216,9 +202,6 @@ export interface NcmEstimate {
   total: number;
   effectiveRate: number;
 }
-
-export const CALCULATOR_HISTORY_KEY = 'atrio:marketplace-calculator:history';
-export const CALCULATOR_VISIBLE_MARKETS_KEY = 'atrio:marketplace-calculator:visible';
 
 export const DEFAULT_VISIBLE_MARKETPLACES: MarketplaceId[] = [
   'mercadolivre',
@@ -777,46 +760,6 @@ export function parseProductNameFromUrl(url: string) {
   } catch {
     return '';
   }
-}
-
-export function buildHistoryEntry(
-  inputs: CalculatorInputs,
-  configs: MarketplaceConfigMap,
-): CalculatorHistoryEntry {
-  return {
-    id: `${Date.now()}`,
-    createdAt: new Date().toISOString(),
-    productName: inputs.productName || 'Produto sem nome',
-    salePrice: inputs.salePrice,
-    productCost: inputs.productCost,
-    packagingCost: inputs.packagingCost,
-    kitQuantity: inputs.kitQuantity,
-    taxPercent: inputs.taxPercent,
-    grossMarginPercent: calculateGrossMarginEstimate(inputs),
-    inputs: { ...inputs },
-    configs: cloneMarketplaceConfigs(configs),
-  };
-}
-
-export function dedupeHistoryEntry(
-  history: CalculatorHistoryEntry[],
-  entry: CalculatorHistoryEntry,
-) {
-  return history.find((item) =>
-    item.salePrice === entry.salePrice &&
-    item.productCost === entry.productCost &&
-    item.packagingCost === entry.packagingCost &&
-    item.kitQuantity === entry.kitQuantity &&
-    item.taxPercent === entry.taxPercent &&
-    item.productName.toLowerCase() === entry.productName.toLowerCase(),
-  );
-}
-
-export function sanitizeHistory(raw: unknown): CalculatorHistoryEntry[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .filter((item): item is CalculatorHistoryEntry => Boolean(item && typeof item === 'object'))
-    .slice(0, 10);
 }
 
 export function calculateWhatIfImpact(

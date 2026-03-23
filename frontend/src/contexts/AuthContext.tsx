@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { agentApi } from '../services/agentApi';
 import type { AuthUser, LoginResult, AuthContextValue } from '../types/auth';
+import { isFeatureEnabled } from '../constants/feature-flags';
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -283,10 +284,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const hasFeature = useCallback((featureKey: string) => {
     if (user?.role === 'master') return true;
-    const flags = user?.enabled_features || {};
-    // Empty object = all features enabled (backwards-compatible)
-    if (Object.keys(flags).length === 0) return true;
-    return flags[featureKey] !== false;
+    return isFeatureEnabled(featureKey, user?.enabled_features);
   }, [user]);
 
   const value = useMemo<AuthContextValue>(() => ({

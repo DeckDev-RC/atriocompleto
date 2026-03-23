@@ -1,8 +1,9 @@
 import { Request, Response, NextFunction } from "express";
+import { isFeatureEnabled } from "../constants/feature-flags";
 
 /**
  * Middleware: requires a specific feature to be enabled for the user's tenant.
- * Master role always bypasses. Empty enabled_features = all enabled (backwards-compatible).
+ * Master role always bypasses. Missing flags fall back to the feature default.
  */
 export function requireFeature(featureKey: string) {
   return (req: Request, res: Response, next: NextFunction): void => {
@@ -13,10 +14,7 @@ export function requireFeature(featureKey: string) {
 
     // Master always bypasses feature flags
     if (req.user.role === "master") return next();
-
-    const flags = req.user.enabled_features || {};
-    // Empty object = all features enabled (backwards-compatible)
-    const isEnabled = Object.keys(flags).length === 0 || flags[featureKey] !== false;
+    const isEnabled = isFeatureEnabled(featureKey, req.user.enabled_features);
 
     if (!isEnabled) {
       res.status(403).json({

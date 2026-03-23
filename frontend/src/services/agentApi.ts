@@ -1523,6 +1523,25 @@ class AgentApiService {
     });
   }
 
+  async getCalculatorSnapshots(calculatorType: 'taxes' | 'prices') {
+    return this.request<any[]>(`/api/simulations/calculator-snapshots?calculator_type=${calculatorType}`);
+  }
+
+  async saveCalculatorSnapshot(payload: {
+    calculator_type: 'taxes' | 'prices';
+    name: string;
+    payload: Record<string, unknown>;
+  }) {
+    return this.request<any>('/api/simulations/calculator-snapshots', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async deleteCalculatorSnapshot(id: string) {
+    return this.request(`/api/simulations/calculator-snapshots/${id}`, { method: 'DELETE' });
+  }
+
   async getSavedSimulations() {
     return this.request<any[]>('/api/simulations');
   }

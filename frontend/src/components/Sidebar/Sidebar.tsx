@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import {
+  BadgeDollarSign,
   ShoppingCart,
   LogOut,
   X,
@@ -58,18 +59,13 @@ export function Sidebar() {
   const logoSrc = theme === 'dark' ? logoDark : logoLight;
   const brandPrimaryColor = useBrandPrimaryColor();
 
-  const isActive = (path: string) => {
-    if (path === '/') return location.pathname === '/';
-    return location.pathname.startsWith(path);
-  };
-
   // Build menu items dynamically
   const menuSections: { section: string; items: (SidebarMenuItem & { permission?: string })[] }[] = [
     ...(user?.tenant_id
       ? [
         {
           section: 'Home',
-          items: [{ icon: ShoppingCart, label: 'E-Commerce', path: '/', permission: 'visualizar_venda', featureKey: 'ecommerce' }],
+          items: [{ icon: ShoppingCart, label: 'Vendas', path: '/', permission: 'visualizar_venda', featureKey: 'ecommerce' }],
         },
         {
           section: 'APPS',
@@ -82,7 +78,8 @@ export function Sidebar() {
             { icon: FileText, label: 'Relatórios', path: '/relatorios', permission: 'visualizar_relatorios', featureKey: 'relatorios' },
             { icon: Megaphone, label: 'Campanhas', path: '/campanhas', permission: 'acessar_agente', featureKey: 'campanhas' },
             { icon: BarChart3, label: 'Benchmarking', path: '/benchmarking', permission: 'acessar_agente', featureKey: 'benchmarking' },
-            { icon: Calculator, label: 'Calculadora', path: '/simulacoes', permission: 'acessar_agente', featureKey: 'calculadora' },
+            { icon: Calculator, label: 'Calculadora de Taxa', path: '/simulacoes', permission: 'acessar_agente', featureKey: 'calculadora' },
+            { icon: BadgeDollarSign, label: 'Calculadora de Preços', path: '/simulacoes/precos', permission: 'acessar_agente', featureKey: 'calculadora_precos' },
             { icon: Package, label: 'Estoque EOQ', path: '/simulacoes/inventory', permission: 'acessar_agente', featureKey: 'estoque_eoq' },
           ],
         },
@@ -103,6 +100,13 @@ export function Sidebar() {
       (!item.featureKey || hasFeature(item.featureKey))
     )
   })).filter(section => section.items.length > 0);
+
+  const activePath = filteredSections
+    .flatMap((section) => section.items)
+    .map((item) => item.path)
+    .filter((path) => location.pathname === path || location.pathname.startsWith(`${path}/`))
+    .sort((left, right) => right.length - left.length)[0];
+  const settingsActive = location.pathname === '/configuracoes' || location.pathname.startsWith('/configuracoes/');
 
   const initials = user?.full_name
     ? user.full_name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
@@ -187,7 +191,7 @@ export function Sidebar() {
                   </span>
                 )}
                 {section.items.map((item) => {
-                  const active = isActive(item.path);
+                  const active = item.path === activePath;
                   return (
                     <button
                       key={item.label}
@@ -274,13 +278,13 @@ export function Sidebar() {
                 <button
                   onClick={() => { navigate('/configuracoes'); closeSidebar(); }}
                   title="Configurações"
-                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium transition-[background-color,color] duration-150 active:scale-95 ${isActive('/configuracoes')
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium transition-[background-color,color] duration-150 active:scale-95 ${settingsActive
                     ? 'bg-primary/5'
                     : 'text-secondary/60 hover:bg-border/40 hover:text-primary'
                     }`}
-                  style={isActive('/configuracoes') ? { color: 'var(--color-brand-primary)' } : undefined}
+                  style={settingsActive ? { color: 'var(--color-brand-primary)' } : undefined}
                 >
-                  <Settings size={14} strokeWidth={isActive('/configuracoes') ? 2.2 : 2} />
+                  <Settings size={14} strokeWidth={settingsActive ? 2.2 : 2} />
                 </button>
                 <button
                   onClick={logout}
@@ -320,14 +324,14 @@ export function Sidebar() {
               <div className="flex items-center mt-1 px-2 gap-1">
                 <button
                   onClick={() => { navigate('/configuracoes'); closeSidebar(); }}
-                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium transition-[background-color,color] duration-150 active:scale-95 ${isActive('/configuracoes')
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium transition-[background-color,color] duration-150 active:scale-95 ${settingsActive
                     ? 'bg-primary/5'
                     : 'text-secondary/60 hover:bg-border/40 hover:text-primary'
                     }`}
                   title="Configurações"
-                  style={isActive('/configuracoes') ? { color: 'var(--color-brand-primary)' } : undefined}
+                  style={settingsActive ? { color: 'var(--color-brand-primary)' } : undefined}
                 >
-                  <Settings size={14} strokeWidth={isActive('/configuracoes') ? 2.2 : 2} />
+                  <Settings size={14} strokeWidth={settingsActive ? 2.2 : 2} />
                   <span>Configurações</span>
                 </button>
                 <button

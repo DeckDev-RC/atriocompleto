@@ -51,6 +51,7 @@ const CustomReportsPage = lazyWithRetry(() => import('./pages/CustomReportsPage'
 const CampaignRecommendationsPage = lazyWithRetry(() => import('./pages/CampaignRecommendationsPage'));
 const BenchmarkingPage = lazyWithRetry(() => import('./pages/BenchmarkingPage'));
 const WhatIfAnalysisPage = lazyWithRetry(() => import('./pages/Simulations/WhatIfAnalysis'));
+const PriceCalculatorPage = lazyWithRetry(() => import('./pages/Simulations/PriceCalculator'));
 const InventoryOptimizationPage = lazyWithRetry(() => import('./pages/Simulations/InventoryOptimization'));
 const ProactiveSuggestionsPage = lazyWithRetry(() => import('./pages/ProactiveSuggestionsPage').then(m => ({ default: m.ProactiveSuggestionsPage })));
 
@@ -165,6 +166,11 @@ function AppRoutes() {
           <Route path="simulacoes" element={
             <ProtectedRoute permission="acessar_agente" featureKey="calculadora">
               <WhatIfAnalysisPage />
+            </ProtectedRoute>
+          } />
+          <Route path="simulacoes/precos" element={
+            <ProtectedRoute permission="acessar_agente" featureKey="calculadora_precos">
+              <PriceCalculatorPage />
             </ProtectedRoute>
           } />
           <Route path="simulacoes/inventory" element={

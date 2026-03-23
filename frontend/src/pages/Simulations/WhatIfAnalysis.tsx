@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -21,6 +22,7 @@ import {
   LayoutGrid,
   Link2,
   Printer,
+  Save,
   Search,
   Sparkles,
   Table2,
@@ -49,34 +51,29 @@ import sheinLogo from '../../assets/channels/shein.png';
 import shopeeLogo from '../../assets/channels/shopee.png';
 import tiktokLogo from '../../assets/channels/tiktok-shop.png';
 import { useToast } from '../../components/Toast';
+import { SaveSnapshotModal } from '../../components/simulations/SaveSnapshotModal';
 import { agentApi } from '../../services/agentApi';
 import {
   BRAZILIAN_PREFIX,
-  CALCULATOR_HISTORY_KEY,
-  CALCULATOR_VISIBLE_MARKETS_KEY,
   CATEGORY_OPTIONS,
   DEFAULT_VISIBLE_MARKETPLACES,
   MARKETPLACE_META,
   NCM_DATABASE,
   UF_OPTIONS,
-  buildHistoryEntry,
   calculateMarkupSummary,
   calculateMarketplaceResults,
   calculateWhatIfImpact,
   cloneMarketplaceConfigs,
   createDefaultInputs,
   createDefaultMarketplaceConfigs,
-  dedupeHistoryEntry,
   estimateNcmTaxes,
   formatCurrencyBRL,
   formatPercent,
   generateEanCode,
   getMercadoLivreSupermarketFee,
   parseProductNameFromUrl,
-  sanitizeHistory,
   searchNcmDatabase,
   validateOrCompleteEan,
-  type CalculatorHistoryEntry,
   type CalculatorInputs,
   type CalculatorTab,
   type ComparisonViewMode,
@@ -89,6 +86,7 @@ import {
   type NcmEstimate,
   type NcmMatch,
 } from '../../utils/marketplaceCalculator';
+import type { CalculatorSnapshot } from '../../types/calculatorSnapshots';
 
 type DescriptionMarketplace =
   | 'geral'
@@ -112,6 +110,12 @@ interface WhatIfState {
   salePrice: number;
   productCost: number;
   taxPercent: number;
+}
+
+interface TaxCalculatorSnapshotPayload {
+  inputs: CalculatorInputs;
+  marketConfigs: MarketplaceConfigMap;
+  visibleMarketplaces: MarketplaceId[];
 }
 
 const TAB_ITEMS: Array<{ id: CalculatorTab; label: string; icon: typeof Calculator }> = [
@@ -166,29 +170,6 @@ const DEFAULT_DESCRIPTION_FORM: DescriptionFormState = {
   keywords: '',
   features: '',
 };
-
-function readStoredVisibleMarketplaces() {
-  try {
-    const raw = localStorage.getItem(CALCULATOR_VISIBLE_MARKETS_KEY);
-    if (!raw) return DEFAULT_VISIBLE_MARKETPLACES;
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0
-      ? (parsed.filter((item): item is MarketplaceId => MARKETPLACE_ORDER.includes(item)) as MarketplaceId[])
-      : DEFAULT_VISIBLE_MARKETPLACES;
-  } catch {
-    return DEFAULT_VISIBLE_MARKETPLACES;
-  }
-}
-
-function readStoredHistory() {
-  try {
-    const raw = localStorage.getItem(CALCULATOR_HISTORY_KEY);
-    if (!raw) return [] as CalculatorHistoryEntry[];
-    return sanitizeHistory(JSON.parse(raw));
-  } catch {
-    return [] as CalculatorHistoryEntry[];
-  }
-}
 
 function buildClipboardPayload(results: MarketplaceResult[], productName: string) {
   const lines = [`Comparativo de Marketplaces${productName ? ` · ${productName}` : ''}`, ''];
@@ -925,8 +906,7 @@ export default function WhatIfAnalysis() {
   const [viewMode, setViewMode] = useState<ComparisonViewMode>('cards');
   const [inputs, setInputs] = useState<CalculatorInputs>(() => createDefaultInputs());
   const [marketConfigs, setMarketConfigs] = useState<MarketplaceConfigMap>(() => createDefaultMarketplaceConfigs());
-  const [visibleMarketplaces, setVisibleMarketplaces] = useState<MarketplaceId[]>(() => readStoredVisibleMarketplaces());
-  const [history, setHistory] = useState<CalculatorHistoryEntry[]>(() => readStoredHistory());
+  const [visibleMarketplaces, setVisibleMarketplaces] = useState<MarketplaceId[]>(DEFAULT_VISIBLE_MARKETPLACES);
   const [showWhatIf, setShowWhatIf] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -944,34 +924,15 @@ export default function WhatIfAnalysis() {
   const [ncmMatches, setNcmMatches] = useState<NcmMatch[]>([]);
   const [selectedNcm, setSelectedNcm] = useState<NcmMatch | null>(null);
   const [whatIf, setWhatIf] = useState<WhatIfState>({ salePrice: 0, productCost: 0, taxPercent: 0 });
-  const historySaveTimer = useRef<number | null>(null);
+  const [savedTaxSnapshots, setSavedTaxSnapshots] = useState<CalculatorSnapshot<TaxCalculatorSnapshotPayload>[]>([]);
+  const [saveSnapshotOpen, setSaveSnapshotOpen] = useState(false);
+  const [snapshotName, setSnapshotName] = useState('');
+  const [snapshotLoading, setSnapshotLoading] = useState(false);
   const exportAnchorRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    localStorage.setItem(CALCULATOR_VISIBLE_MARKETS_KEY, JSON.stringify(visibleMarketplaces));
-  }, [visibleMarketplaces]);
-
-  useEffect(() => {
-    localStorage.setItem(CALCULATOR_HISTORY_KEY, JSON.stringify(history.slice(0, 10)));
-  }, [history]);
 
   useEffect(() => {
     setWhatIf({ salePrice: inputs.salePrice, productCost: inputs.productCost, taxPercent: inputs.taxPercent });
   }, [inputs.salePrice, inputs.productCost, inputs.taxPercent]);
-
-  useEffect(() => {
-    if (historySaveTimer.current) window.clearTimeout(historySaveTimer.current);
-    if (inputs.salePrice <= 0) return;
-
-    historySaveTimer.current = window.setTimeout(() => {
-      const entry = buildHistoryEntry(inputs, marketConfigs);
-      setHistory((current) => (dedupeHistoryEntry(current, entry) ? current : [entry, ...current].slice(0, 10)));
-    }, 1200);
-
-    return () => {
-      if (historySaveTimer.current) window.clearTimeout(historySaveTimer.current);
-    };
-  }, [inputs, marketConfigs]);
 
   useEffect(() => {
     if (!showFilters && !showExportMenu) return;
@@ -1001,6 +962,17 @@ export default function WhatIfAnalysis() {
 
     return () => window.clearTimeout(timer);
   }, [ncmQuery]);
+
+  const loadSavedTaxSnapshots = useCallback(async () => {
+    const response = await agentApi.getCalculatorSnapshots('taxes');
+    if (response.success && response.data) {
+      setSavedTaxSnapshots(response.data as CalculatorSnapshot<TaxCalculatorSnapshotPayload>[]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSavedTaxSnapshots();
+  }, [loadSavedTaxSnapshots]);
 
   const markup = useMemo(() => calculateMarkupSummary(inputs), [inputs]);
   const activeInputs = useMemo<CalculatorInputs>(() => (showWhatIf ? { ...inputs, salePrice: whatIf.salePrice, productCost: whatIf.productCost, taxPercent: whatIf.taxPercent } : inputs), [inputs, showWhatIf, whatIf]);
@@ -1060,12 +1032,66 @@ export default function WhatIfAnalysis() {
     showToast('Visualização pronta para salvar em PDF.', 'success');
   };
 
-  const loadHistoryEntry = (entry: CalculatorHistoryEntry) => {
-    setInputs(entry.inputs);
-    setMarketConfigs(cloneMarketplaceConfigs(entry.configs));
+  const openSaveSnapshotModal = () => {
+    setSnapshotName(inputs.productName.trim() || 'Cálculo de taxas');
+    setSaveSnapshotOpen(true);
+  };
+
+  const handleSaveTaxSnapshot = async () => {
+    if (!snapshotName.trim()) {
+      showToast('Informe um nome para salvar o cálculo.', 'warning');
+      return;
+    }
+
+    setSnapshotLoading(true);
+    const response = await agentApi.saveCalculatorSnapshot({
+      calculator_type: 'taxes',
+      name: snapshotName.trim(),
+      payload: {
+        inputs,
+        marketConfigs,
+        visibleMarketplaces,
+      },
+    });
+    setSnapshotLoading(false);
+
+    if (!response.success) {
+      showToast(response.error || 'Erro ao salvar cálculo.', 'error');
+      return;
+    }
+
+    setSaveSnapshotOpen(false);
+    setSnapshotName('');
+    await loadSavedTaxSnapshots();
+    showToast('Cálculo salvo com sucesso.', 'success');
+  };
+
+  const loadSavedTaxSnapshot = (snapshot: CalculatorSnapshot<TaxCalculatorSnapshotPayload>) => {
+    setInputs(snapshot.payload.inputs);
+    setMarketConfigs(cloneMarketplaceConfigs(snapshot.payload.marketConfigs));
+    setVisibleMarketplaces(
+      snapshot.payload.visibleMarketplaces.length > 0
+        ? snapshot.payload.visibleMarketplaces.filter((item) => MARKETPLACE_ORDER.includes(item))
+        : DEFAULT_VISIBLE_MARKETPLACES,
+    );
     setShowWhatIf(false);
-    setWhatIf({ salePrice: entry.inputs.salePrice, productCost: entry.inputs.productCost, taxPercent: entry.inputs.taxPercent });
-    showToast('Cálculo recuperado do histórico.', 'success');
+    setWhatIf({
+      salePrice: snapshot.payload.inputs.salePrice,
+      productCost: snapshot.payload.inputs.productCost,
+      taxPercent: snapshot.payload.inputs.taxPercent,
+    });
+    showToast('Cálculo salvo carregado.', 'success');
+  };
+
+  const deleteSavedTaxSnapshot = async (snapshotId: string) => {
+    const response = await agentApi.deleteCalculatorSnapshot(snapshotId);
+    if (!response.success) {
+      showToast(response.error || 'Erro ao remover cálculo salvo.', 'error');
+      return;
+    }
+
+    await loadSavedTaxSnapshots();
+    showToast('Cálculo salvo removido.', 'success');
   };
 
   const extractProductFromLink = () => {
@@ -1155,7 +1181,7 @@ export default function WhatIfAnalysis() {
   return (
     <div className="min-h-screen bg-body p-4 sm:p-6">
       <div className="mx-auto flex max-w-[1080px] flex-col gap-4">
-        <Header title="Calculadora" subtitle="Taxas de marketplace, códigos EAN e NCM em um só lugar." />
+        <Header title="Calculadora de Taxas" subtitle="Taxas de marketplace, códigos EAN e NCM em um só lugar." />
 
         <nav className="flex gap-1 rounded-xl border border-border bg-card p-1">
           {TAB_ITEMS.map((tab) => {
@@ -1283,6 +1309,10 @@ export default function WhatIfAnalysis() {
                   <button type="button" onClick={() => { setShowWhatIf((current) => !current); if (showFilters) setShowFilters(false); if (showExportMenu) setShowExportMenu(false); }} className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${showWhatIf ? 'border-[var(--color-brand-primary)] bg-[var(--color-brand-primary)] text-white' : 'border-border text-muted hover:text-primary'}`}>
                     <Sparkles size={13} />
                     What-If
+                  </button>
+                  <button type="button" onClick={openSaveSnapshotModal} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-semibold text-muted transition-colors hover:text-primary">
+                    <Save size={13} />
+                    Salvar
                   </button>
                   <button type="button" onClick={() => { setShowExportMenu((current) => !current); setShowFilters(false); }} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-semibold text-muted transition-colors hover:text-primary">
                     <Download size={13} />
@@ -1435,31 +1465,46 @@ export default function WhatIfAnalysis() {
 
               <div className="mt-4 overflow-hidden rounded-xl border border-border">
                 <div className="flex items-center justify-between border-b border-border bg-body px-4 py-2.5">
-                  <h3 className="text-[12px] font-bold text-primary">Últimos Cálculos</h3>
-                  <span className="text-[10px] font-semibold text-muted">{history.length} de 10</span>
+                  <h3 className="text-[12px] font-bold text-primary">Cálculos salvos</h3>
+                  <span className="text-[10px] font-semibold text-muted">{savedTaxSnapshots.length}</span>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full">
                     <thead>
                       <tr className="border-b border-border bg-body text-left text-[10px] font-bold uppercase tracking-wider text-muted">
-                        <th className="px-3 py-2">Data</th>
+                        <th className="px-3 py-2">Nome</th>
                         <th className="px-3 py-2">Produto</th>
                         <th className="px-3 py-2 text-right">Preço</th>
-                        <th className="px-3 py-2 text-right">Custo</th>
-                        <th className="px-3 py-2 text-right">Margem</th>
+                        <th className="px-3 py-2 text-right">Atualizado</th>
+                        <th className="px-3 py-2 text-right">Ações</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {history.map((entry) => (
-                        <tr key={entry.id} onClick={() => loadHistoryEntry(entry)} className="cursor-pointer border-b border-border bg-card text-[11px] transition-colors last:border-b-0 hover:bg-body">
-                          <td className="px-3 py-2.5 text-muted">{new Date(entry.createdAt).toLocaleDateString('pt-BR')}</td>
-                          <td className="px-3 py-2.5 font-medium text-primary">{entry.productName}</td>
-                          <td className="px-3 py-2.5 text-right tabular-nums text-primary">{formatCurrencyBRL(entry.salePrice)}</td>
-                          <td className="px-3 py-2.5 text-right tabular-nums text-secondary">{formatCurrencyBRL(entry.productCost)}</td>
-                          <td className="px-3 py-2.5 text-right font-bold tabular-nums text-primary">{formatPercent(entry.grossMarginPercent, 1)}</td>
+                      {savedTaxSnapshots.map((snapshot) => (
+                        <tr key={snapshot.id} className="border-b border-border bg-card text-[11px] transition-colors last:border-b-0 hover:bg-body">
+                          <td className="px-3 py-2.5 font-semibold text-primary">{snapshot.name}</td>
+                          <td className="px-3 py-2.5 text-secondary">{snapshot.payload.inputs.productName || 'Produto sem nome'}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-primary">{formatCurrencyBRL(snapshot.payload.inputs.salePrice)}</td>
+                          <td className="px-3 py-2.5 text-right text-muted">{new Date(snapshot.updated_at).toLocaleDateString('pt-BR')}</td>
+                          <td className="px-3 py-2.5">
+                            <div className="flex justify-end gap-2">
+                              <button type="button" onClick={() => loadSavedTaxSnapshot(snapshot)} className="rounded-md border border-border px-2.5 py-1 text-[10px] font-bold text-muted transition-colors hover:text-primary">
+                                Carregar
+                              </button>
+                              <button type="button" onClick={() => void deleteSavedTaxSnapshot(snapshot.id)} className="rounded-md border border-danger/20 px-2.5 py-1 text-[10px] font-bold text-danger transition-colors hover:bg-danger/10">
+                                <Trash2 size={12} className="inline" /> Remover
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
-                      {history.length === 0 ? <tr><td colSpan={5} className="bg-card px-4 py-6 text-center text-[11px] text-muted">Nenhum cálculo salvo ainda.</td></tr> : null}
+                      {savedTaxSnapshots.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="bg-card px-4 py-6 text-center text-[11px] text-muted">
+                            Nenhum cálculo salvo ainda.
+                          </td>
+                        </tr>
+                      ) : null}
                     </tbody>
                   </table>
                 </div>
@@ -1700,6 +1745,17 @@ export default function WhatIfAnalysis() {
           </SectionCard>
         ) : null}
       </div>
+
+      <SaveSnapshotModal
+        open={saveSnapshotOpen}
+        title="Salvar cálculo de taxas"
+        description="O cálculo fica salvo no backend e poderá ser carregado depois pelo mesmo usuário."
+        name={snapshotName}
+        loading={snapshotLoading}
+        onNameChange={setSnapshotName}
+        onClose={() => setSaveSnapshotOpen(false)}
+        onConfirm={() => void handleSaveTaxSnapshot()}
+      />
     </div>
   );
 }

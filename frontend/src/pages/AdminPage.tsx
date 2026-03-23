@@ -5,7 +5,12 @@ import { useAuth } from '../contexts/AuthContext';
 import { PasswordStrengthIndicator } from '../components/PasswordStrengthIndicator';
 import { AuditLogPanel } from '../components/Admin/AuditLogPanel';
 import { AccessControlPanel } from '../components/Admin/AccessControlPanel';
-import { FEATURE_REGISTRY, type FeatureKey } from '../constants/feature-flags';
+import {
+  FEATURE_REGISTRY,
+  getDefaultFeatureFlags,
+  isFeatureEnabled,
+  type FeatureKey,
+} from '../constants/feature-flags';
 
 type RoleType = 'master' | 'user';
 type Tab = 'tenants' | 'users' | 'requests' | 'audit' | 'security' | 'access';
@@ -112,14 +117,9 @@ function TenantsPanel() {
     if (!tenant) return;
 
     const currentFlags = tenant.enabled_features || {};
-    // If flags are empty, initialize all as true first
-    const allKeys = Object.keys(FEATURE_REGISTRY) as FeatureKey[];
-    const baseFlags: Record<string, boolean> = {};
-    if (Object.keys(currentFlags).length === 0) {
-      allKeys.forEach(k => { baseFlags[k] = true; });
-    } else {
-      Object.assign(baseFlags, currentFlags);
-    }
+    const baseFlags: Record<string, boolean> = Object.keys(currentFlags).length === 0
+      ? { ...getDefaultFeatureFlags() }
+      : { ...currentFlags };
     baseFlags[featureKey] = !currentValue;
 
     setSavingFeatures(true);
@@ -136,9 +136,7 @@ function TenantsPanel() {
   };
 
   const getFeatureEnabled = (tenant: Tenant, key: string): boolean => {
-    const flags = tenant.enabled_features || {};
-    if (Object.keys(flags).length === 0) return true;
-    return flags[key] !== false;
+    return isFeatureEnabled(key, tenant.enabled_features);
   };
 
   return (

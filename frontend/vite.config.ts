@@ -7,11 +7,59 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          'vendor-charts': ['recharts', 'chart.js'],
-          'vendor-markdown': ['react-markdown', 'remark-gfm'],
-          'vendor-ui': ['lucide-react', 'react-day-picker'],
+        manualChunks(id) {
+          const moduleId = id.replace(/\\/g, '/')
+
+          if (!moduleId.includes('/node_modules/')) {
+            return
+          }
+
+          if (
+            moduleId.includes('/react-router-dom/') ||
+            moduleId.includes('/react-dom/') ||
+            moduleId.includes('/react/')
+          ) {
+            return 'vendor-react'
+          }
+
+          if (moduleId.includes('/chart.js/')) {
+            return 'vendor-chartjs'
+          }
+
+          if (moduleId.includes('/recharts/')) {
+            return 'vendor-recharts'
+          }
+
+          if (
+            moduleId.includes('/d3-') ||
+            moduleId.includes('/internmap/') ||
+            moduleId.includes('/robust-predicates/')
+          ) {
+            return 'vendor-d3'
+          }
+
+          if (
+            moduleId.includes('/react-markdown/') ||
+            moduleId.includes('/remark-gfm/') ||
+            moduleId.includes('/mdast-util-') ||
+            moduleId.includes('/micromark') ||
+            moduleId.includes('/unified/') ||
+            moduleId.includes('/remark-') ||
+            moduleId.includes('/hast-util-') ||
+            moduleId.includes('/property-information/') ||
+            moduleId.includes('/space-separated-tokens/') ||
+            moduleId.includes('/comma-separated-tokens/')
+          ) {
+            return 'vendor-markdown'
+          }
+
+          if (
+            moduleId.includes('/lucide-react/') ||
+            moduleId.includes('/react-day-picker/') ||
+            moduleId.includes('/date-fns/')
+          ) {
+            return 'vendor-ui'
+          }
         },
       },
     },
