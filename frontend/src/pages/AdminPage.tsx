@@ -7,7 +7,6 @@ import { AuditLogPanel } from '../components/Admin/AuditLogPanel';
 import { AccessControlPanel } from '../components/Admin/AccessControlPanel';
 import {
   FEATURE_REGISTRY,
-  getDefaultFeatureFlags,
   isFeatureEnabled,
   type FeatureKey,
 } from '../constants/feature-flags';
@@ -19,6 +18,7 @@ type RequestStatus = 'pending' | 'reviewed' | 'approved' | 'rejected' | 'convert
 interface Tenant {
   id: string;
   name: string;
+  tenant_code: string;
   ai_rate_limit: number;
   created_at: string;
   user_count: number;
@@ -116,10 +116,9 @@ function TenantsPanel() {
     const tenant = tenants.find(t => t.id === tenantId);
     if (!tenant) return;
 
-    const currentFlags = tenant.enabled_features || {};
-    const baseFlags: Record<string, boolean> = Object.keys(currentFlags).length === 0
-      ? { ...getDefaultFeatureFlags() }
-      : { ...currentFlags };
+    const baseFlags: Record<string, boolean> = Object.fromEntries(
+      (Object.keys(FEATURE_REGISTRY) as FeatureKey[]).map((key) => [key, isFeatureEnabled(key, tenant.enabled_features)]),
+    );
     baseFlags[featureKey] = !currentValue;
 
     setSavingFeatures(true);
@@ -162,6 +161,7 @@ function TenantsPanel() {
             <div>
               <p className="text-sm font-semibold">{tenant.name}</p>
               <div className="flex gap-3">
+                <p className="text-xs text-muted font-mono">{tenant.tenant_code}</p>
                 <p className="text-xs text-muted">{tenant.user_count} usuario(s)</p>
                 <p className="text-xs text-brand-primary font-medium">Limite IA: {tenant.ai_rate_limit}/h</p>
               </div>
@@ -328,7 +328,7 @@ function UsersPanel() {
             disabled={editingId === currentUser?.id}
           >
             <option value="">Sem empresa</option>
-            {tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
+            {tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name} • {tenant.tenant_code}</option>)}
           </select>
         </div>
         <div className="mt-3 flex items-center gap-2 px-1">
@@ -507,7 +507,7 @@ function ConvertInline({ request, tenants, onDone }: { request: AccessRequest; t
         </select>
         <select className="rounded border border-border bg-body px-2 py-1 text-xs" value={tenantId} onChange={(e) => setTenantId(e.target.value)}>
           <option value="">Sem empresa</option>
-          {tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
+          {tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name} • {tenant.tenant_code}</option>)}
         </select>
       </div>
       <textarea className="mt-2 w-full rounded border border-border bg-body px-2 py-1 text-xs" rows={2} placeholder="Notas (opcional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
@@ -520,16 +520,33 @@ function SecurityPanel() {
   const [blockedIps, setBlockedIps] = useState<Array<{ ip: string; ttl: number }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [publicSignupEnabled, setPublicSignupEnabled] = useState(false);
+  const [publicSignupError, setPublicSignupError] = useState('');
+  const [publicSignupMessage, setPublicSignupMessage] = useState('');
+  const [savingPublicSignup, setSavingPublicSignup] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
-    const result = await agentApi.getBlockedIps();
-    if (result.success && result.data) {
-      setBlockedIps(result.data as Array<{ ip: string; ttl: number }>);
+    setPublicSignupError('');
+
+    const [blockedIpsResult, publicSignupResult] = await Promise.all([
+      agentApi.getBlockedIps(),
+      agentApi.getPublicSignupSettings(),
+    ]);
+
+    if (blockedIpsResult.success && blockedIpsResult.data) {
+      setBlockedIps(blockedIpsResult.data as Array<{ ip: string; ttl: number }>);
     } else {
-      setError(result.error || 'Erro ao carregar IPs bloqueados');
+      setError(blockedIpsResult.error || 'Erro ao carregar IPs bloqueados');
     }
+
+    if (publicSignupResult.success && publicSignupResult.data) {
+      setPublicSignupEnabled(!!publicSignupResult.data.enabled);
+    } else {
+      setPublicSignupError(publicSignupResult.error || 'Erro ao carregar configuracao do cadastro publico');
+    }
+
     setLoading(false);
   }, []);
 
@@ -545,6 +562,27 @@ function SecurityPanel() {
     }
   };
 
+  const savePublicSignup = async (e: FormEvent) => {
+    e.preventDefault();
+    setSavingPublicSignup(true);
+    setPublicSignupError('');
+    setPublicSignupMessage('');
+
+    const result = await agentApi.updatePublicSignupSettings({
+      enabled: publicSignupEnabled,
+    });
+
+    setSavingPublicSignup(false);
+
+    if (!result.success) {
+      setPublicSignupError(result.error || 'Erro ao salvar cadastro publico');
+      return;
+    }
+
+    setPublicSignupMessage('Configuracao salva com sucesso.');
+    await load();
+  };
+
   const formatTTL = (seconds: number) => {
     if (seconds <= 0) return 'Expirado';
     const mins = Math.floor(seconds / 60);
@@ -553,57 +591,101 @@ function SecurityPanel() {
   };
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-semibold">IPs Bloqueados (Rate Limit)</h3>
-          <p className="text-xs text-muted">IPs bloqueados automaticamente por abuso de tentativas.</p>
+    <div className="grid gap-4">
+      <form onSubmit={savePublicSignup} className="rounded-xl border border-border bg-card p-4">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold">Cadastro publico</h3>
+            <p className="text-xs text-muted">Exibe o botao "Criar conta" no login e libera cadastro aberto para novos usuarios.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => load()}
+            className="rounded-lg border border-border px-3 py-1 text-xs hover:bg-body"
+          >
+            Atualizar
+          </button>
         </div>
+
+        {publicSignupError && <p className="mb-4 text-xs text-danger">{publicSignupError}</p>}
+        {publicSignupMessage && <p className="mb-4 text-xs text-success">{publicSignupMessage}</p>}
+
+        <div className="grid gap-4">
+          <label className="flex items-center gap-3 rounded-xl border border-border bg-body/40 px-4 py-3">
+            <input
+              type="checkbox"
+              checked={publicSignupEnabled}
+              onChange={(e) => setPublicSignupEnabled(e.target.checked)}
+              className="h-4 w-4 accent-(--color-brand-primary)"
+            />
+            <div>
+              <p className="text-sm font-medium text-primary">Ativar cadastro publico</p>
+              <p className="text-xs text-muted">Quando ativo, o login passa a mostrar o fluxo de criacao de conta.</p>
+            </div>
+          </label>
+        </div>
+
         <button
-          onClick={() => load()}
-          className="rounded-lg border border-border px-3 py-1 text-xs hover:bg-body"
+          type="submit"
+          disabled={loading || savingPublicSignup}
+          className="mt-4 rounded-lg bg-(--color-brand-primary) px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
-          Atualizar
+          {savingPublicSignup ? 'Salvando...' : 'Salvar cadastro publico'}
         </button>
-      </div>
+      </form>
 
-      {error && <p className="mb-4 text-xs text-danger">{error}</p>}
-
-      {loading ? (
-        <p className="text-sm text-muted">Carregando...</p>
-      ) : blockedIps.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border py-8 text-center text-muted">
-          <p className="text-sm">Nenhum IP bloqueado no momento.</p>
+      <div className="rounded-xl border border-border bg-card p-4">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold">IPs Bloqueados (Rate Limit)</h3>
+            <p className="text-xs text-muted">IPs bloqueados automaticamente por abuso de tentativas.</p>
+          </div>
+          <button
+            onClick={() => load()}
+            className="rounded-lg border border-border px-3 py-1 text-xs hover:bg-body"
+          >
+            Atualizar
+          </button>
         </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-border text-xs text-muted uppercase tracking-wider">
-                <th className="px-3 py-2 font-medium">IP Address</th>
-                <th className="px-3 py-2 font-medium">Tempo Restante</th>
-                <th className="px-3 py-2 font-medium text-right">Acoes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {blockedIps.map((item) => (
-                <tr key={item.ip} className="border-b border-border/50 hover:bg-body/30 transition-colors">
-                  <td className="px-3 py-3 font-mono text-xs">{item.ip}</td>
-                  <td className="px-3 py-3 text-xs">{formatTTL(item.ttl)}</td>
-                  <td className="px-3 py-3 text-right">
-                    <button
-                      onClick={() => unblock(item.ip)}
-                      className="rounded-md border border-danger/30 px-2 py-1 text-xs text-danger hover:bg-danger/10 transition-colors"
-                    >
-                      Desbloquear
-                    </button>
-                  </td>
+
+        {error && <p className="mb-4 text-xs text-danger">{error}</p>}
+
+        {loading ? (
+          <p className="text-sm text-muted">Carregando...</p>
+        ) : blockedIps.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border py-8 text-center text-muted">
+            <p className="text-sm">Nenhum IP bloqueado no momento.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs text-muted uppercase tracking-wider">
+                  <th className="px-3 py-2 font-medium">IP Address</th>
+                  <th className="px-3 py-2 font-medium">Tempo Restante</th>
+                  <th className="px-3 py-2 font-medium text-right">Acoes</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {blockedIps.map((item) => (
+                  <tr key={item.ip} className="border-b border-border/50 hover:bg-body/30 transition-colors">
+                    <td className="px-3 py-3 font-mono text-xs">{item.ip}</td>
+                    <td className="px-3 py-3 text-xs">{formatTTL(item.ttl)}</td>
+                    <td className="px-3 py-3 text-right">
+                      <button
+                        onClick={() => unblock(item.ip)}
+                        className="rounded-md border border-danger/30 px-2 py-1 text-xs text-danger hover:bg-danger/10 transition-colors"
+                      >
+                        Desbloquear
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

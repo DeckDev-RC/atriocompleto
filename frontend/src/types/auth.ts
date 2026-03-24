@@ -9,6 +9,7 @@ export interface AuthUser {
     permissions: Record<string, any>;
     enabled_features: Record<string, boolean>;
     two_factor_enabled: boolean;
+    needs_tenant_setup: boolean;
 }
 
 export type LoginResult =

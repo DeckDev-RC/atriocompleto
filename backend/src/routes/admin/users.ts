@@ -28,16 +28,20 @@ router.get("/", async (req: Request, res: Response) => {
 
     const { data: tenants } = await supabaseAdmin
       .from("tenants")
-      .select("id, name");
+      .select("id, name, tenant_code");
 
-    const tenantMap: Record<string, string> = {};
+    const tenantMap: Record<string, { name: string; tenant_code: string | null }> = {};
     (tenants || []).forEach((tenant) => {
-      tenantMap[tenant.id] = tenant.name;
+      tenantMap[tenant.id] = {
+        name: tenant.name,
+        tenant_code: tenant.tenant_code || null,
+      };
     });
 
     const users = (data || []).map((user) => ({
       ...user,
-      tenant_name: user.tenant_id ? tenantMap[user.tenant_id] || "—" : "—",
+      tenant_name: user.tenant_id ? tenantMap[user.tenant_id]?.name || "—" : "—",
+      tenant_code: user.tenant_id ? tenantMap[user.tenant_id]?.tenant_code || null : null,
     }));
 
     res.json({ success: true, data: users });

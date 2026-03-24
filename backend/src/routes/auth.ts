@@ -21,6 +21,11 @@ import { TOTPService } from "../utils/totp";
 import { AuditService } from "../services/audit";
 import { AccessControlService } from "../services/access-control";
 import { authLimiter, registerLimiter, publicApiLimiter } from "../middleware/rate-limit";
+import {
+  assertPublicSignupEnabled,
+  getPublicSignupPublicView,
+} from "../services/publicSignup";
+import { buildDisabledTenantFeatures, generateUniqueTenantCode } from "../services/tenantIdentity";
 
 
 const router = Router();
@@ -39,6 +44,7 @@ interface ProfileRow {
   two_factor_secret: string | null;
   recovery_codes_hash: string[] | null;
   bypass_2fa: boolean;
+  needs_tenant_setup: boolean;
 }
 
 function normalizeEmail(email: string): string {
@@ -48,7 +54,7 @@ function normalizeEmail(email: string): string {
 async function getProfile(userId: string): Promise<ProfileRow | null> {
   const { data, error } = await supabaseAdmin
     .from("profiles")
-    .select("id, email, full_name, role, tenant_id, is_active, avatar_url, email_verified, permissions, two_factor_enabled, two_factor_secret, recovery_codes_hash, bypass_2fa")
+    .select("id, email, full_name, role, tenant_id, is_active, avatar_url, email_verified, permissions, two_factor_enabled, two_factor_secret, recovery_codes_hash, bypass_2fa, needs_tenant_setup")
     .eq("id", userId)
     .single();
 
@@ -57,6 +63,19 @@ async function getProfile(userId: string): Promise<ProfileRow | null> {
   }
 
   return data as ProfileRow;
+}
+
+async function waitForProfile(userId: string, retries = 4): Promise<ProfileRow | null> {
+  for (let attempt = 0; attempt < retries; attempt += 1) {
+    const profile = await getProfile(userId);
+    if (profile) return profile;
+
+    if (attempt < retries - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+
+  return null;
 }
 
 async function getTenantName(tenantId: string | null): Promise<string | null> {
@@ -77,6 +96,31 @@ async function getTenantFeatures(tenantId: string | null): Promise<Record<string
     .eq("id", tenantId)
     .single();
   return data?.enabled_features || {};
+}
+
+async function buildAuthUserPayload(profile: ProfileRow) {
+  const [tenant_name, enabled_features, rbacPermissions] = await Promise.all([
+    getTenantName(profile.tenant_id),
+    getTenantFeatures(profile.tenant_id),
+    AccessControlService.getUserPermissions(profile.id),
+  ]);
+
+  return {
+    id: profile.id,
+    email: profile.email,
+    full_name: profile.full_name,
+    role: profile.role,
+    tenant_id: profile.tenant_id,
+    tenant_name,
+    avatar_url: profile.avatar_url || null,
+    permissions: {
+      ...(profile.permissions || {}),
+      ...rbacPermissions,
+    },
+    enabled_features,
+    two_factor_enabled: profile.two_factor_enabled,
+    needs_tenant_setup: profile.needs_tenant_setup,
+  };
 }
 
 const loginSchema = z.object({
@@ -135,10 +179,7 @@ router.post("/login", authLimiter, async (req: Request, res: Response) => {
     }
 
     if (profile.bypass_2fa) {
-      const [tenant_name, enabled_features] = await Promise.all([
-        getTenantName(profile.tenant_id),
-        getTenantFeatures(profile.tenant_id),
-      ]);
+      const userPayload = await buildAuthUserPayload(profile);
 
       const expiresAt = data.session.expires_at
         ? Math.floor(new Date(data.session.expires_at * 1000).getTime() / 1000)
@@ -150,21 +191,7 @@ router.post("/login", authLimiter, async (req: Request, res: Response) => {
           access_token: data.session.access_token,
           refresh_token: data.session.refresh_token,
           expires_at: expiresAt,
-          user: {
-            id: profile.id,
-            email: profile.email,
-            full_name: profile.full_name,
-            role: profile.role,
-            tenant_id: profile.tenant_id,
-            tenant_name,
-            avatar_url: profile.avatar_url || null,
-            permissions: {
-              ...(profile.permissions || {}),
-              ...(await AccessControlService.getUserPermissions(profile.id)),
-            },
-            enabled_features,
-            two_factor_enabled: profile.two_factor_enabled,
-          },
+          user: userPayload,
         },
       });
 
@@ -567,10 +594,7 @@ router.post("/verify-2fa", authLimiter, async (req: Request, res: Response) => {
       return;
     }
 
-    const [tenant_name, enabled_features] = await Promise.all([
-      getTenantName(profile.tenant_id),
-      getTenantFeatures(profile.tenant_id),
-    ]);
+    const userPayload = await buildAuthUserPayload(profile);
     await supabaseAdmin.from("auth_login_challenges").delete().eq("id", challenge.id);
 
     const expiresAt = challenge.session_expires_at
@@ -583,21 +607,7 @@ router.post("/verify-2fa", authLimiter, async (req: Request, res: Response) => {
         access_token: challenge.access_token,
         refresh_token: challenge.refresh_token,
         expires_at: expiresAt,
-        user: {
-          id: profile.id,
-          email: profile.email,
-          full_name: profile.full_name,
-          role: profile.role,
-          tenant_id: profile.tenant_id,
-          tenant_name,
-          avatar_url: profile.avatar_url || null,
-          permissions: {
-            ...(profile.permissions || {}),
-            ...(await AccessControlService.getUserPermissions(profile.id)),
-          },
-          enabled_features,
-          two_factor_enabled: profile.two_factor_enabled,
-        },
+        user: userPayload,
       },
     });
 
@@ -614,6 +624,152 @@ router.post("/verify-2fa", authLimiter, async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("[Auth] verify-2fa error:", error);
+    res.status(500).json({ success: false, error: "Erro interno" });
+  }
+});
+
+const publicSignupSchema = z
+  .object({
+    full_name: z.string().trim().min(2, "Nome obrigatorio").max(120, "Nome muito longo"),
+    email: z.string().email("Email invalido"),
+    password: strongPasswordSchema,
+    confirm_password: z.string().min(1, "Confirmacao obrigatoria"),
+  })
+  .refine((data) => data.password === data.confirm_password, {
+    message: "As senhas nao coincidem",
+    path: ["confirm_password"],
+  });
+
+router.get("/public-signup-config", publicApiLimiter, async (_req: Request, res: Response) => {
+  try {
+    const data = await getPublicSignupPublicView();
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error("[Auth] public-signup-config error:", error);
+    res.status(500).json({ success: false, error: "Erro ao carregar configuracao do cadastro publico" });
+  }
+});
+
+router.post("/register", registerLimiter, async (req: Request, res: Response) => {
+  try {
+    const parsed = publicSignupSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        success: false,
+        error: "Dados invalidos",
+        details: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const email = normalizeEmail(parsed.data.email);
+
+    try {
+      await assertPublicSignupEnabled();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Cadastro publico indisponivel no momento.";
+      res.status(403).json({ success: false, error: message });
+      return;
+    }
+
+    const { data: existingProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (existingProfile) {
+      res.status(409).json({
+        success: false,
+        error: "Este email ja possui acesso. Tente fazer login ou recuperar sua senha.",
+      });
+      return;
+    }
+
+    const { data: createdUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password: parsed.data.password,
+      email_confirm: true,
+      user_metadata: {
+        full_name: parsed.data.full_name,
+        role: "user",
+        tenant_id: null,
+        permissions: {},
+      },
+    });
+
+    if (createError || !createdUser.user) {
+      console.error("[Auth] register createUser error:", createError);
+      const message = createError?.message?.includes("already been registered")
+        ? "Este email ja possui acesso. Tente fazer login ou recuperar sua senha."
+        : createError?.message || "Nao foi possivel criar sua conta agora.";
+      const status = message.includes("ja possui acesso") ? 409 : 400;
+      res.status(status).json({ success: false, error: message });
+      return;
+    }
+
+    let profile = await waitForProfile(createdUser.user.id);
+
+    if (!profile) {
+      const { error: insertProfileError } = await supabaseAdmin
+        .from("profiles")
+        .upsert({
+          id: createdUser.user.id,
+          email,
+          full_name: parsed.data.full_name,
+          role: "user",
+          tenant_id: null,
+          permissions: {},
+          email_verified: true,
+          bypass_2fa: true,
+          needs_tenant_setup: true,
+          updated_at: new Date().toISOString(),
+        });
+
+      if (insertProfileError) {
+        console.error("[Auth] register profile upsert error:", insertProfileError);
+        res.status(500).json({ success: false, error: "Conta criada, mas o perfil nao foi inicializado corretamente." });
+        return;
+      }
+
+      profile = await waitForProfile(createdUser.user.id, 2);
+    }
+
+    const { error: updateProfileError } = await supabaseAdmin
+      .from("profiles")
+      .update({
+        email_verified: true,
+        bypass_2fa: true,
+        needs_tenant_setup: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", createdUser.user.id);
+
+    if (updateProfileError) {
+      console.error("[Auth] register profile update error:", updateProfileError);
+      res.status(500).json({ success: false, error: "Nao foi possivel finalizar a configuracao da conta." });
+      return;
+    }
+
+    res.status(201).json({
+      success: true,
+      data: { message: "Conta criada com sucesso." },
+    });
+
+    void AuditService.log({
+      userId: createdUser.user.id,
+      action: "public_signup.register",
+      resource: "auth",
+      entityId: createdUser.user.id,
+      ipAddress: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent,
+      details: {
+        message: "Conta criada via cadastro publico",
+        email,
+      },
+    });
+  } catch (error) {
+    console.error("[Auth] register error:", error);
     res.status(500).json({ success: false, error: "Erro interno" });
   }
 });
@@ -969,6 +1125,120 @@ router.post("/set-password", requireAuth, async (req: Request, res: Response) =>
   }
 });
 
+const onboardingCompanySchema = z.object({
+  name: z.string().trim().min(2, "Nome minimo 2 caracteres").max(100, "Nome muito longo"),
+});
+
+router.post("/onboarding/company", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const parsed = onboardingCompanySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        success: false,
+        error: "Dados invalidos",
+        details: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+
+    const profile = await getProfile(req.user!.id);
+    if (!profile) {
+      res.status(403).json({ success: false, error: "Perfil nao encontrado" });
+      return;
+    }
+
+    if (!profile.needs_tenant_setup) {
+      res.status(400).json({ success: false, error: "Seu onboarding ja foi concluido." });
+      return;
+    }
+
+    if (profile.tenant_id) {
+      await supabaseAdmin
+        .from("profiles")
+        .update({ needs_tenant_setup: false, updated_at: new Date().toISOString() })
+        .eq("id", profile.id);
+      await invalidateAuthCache(profile.id);
+      res.status(400).json({ success: false, error: "Sua conta ja esta vinculada a uma empresa." });
+      return;
+    }
+
+    const tenantCode = await generateUniqueTenantCode(parsed.data.name);
+    const { data: tenant, error: tenantError } = await supabaseAdmin
+      .from("tenants")
+      .insert({
+        name: parsed.data.name,
+        ai_rate_limit: 20,
+        tenant_code: tenantCode,
+        enabled_features: buildDisabledTenantFeatures(),
+      })
+      .select("id, name, tenant_code")
+      .single();
+
+    if (tenantError || !tenant) {
+      console.error("[Auth] onboarding tenant create error:", tenantError);
+      res.status(500).json({ success: false, error: "Nao foi possivel criar sua empresa agora." });
+      return;
+    }
+
+    const { error: profileUpdateError } = await supabaseAdmin
+      .from("profiles")
+      .update({
+        tenant_id: tenant.id,
+        needs_tenant_setup: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", profile.id);
+
+    if (profileUpdateError) {
+      console.error("[Auth] onboarding profile update error:", profileUpdateError);
+      await supabaseAdmin.from("tenants").delete().eq("id", tenant.id);
+      res.status(500).json({ success: false, error: "Nao foi possivel vincular sua conta a empresa criada." });
+      return;
+    }
+
+    try {
+      await supabaseAdmin.auth.admin.updateUserById(profile.id, {
+        user_metadata: {
+          full_name: profile.full_name,
+          role: profile.role,
+          tenant_id: tenant.id,
+          permissions: profile.permissions || {},
+        },
+      });
+    } catch (metadataError) {
+      console.error("[Auth] onboarding metadata update error:", metadataError);
+    }
+
+    await invalidateAuthCache(profile.id);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        tenant_id: tenant.id,
+        tenant_name: tenant.name,
+        tenant_code: tenant.tenant_code,
+      },
+    });
+
+    void AuditService.log({
+      userId: profile.id,
+      action: "tenant.onboarding_create",
+      resource: "tenants",
+      entityId: tenant.id,
+      ipAddress: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent,
+      tenantId: tenant.id,
+      details: {
+        next: tenant,
+        message: "Empresa criada durante onboarding obrigatorio",
+      },
+    });
+  } catch (error) {
+    console.error("[Auth] onboarding/company error:", error);
+    res.status(500).json({ success: false, error: "Erro interno" });
+  }
+});
+
 router.post("/refresh", async (req: Request, res: Response) => {
   try {
     const { refresh_token } = req.body;
@@ -1016,6 +1286,7 @@ router.get("/me", requireAuth, async (req: Request, res: Response) => {
         permissions: user.permissions,
         enabled_features: user.enabled_features,
         two_factor_enabled: user.two_factor_enabled,
+        needs_tenant_setup: user.needs_tenant_setup,
       },
     });
   } catch (error) {

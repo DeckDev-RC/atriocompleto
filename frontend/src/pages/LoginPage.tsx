@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Eye, EyeOff, ShieldCheck, Send, Loader2, CheckCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -27,10 +27,24 @@ export function LoginPage() {
 
   const [resendStatus, setResendStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [resendMessage, setResendMessage] = useState('');
+  const [publicSignupEnabled, setPublicSignupEnabled] = useState(false);
 
   const isUnverified = error.includes('verifique seu email');
   const isRateLimited = error.includes('Muitas requisições') || error.includes('Muitas tentativas');
   const isBlocked = error.includes('bloqueado');
+
+  useEffect(() => {
+    let mounted = true;
+
+    agentApi.getPublicSignupConfig().then((result) => {
+      if (!mounted) return;
+      setPublicSignupEnabled(result.success ? !!result.data?.enabled : false);
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleCredentialsSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -268,8 +282,8 @@ export function LoginPage() {
                     <Link to="/esqueci-senha" className="text-brand-primary font-medium hover:underline">
                       Esqueci minha senha
                     </Link>
-                    <Link to="/solicitar-acesso" className="text-brand-primary font-medium hover:underline">
-                      Quero ter uma conta
+                    <Link to={publicSignupEnabled ? '/criar-conta' : '/solicitar-acesso'} className="text-brand-primary font-medium hover:underline">
+                      {publicSignupEnabled ? 'Criar conta' : 'Quero ter uma conta'}
                     </Link>
                   </div>
 

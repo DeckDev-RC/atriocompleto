@@ -4,6 +4,7 @@ import tenantRoutes from "./tenants";
 import accessRequestRoutes from "./access-requests";
 import userRoutes from "./users";
 import rbacRoutes from "./rbac";
+import publicSignupRoutes from "./public-signup";
 
 const router = Router();
 
@@ -15,5 +16,6 @@ router.use("/tenants", tenantRoutes);
 router.use("/access-requests", accessRequestRoutes);
 router.use("/users", userRoutes);
 router.use("/rbac", rbacRoutes);
+router.use("/public-signup", publicSignupRoutes);
 
 export default router;

@@ -22,6 +22,7 @@ interface AuthSessionPayload {
     permissions: Record<string, any>;
     enabled_features: Record<string, boolean>;
     two_factor_enabled: boolean;
+    needs_tenant_setup: boolean;
   };
 }
 
@@ -204,7 +205,24 @@ class AgentApiService {
       permissions: Record<string, any>;
       enabled_features: Record<string, boolean>;
       two_factor_enabled: boolean;
+      needs_tenant_setup: boolean;
     }>('/api/auth/me');
+  }
+
+  async getPublicSignupConfig() {
+    return this.request<{ enabled: boolean }>('/api/auth/public-signup-config');
+  }
+
+  async register(data: {
+    full_name: string;
+    email: string;
+    password: string;
+    confirm_password: string;
+  }) {
+    return this.request<{ message: string }>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   }
 
   async requestAccess(data: {
@@ -266,6 +284,13 @@ class AgentApiService {
     });
   }
 
+  async createOnboardingCompany(name: string) {
+    return this.request<{ tenant_id: string; tenant_name: string; tenant_code: string }>('/api/auth/onboarding/company', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  }
+
   // TOTP 2FA
   async enable2FA() {
     return this.request<{ qrCode: string; secret: string; recoveryCodes: string[] }>('/api/auth/2fa/enable', {
@@ -295,21 +320,23 @@ class AgentApiService {
     return this.request<Array<{
       id: string;
       name: string;
+      tenant_code: string;
       ai_rate_limit: number;
       created_at: string;
       user_count: number;
+      enabled_features: Record<string, boolean>;
     }>>('/api/admin/tenants');
   }
 
   async createTenant(name: string, aiRateLimit?: number) {
-    return this.request<{ id: string; name: string; ai_rate_limit: number }>('/api/admin/tenants', {
+    return this.request<{ id: string; name: string; tenant_code: string; ai_rate_limit: number }>('/api/admin/tenants', {
       method: 'POST',
       body: JSON.stringify({ name, ai_rate_limit: aiRateLimit || 20 }),
     });
   }
 
   async updateTenant(id: string, name: string, aiRateLimit: number) {
-    return this.request<{ id: string; name: string; ai_rate_limit: number }>(`/api/admin/tenants/${id}`, {
+    return this.request<{ id: string; name: string; tenant_code: string; ai_rate_limit: number }>(`/api/admin/tenants/${id}`, {
       method: 'PUT',
       body: JSON.stringify({ name, ai_rate_limit: aiRateLimit }),
     });
@@ -543,6 +570,17 @@ class AgentApiService {
     return this.request<{ message: string }>('/api/admin/rate-limit/unblock-ip', {
       method: 'POST',
       body: JSON.stringify({ ip }),
+    });
+  }
+
+  async getPublicSignupSettings() {
+    return this.request<{ enabled: boolean }>('/api/admin/public-signup');
+  }
+
+  async updatePublicSignupSettings(data: { enabled: boolean }) {
+    return this.request<{ enabled: boolean }>('/api/admin/public-signup', {
+      method: 'PUT',
+      body: JSON.stringify(data),
     });
   }
 

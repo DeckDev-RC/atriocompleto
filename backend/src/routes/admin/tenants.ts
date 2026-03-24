@@ -4,6 +4,8 @@ import { supabaseAdmin } from "../../config/supabase";
 import { AuditService } from "../../services/audit";
 import { VALID_FEATURE_KEYS } from "../../constants/feature-flags";
 import { invalidateAuthCache } from "../../middleware/auth";
+import { buildDisabledTenantFeatures, generateUniqueTenantCode } from "../../services/tenantIdentity";
+import { notifyPermissionsChanged } from "../../services/sse";
 
 const router = Router();
 
@@ -16,8 +18,9 @@ router.get("/", async (req: Request, res: Response) => {
   try {
     const { data, error } = await supabaseAdmin
       .from("tenants")
-      .select("id, name, ai_rate_limit, created_at, enabled_features")
-      .order("name");
+      .select("id, name, tenant_code, ai_rate_limit, created_at, enabled_features")
+      .order("name")
+      .order("tenant_code");
 
     if (error) throw error;
 
@@ -66,11 +69,14 @@ router.post("/", async (req: Request, res: Response) => {
       return;
     }
 
+    const tenantCode = await generateUniqueTenantCode(parsed.data.name);
     const { data, error } = await supabaseAdmin
       .from("tenants")
       .insert({
         name: parsed.data.name,
-        ai_rate_limit: parsed.data.ai_rate_limit
+        tenant_code: tenantCode,
+        ai_rate_limit: parsed.data.ai_rate_limit,
+        enabled_features: buildDisabledTenantFeatures(),
       })
       .select()
       .single();
@@ -234,6 +240,7 @@ router.put("/:id/features", async (req: Request, res: Response) => {
     if (tenantUsers) {
       for (const u of tenantUsers) {
         await invalidateAuthCache(u.id);
+        notifyPermissionsChanged(u.id);
       }
     }
 

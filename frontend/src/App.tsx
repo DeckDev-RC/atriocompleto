@@ -7,6 +7,7 @@ import { ToastProvider } from './components/Toast';
 import { DashboardLayout } from './components/DashboardLayout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { TenantSetupGate } from './components/TenantSetupGate';
 
 // ── Auto-reload handler for deployed chunks ─────────
 const lazyWithRetry = (componentImport: () => Promise<{ default: ComponentType<any> }>) =>
@@ -37,6 +38,7 @@ const lazyWithRetry = (componentImport: () => Promise<{ default: ComponentType<a
 const DashboardPage = lazyWithRetry(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
 const AgentPage = lazyWithRetry(() => import('./pages/AgentPage').then(m => ({ default: m.AgentPage })));
 const LoginPage = lazyWithRetry(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
+const RegisterPage = lazyWithRetry(() => import('./pages/RegisterPage').then(m => ({ default: m.RegisterPage })));
 const AdminPage = lazyWithRetry(() => import('./pages/AdminPage').then(m => ({ default: m.AdminPage })));
 const SettingsPage = lazyWithRetry(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
 const AccessRequestPage = lazyWithRetry(() => import('./pages/AccessRequestPage').then(m => ({ default: m.AccessRequestPage })));
@@ -82,6 +84,7 @@ function AppRoutes() {
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={<LoginPage />} />
+          <Route path="/criar-conta" element={<RegisterPage />} />
           <Route path="/solicitar-acesso" element={<AccessRequestPage />} />
           <Route path="/esqueci-senha" element={<ForgotPasswordPage />} />
           <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
@@ -103,86 +106,88 @@ function AppRoutes() {
         <Route path="/redefinir-senha" element={<ResetPasswordPage />} />
         <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
 
-        <Route element={<DashboardLayout />}>
-          <Route index element={
-            <ProtectedRoute permission="visualizar_venda" featureKey="ecommerce">
-              <ErrorBoundary name="Dashboard">
-                <DashboardPage />
-              </ErrorBoundary>
-            </ProtectedRoute>
-          } />
-          <Route path="agente" element={
-            <ProtectedRoute permission="acessar_agente" featureKey="optimus">
-              <ErrorBoundary name="Agent">
-                <AgentPage />
-              </ErrorBoundary>
-            </ProtectedRoute>
-          } />
-          <Route path="configuracoes" element={
-            <ProtectedRoute>
-              <SettingsPage />
-            </ProtectedRoute>
-          } />
-          <Route path="admin" element={
-            <ProtectedRoute requireMaster>
-              <AdminPage />
-            </ProtectedRoute>
-          } />
-          <Route path="insights" element={
-            <ProtectedRoute permission="acessar_agente" featureKey="insights">
-              <InsightsHistoryPage />
-            </ProtectedRoute>
-          } />
-          <Route path="analytics/patterns" element={
-            <ProtectedRoute permission="acessar_agente" featureKey="padroes">
-              <PatternDiscoveryPage />
-            </ProtectedRoute>
-          } />
-          <Route path="estrategia" element={
-            <ProtectedRoute permission="acessar_agente" featureKey="estrategia">
-              <StrategicReportPage />
-            </ProtectedRoute>
-          } />
-          <Route path="relatorios" element={
-            <ProtectedRoute permission="visualizar_relatorios" featureKey="relatorios">
-              <ScheduledReportsPage />
-            </ProtectedRoute>
-          } />
-          <Route path="relatorios/customizados" element={
-            <ProtectedRoute permission="visualizar_relatorios" featureKey="relatorios">
-              <CustomReportsPage />
-            </ProtectedRoute>
-          } />
-          <Route path="campanhas" element={
-            <ProtectedRoute permission="acessar_agente" featureKey="campanhas">
-              <CampaignRecommendationsPage />
-            </ProtectedRoute>
-          } />
-          <Route path="benchmarking" element={
-            <ProtectedRoute permission="acessar_agente" featureKey="benchmarking">
-              <BenchmarkingPage />
-            </ProtectedRoute>
-          } />
-          <Route path="simulacoes" element={
-            <ProtectedRoute permission="acessar_agente" featureKey="calculadora">
-              <WhatIfAnalysisPage />
-            </ProtectedRoute>
-          } />
-          <Route path="simulacoes/precos" element={
-            <ProtectedRoute permission="acessar_agente" featureKey="calculadora_precos">
-              <PriceCalculatorPage />
-            </ProtectedRoute>
-          } />
-          <Route path="simulacoes/inventory" element={
-            <ProtectedRoute permission="acessar_agente" featureKey="estoque_eoq">
-              <InventoryOptimizationPage />
-            </ProtectedRoute>
-          } />
-          <Route path="optimus/sugestoes" element={
-            <ProtectedRoute permission="acessar_agente" featureKey="sugestoes">
-              <ProactiveSuggestionsPage />
-            </ProtectedRoute>
-          } />
+        <Route element={<TenantSetupGate />}>
+          <Route element={<DashboardLayout />}>
+            <Route index element={
+              <ProtectedRoute permission="visualizar_venda" featureKey="ecommerce">
+                <ErrorBoundary name="Dashboard">
+                  <DashboardPage />
+                </ErrorBoundary>
+              </ProtectedRoute>
+            } />
+            <Route path="agente" element={
+              <ProtectedRoute permission="acessar_agente" featureKey="optimus">
+                <ErrorBoundary name="Agent">
+                  <AgentPage />
+                </ErrorBoundary>
+              </ProtectedRoute>
+            } />
+            <Route path="configuracoes" element={
+              <ProtectedRoute>
+                <SettingsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="admin" element={
+              <ProtectedRoute requireMaster>
+                <AdminPage />
+              </ProtectedRoute>
+            } />
+            <Route path="insights" element={
+              <ProtectedRoute permission="acessar_agente" featureKey="insights">
+                <InsightsHistoryPage />
+              </ProtectedRoute>
+            } />
+            <Route path="analytics/patterns" element={
+              <ProtectedRoute permission="acessar_agente" featureKey="padroes">
+                <PatternDiscoveryPage />
+              </ProtectedRoute>
+            } />
+            <Route path="estrategia" element={
+              <ProtectedRoute permission="acessar_agente" featureKey="estrategia">
+                <StrategicReportPage />
+              </ProtectedRoute>
+            } />
+            <Route path="relatorios" element={
+              <ProtectedRoute permission="visualizar_relatorios" featureKey="relatorios">
+                <ScheduledReportsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="relatorios/customizados" element={
+              <ProtectedRoute permission="visualizar_relatorios" featureKey="relatorios">
+                <CustomReportsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="campanhas" element={
+              <ProtectedRoute permission="acessar_agente" featureKey="campanhas">
+                <CampaignRecommendationsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="benchmarking" element={
+              <ProtectedRoute permission="acessar_agente" featureKey="benchmarking">
+                <BenchmarkingPage />
+              </ProtectedRoute>
+            } />
+            <Route path="simulacoes" element={
+              <ProtectedRoute permission="acessar_agente" featureKey="calculadora">
+                <WhatIfAnalysisPage />
+              </ProtectedRoute>
+            } />
+            <Route path="simulacoes/precos" element={
+              <ProtectedRoute permission="acessar_agente" featureKey="calculadora_precos">
+                <PriceCalculatorPage />
+              </ProtectedRoute>
+            } />
+            <Route path="simulacoes/inventory" element={
+              <ProtectedRoute permission="acessar_agente" featureKey="estoque_eoq">
+                <InventoryOptimizationPage />
+              </ProtectedRoute>
+            } />
+            <Route path="optimus/sugestoes" element={
+              <ProtectedRoute permission="acessar_agente" featureKey="sugestoes">
+                <ProactiveSuggestionsPage />
+              </ProtectedRoute>
+            } />
+          </Route>
         </Route>
 
         {/* Fallback para usuários logados */}

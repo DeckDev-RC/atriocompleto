@@ -1,5 +1,5 @@
 export const FEATURE_REGISTRY = {
-  ecommerce: { label: 'E-Commerce', path: '/', defaultEnabled: true },
+  ecommerce: { label: 'Vendas', path: '/', defaultEnabled: true },
   insights: { label: 'Insights', path: '/insights', defaultEnabled: true },
   optimus: { label: 'Optimus', path: '/agente', defaultEnabled: true },
   sugestoes: { label: 'Sugestões', path: '/optimus/sugestoes', defaultEnabled: true },
@@ -25,6 +25,12 @@ export function getDefaultFeatureFlags(): Record<FeatureKey, boolean> {
   return Object.fromEntries(
     (Object.entries(FEATURE_REGISTRY) as Array<[FeatureKey, (typeof FEATURE_REGISTRY)[FeatureKey]]>)
       .map(([key, config]) => [key, config.defaultEnabled]),
+  ) as Record<FeatureKey, boolean>;
+}
+
+export function getAllDisabledFeatureFlags(): Record<FeatureKey, boolean> {
+  return Object.fromEntries(
+    VALID_FEATURE_KEYS.map((key) => [key, false]),
   ) as Record<FeatureKey, boolean>;
 }
 

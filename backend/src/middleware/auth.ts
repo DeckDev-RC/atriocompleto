@@ -16,6 +16,7 @@ export interface AuthUser {
   permissions: Record<string, any>; // Granular permissions
   enabled_features: Record<string, boolean>; // Feature flags per tenant
   two_factor_enabled: boolean;
+  needs_tenant_setup: boolean;
 }
 
 // Extend Express Request
@@ -111,7 +112,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     const profileStart = Date.now();
     let { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
-      .select("id, email, full_name, role, tenant_id, is_active, avatar_url, permissions, two_factor_enabled")
+      .select("id, email, full_name, role, tenant_id, is_active, avatar_url, permissions, two_factor_enabled, needs_tenant_setup")
       .eq("id", user.id)
       .single();
 
@@ -121,7 +122,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       await new Promise(resolve => setTimeout(resolve, 500));
       const retry = await supabaseAdmin
         .from("profiles")
-        .select("id, email, full_name, role, tenant_id, is_active, avatar_url, permissions, two_factor_enabled")
+        .select("id, email, full_name, role, tenant_id, is_active, avatar_url, permissions, two_factor_enabled, needs_tenant_setup")
         .eq("id", user.id)
         .single();
       profile = retry.data;
@@ -170,6 +171,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       permissions: finalPermissions,
       enabled_features: enabledFeatures,
       two_factor_enabled: profile.two_factor_enabled || false,
+      needs_tenant_setup: profile.needs_tenant_setup || false,
     };
 
     // ── Populate Redis cache ────────────────────────

@@ -24,10 +24,27 @@ interface SessionPayload {
   user: AuthUser;
 }
 
+function normalizeAuthUser(user: Partial<AuthUser> | null | undefined): AuthUser | null {
+  if (!user || !user.id || !user.email || !user.full_name || !user.role) {
+    return null;
+  }
+
+  return {
+    ...user,
+    tenant_id: user.tenant_id ?? null,
+    tenant_name: user.tenant_name ?? null,
+    avatar_url: user.avatar_url ?? null,
+    permissions: user.permissions || {},
+    enabled_features: user.enabled_features || {},
+    two_factor_enabled: user.two_factor_enabled || false,
+    needs_tenant_setup: user.needs_tenant_setup || false,
+  } as AuthUser;
+}
+
 function parseStoredUser(): AuthUser | null {
   try {
     const stored = localStorage.getItem(USER_KEY);
-    return stored ? (JSON.parse(stored) as AuthUser) : null;
+    return stored ? normalizeAuthUser(JSON.parse(stored) as Partial<AuthUser>) : null;
   } catch {
     return null;
   }
@@ -48,12 +65,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const persistSession = useCallback((payload: SessionPayload) => {
+    const normalizedUser = normalizeAuthUser(payload.user);
+    if (!normalizedUser) return;
     localStorage.setItem(TOKEN_KEY, payload.access_token);
     localStorage.setItem(REFRESH_KEY, payload.refresh_token);
-    localStorage.setItem(USER_KEY, JSON.stringify(payload.user));
+    localStorage.setItem(USER_KEY, JSON.stringify(normalizedUser));
     agentApi.setToken(payload.access_token);
     setToken(payload.access_token);
-    setUser(payload.user);
+    setUser(normalizedUser);
   }, []);
 
   // Effect for Auth Initialization and URL hash handling
@@ -85,12 +104,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     agentApi.setToken(token);
     agentApi.getMe().then((result: any) => {
       if (result.success && result.data) {
-        const currentUser = {
-          ...result.data,
-          permissions: (result.data as any).permissions || {},
-          enabled_features: (result.data as any).enabled_features || {},
-          two_factor_enabled: (result.data as any).two_factor_enabled || false,
-        } as AuthUser;
+        const currentUser = normalizeAuthUser(result.data as Partial<AuthUser>);
+        if (!currentUser) {
+          clearAuth();
+          setIsLoading(false);
+          return;
+        }
         setUser(currentUser);
         localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
         setIsLoading(false);
@@ -119,9 +138,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         agentApi.getMe().then((meResult: any) => {
           if (meResult.success && meResult.data) {
-            const meUser = meResult.data as AuthUser;
-            setUser(meUser);
-            localStorage.setItem(USER_KEY, JSON.stringify(meUser));
+            const meUser = normalizeAuthUser(meResult.data as Partial<AuthUser>);
+            if (meUser) {
+              setUser(meUser);
+              localStorage.setItem(USER_KEY, JSON.stringify(meUser));
+            } else {
+              clearAuth();
+            }
           } else {
             clearAuth();
           }
@@ -213,16 +236,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const result = await agentApi.getMe();
       if (result.success && result.data) {
-        const currentUser = result.data as AuthUser;
-        setUser(currentUser);
-        localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
+        const currentUser = normalizeAuthUser(result.data as Partial<AuthUser>);
+        if (currentUser) {
+          setUser(currentUser);
+          localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
+        }
       }
     } finally {
       isRefreshing.current = false;
     }
   }, []);
 
-  // Effect for Real-time Permission Updates via SSE + fallback polling
+  // Keep permissions and feature flags synchronized for long-lived sessions.
   useEffect(() => {
     if (!user || !token) return;
 
@@ -230,18 +255,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const sseUrl = `${apiUrl}/api/user/events?token=${encodeURIComponent(token)}`;
 
     let eventSource: EventSource | null = null;
+    let sseRecoveryTimer: number | null = null;
+    let lastForegroundRefreshAt = 0;
+
+    const scheduleRefresh = (delayMs = 0) => {
+      window.setTimeout(() => {
+        void refreshUser();
+      }, delayMs);
+    };
+
+    const scheduleSSERecovery = () => {
+      if (sseRecoveryTimer !== null) return;
+
+      sseRecoveryTimer = window.setTimeout(() => {
+        sseRecoveryTimer = null;
+        void refreshUser();
+      }, 3000);
+    };
+
+    const clearSSERecovery = () => {
+      if (sseRecoveryTimer === null) return;
+      window.clearTimeout(sseRecoveryTimer);
+      sseRecoveryTimer = null;
+    };
+
+    const refreshOnForeground = () => {
+      if (document.visibilityState === 'hidden') return;
+
+      const now = Date.now();
+      if (now - lastForegroundRefreshAt < 15_000) return;
+
+      lastForegroundRefreshAt = now;
+      void refreshUser();
+    };
 
     const setupSSE = () => {
       try {
 
         eventSource = new EventSource(sseUrl);
+        eventSource.addEventListener('connected', clearSSERecovery);
 
         eventSource.addEventListener('permissions:changed', () => {
           // console.log('[AuthContext] ⚡ EVENT RECEIVED:', e.data);
           // Wait 1 second before refreshing to allow DB consistency and backend cache clearing to settle
-          setTimeout(() => {
-            refreshUser();
-          }, 1000);
+          clearSSERecovery();
+          scheduleRefresh(1000);
         });
 
 
@@ -254,25 +312,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // EventSource usually handles reconnections, but we log it.
           // Don't log if it was intentional closure
           if (eventSource?.readyState === EventSource.CLOSED) return;
+          scheduleSSERecovery();
           console.warn('[AuthContext] ⚠️ SSE Connection status:', eventSource?.readyState);
         };
       } catch (err) {
         console.error('[AuthContext] ❌ SSE Setup Error:', err);
+        scheduleSSERecovery();
       }
     };
 
     setupSSE();
 
-    // Fallback polling every 5 minutes (safety net if SSE disconnects)
+    window.addEventListener('focus', refreshOnForeground);
+    document.addEventListener('visibilitychange', refreshOnForeground);
+
+    // Fallback polling every minute in case the browser loses the SSE stream.
     const interval = setInterval(() => {
-      refreshUser();
-    }, 5 * 60 * 1000);
+      void refreshUser();
+    }, 60_000);
 
     return () => {
       if (eventSource) {
 
         eventSource.close();
       }
+      clearSSERecovery();
+      window.removeEventListener('focus', refreshOnForeground);
+      document.removeEventListener('visibilitychange', refreshOnForeground);
       clearInterval(interval);
     };
   }, [user?.id, token, refreshUser]);
