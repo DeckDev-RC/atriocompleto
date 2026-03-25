@@ -136,7 +136,7 @@ export default function PriceCalculatorPage() {
 
   const updateInputs = <T extends keyof PriceCalculatorInputs>(key: T, value: PriceCalculatorInputs[T]) => setInputs((current) => ({ ...current, [key]: value }));
   const handleReset = () => { setInputs(createDefaultPriceCalculatorInputs()); showToast('Entradas resetadas.', 'success'); };
-  const handleUseExample = () => { setInputs(EXAMPLE_INPUTS); showToast('Exemplo da planilha carregado.', 'success'); };
+  const handleUseExample = () => { setInputs(EXAMPLE_INPUTS); showToast('Exemplo padrao carregado.', 'success'); };
   const openSaveSnapshotModal = () => { setSnapshotName(inputs.productName.trim() || 'Calculo de precos'); setSaveSnapshotOpen(true); };
 
   const handleSaveSnapshot = async () => {
@@ -167,8 +167,8 @@ export default function PriceCalculatorPage() {
 
   return (
     <div className="min-h-screen bg-body p-4 sm:p-6">
-      <div className="mx-auto flex max-w-[1240px] flex-col gap-4">
-        <Header title="Calculadora de Precos" subtitle="A tela agora foi organizada como a planilha: Calculadora, Gestao e BaseProdutos." />
+      <div className="price-calculator-shell mx-auto flex w-full flex-col gap-4">
+        <Header title="Calculadora de Precos" subtitle="A tela foi organizada em tres visoes: Calculadora, Gestao e BaseProdutos." />
 
         <div className="rounded-2xl border border-border bg-card p-2 shadow-sm">
           <div className="flex flex-wrap gap-2">
@@ -189,7 +189,7 @@ export default function PriceCalculatorPage() {
         {activeTab === 'calculator' ? (
           <>
             <SectionCard title="Entradas do produto" subtitle="A margem alvo entra no divisor junto com imposto, difal e comissao." icon={Calculator}>
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
+              <div className="price-calculator-input-layout grid gap-4">
                 <div className="space-y-3">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="space-y-1 sm:col-span-2"><span className="text-[11px] font-semibold text-muted">Produto</span><input className={commonInputClass} value={inputs.productName} onChange={(event) => updateInputs('productName', event.target.value)} placeholder="Ex: Camisa Preta" /></label>
@@ -200,7 +200,7 @@ export default function PriceCalculatorPage() {
                     <label className="space-y-1"><span className="text-[11px] font-semibold text-muted">Imposto (%)</span><input type="number" step="0.1" min="0" className={commonInputClass} value={`${inputs.taxPercent}`} onChange={(event) => updateInputs('taxPercent', Number(event.target.value) || 0)} /></label>
                     <label className="space-y-1"><span className="text-[11px] font-semibold text-muted">Difal (%)</span><input type="number" step="0.1" min="0" className={commonInputClass} value={`${inputs.difalPercent}`} onChange={(event) => updateInputs('difalPercent', Number(event.target.value) || 0)} /></label>
                   </div>
-                  <div className="rounded-2xl border border-border bg-body px-4 py-3.5"><p className="text-[11px] font-semibold text-primary">Formula base</p><p className="mt-1 text-[11px] text-muted">Preco praticado = (custo + custo operacional + frete) ÷ (1 - imposto - difal - comissao - margem)</p><p className="mt-2 text-[10px] text-muted">Magalu e Mercado Livre seguem a base auxiliar AP1 da planilha.</p></div>
+                  <div className="rounded-2xl border border-border bg-body px-4 py-3.5"><p className="text-[11px] font-semibold text-primary">Formula base</p><p className="mt-1 text-[11px] text-muted">Preco praticado = (custo + custo operacional + frete) / (1 - imposto - difal - comissao - margem)</p><p className="mt-2 text-[10px] text-muted">Magalu e Mercado Livre usam a mesma base de preco para definir o frete.</p></div>
                   <div className="flex flex-wrap gap-2">
                     <button type="button" onClick={handleUseExample} className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-[12px] font-bold text-primary transition-colors hover:bg-body"><Package2 size={14} />Usar exemplo</button>
                     <button type="button" onClick={handleReset} className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-[12px] font-bold text-primary transition-colors hover:bg-body"><RotateCcw size={14} />Limpar</button>
@@ -215,25 +215,25 @@ export default function PriceCalculatorPage() {
               </div>
             </SectionCard>
 
-            <SectionCard title="Resultados por marketplace" subtitle="Os precos cheios ja consideram o desconto promocional do workbook." icon={TrendingUp}>
+            <SectionCard title="Resultados por marketplace" subtitle="Os precos cheios ja consideram o desconto promocional de cada canal." icon={TrendingUp}>
               <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">{results.map((result) => <ResultCard key={result.marketplaceId} result={result} />)}</div>
             </SectionCard>
           </>
         ) : null}
 
         {activeTab === 'management' ? (
-          <SectionCard title="Gestao" subtitle="Visao operacional da sheet Gestao com parametros globais, auxiliares e regras por marketplace." icon={Settings2}>
+          <SectionCard title="Gestao" subtitle="Visao operacional com parametros globais, bases de calculo e regras por marketplace." icon={Settings2}>
             <div className="grid gap-3 lg:grid-cols-4">
-              <StatCard label="Imposto (Q2)" value={formatPercent(workbookState.taxPercent, 1)} helper="Parametro global do divisor" />
-              <StatCard label="Difal (Q3)" value={formatPercent(workbookState.difalPercent, 1)} helper="Parametro global do divisor" />
-              <StatCard label="AP2" value={workbookState.ap2BasePrice === null ? 'Indefinido' : formatCurrencyBRL(workbookState.ap2BasePrice)} helper="Decide 26% ou 31% na Netshoes" />
-              <StatCard label="AP1" value={workbookState.ap1BasePrice === null ? 'Indefinido' : formatCurrencyBRL(workbookState.ap1BasePrice)} helper="Base usada por Magalu e Mercado Livre" />
+              <StatCard label="Imposto base" value={formatPercent(workbookState.taxPercent, 1)} helper="Aliquota global aplicada no calculo" />
+              <StatCard label="Difal" value={formatPercent(workbookState.difalPercent, 1)} helper="Diferenca de aliquota aplicada no calculo" />
+              <StatCard label="Base da comissao Netshoes" value={workbookState.ap2BasePrice === null ? 'Indefinido' : formatCurrencyBRL(workbookState.ap2BasePrice)} helper="Preco-base que define 26% ou 31% no canal" />
+              <StatCard label="Base de frete Magalu e ML" value={workbookState.ap1BasePrice === null ? 'Indefinido' : formatCurrencyBRL(workbookState.ap1BasePrice)} helper="Preco-base usado para frete de Magalu e Mercado Livre" />
             </div>
             <div className="mt-4 overflow-x-auto rounded-2xl border border-border">
               <table className="min-w-full">
                 <thead>
                   <tr className="border-b border-border bg-body text-left text-[10px] font-bold uppercase tracking-wider text-muted">
-                    <th className="px-3 py-2.5">Marketplace</th><th className="px-3 py-2.5 text-right">Valor Ref.</th><th className="px-3 py-2.5 text-right">Comissao</th><th className="px-3 py-2.5 text-right">Promo</th><th className="px-3 py-2.5 text-right">Frete final</th><th className="px-3 py-2.5">Base auxiliar</th><th className="px-3 py-2.5">Regra literal</th>
+                    <th className="px-3 py-2.5">Marketplace</th><th className="px-3 py-2.5 text-right">Valor de referencia</th><th className="px-3 py-2.5 text-right">Comissao</th><th className="px-3 py-2.5 text-right">Promo</th><th className="px-3 py-2.5 text-right">Frete final</th><th className="px-3 py-2.5">Base do calculo</th><th className="px-3 py-2.5">Regra do canal</th>
                   </tr>
                 </thead>
                 <tbody>

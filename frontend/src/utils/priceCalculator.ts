@@ -135,21 +135,21 @@ const PRICE_CALCULATOR_REFERENCE_VALUES: Record<PriceCalculatorMarketplaceId, nu
 };
 
 const PRICE_CALCULATOR_HELPER_BASES: Record<PriceCalculatorMarketplaceId, string> = {
-  amazon: 'Peso (J7)',
-  magalu: 'AP1 + Peso',
-  mercadolivre: 'AP1 + Peso',
-  netshoes: 'AP2',
-  shein: 'AQ5',
-  shopee: 'AQ6',
+  amazon: 'Faixa por peso',
+  magalu: 'Preco-base + peso',
+  mercadolivre: 'Preco-base + peso',
+  netshoes: 'Preco-base da comissao',
+  shein: 'Regra fixa do canal',
+  shopee: 'Regra fixa do canal',
 };
 
 const PRICE_CALCULATOR_RULE_SUMMARIES: Record<PriceCalculatorMarketplaceId, string> = {
   amazon: 'Peso < 500 = 13,45; peso = 500 = 17,45; peso > 500 = 19,45.',
-  magalu: 'AP1 < 79 = 5,00; depois aplica faixa literal de peso + 5,00.',
-  mercadolivre: 'Faixa de AP1 define a tabela de frete por peso em kg.',
-  netshoes: 'AP2 < 150 = 26%; caso contrario = 31%.',
-  shein: 'Formula usa AQ5, mas o workbook atual sempre resulta em 5,00.',
-  shopee: 'Formula usa AQ6, mas o workbook atual sempre resulta em 4,00.',
+  magalu: 'Abaixo de R$ 79 cobra frete fixo de R$ 5,00; acima disso aplica faixa de peso + R$ 5,00.',
+  mercadolivre: 'A faixa de preco-base define a tabela de frete por peso em kg.',
+  netshoes: 'Abaixo de R$ 150 usa 26%; a partir disso usa 31%.',
+  shein: 'No cenario atual o frete do canal permanece em R$ 5,00.',
+  shopee: 'No cenario atual o frete do canal permanece em R$ 4,00.',
 };
 
 const DIVISOR_ZERO_EPSILON = 1e-9;
@@ -373,7 +373,7 @@ function buildResult(
       denominator: roundCurrency(denominator * 100) / 100,
       iterations,
       note,
-      warning: 'Divisor igual a zero em uma das formulas da planilha.',
+      warning: 'Os parametros zeraram o divisor do calculo.',
     } satisfies PriceCalculatorResult;
   }
 
@@ -415,7 +415,7 @@ export function calculatePriceCalculatorResults(inputs: PriceCalculatorInputs) {
       inputs,
       15,
       getAmazonShipping(inputs.weightGrams),
-      'Replica literal da formula Gestao!E2.',
+      'Frete definido pela faixa de peso da Amazon.',
     ),
   );
 
@@ -425,9 +425,9 @@ export function calculatePriceCalculatorResults(inputs: PriceCalculatorInputs) {
       inputs,
       16,
       ap1BasePrice === null ? 0 : getMagaluShipping(ap1BasePrice, inputs.weightGrams),
-      'Replica literal da formula Gestao!E3 usando AP1.',
+      'Frete definido por preco-base e faixa de peso do canal.',
       1,
-      ap1BasePrice === null ? 'A celula auxiliar AP1 da planilha ficou indefinida.' : undefined,
+      ap1BasePrice === null ? 'Nao foi possivel definir a base de preco para o frete.' : undefined,
     ),
   );
 
@@ -437,9 +437,9 @@ export function calculatePriceCalculatorResults(inputs: PriceCalculatorInputs) {
       inputs,
       14,
       ap1BasePrice === null ? 0 : getMercadoLivreShipping(ap1BasePrice, inputs.weightGrams),
-      'Replica literal da formula Gestao!E4 usando AP1.',
+      'Frete definido por preco-base e peso em kg.',
       1,
-      ap1BasePrice === null ? 'A celula auxiliar AP1 da planilha ficou indefinida.' : undefined,
+      ap1BasePrice === null ? 'Nao foi possivel definir a base de preco para o frete.' : undefined,
     ),
   );
 
@@ -450,10 +450,10 @@ export function calculatePriceCalculatorResults(inputs: PriceCalculatorInputs) {
       netshoesCommission ?? 26,
       0,
       netshoesCommission === 26
-        ? 'Comissao de 26% conforme Gestao!F5 e AP2.'
-        : 'Comissao de 31% conforme Gestao!F5 e AP2.',
+        ? 'Comissao de 26% definida pela base de preco da Netshoes.'
+        : 'Comissao de 31% definida pela base de preco da Netshoes.',
       1,
-      netshoesCommission === null ? 'A celula auxiliar AP2 da planilha ficou indefinida.' : undefined,
+      netshoesCommission === null ? 'Nao foi possivel definir a base de comissao da Netshoes.' : undefined,
     ),
   );
 
@@ -463,7 +463,7 @@ export function calculatePriceCalculatorResults(inputs: PriceCalculatorInputs) {
       inputs,
       16,
       5,
-      'Replica literal das formulas Gestao!E6 e Calculadora!AQ5.',
+      'Frete fixo do canal no cenario atual.',
     ),
   );
 
@@ -473,7 +473,7 @@ export function calculatePriceCalculatorResults(inputs: PriceCalculatorInputs) {
       inputs,
       20,
       4,
-      'Replica literal das formulas Gestao!E7 e Calculadora!AQ6.',
+      'Frete fixo do canal no cenario atual.',
     ),
   );
 
