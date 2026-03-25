@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { z } from "zod";
 import { supabaseAdmin } from "../../config/supabase";
 import { invalidateAuthCache } from "../../middleware/auth";
+import { AccessControlService } from "../../services/access-control";
 import { AuditService } from "../../services/audit";
 import { notifyPermissionsChanged, notifyAllPermissionsChanged } from "../../services/sse";
 
@@ -73,6 +74,26 @@ async function wouldRemoveLastAdmin(roleId: string, _profileId?: string): Promis
     .eq("role_id", roleId);
 
   return (count ?? 0) <= 1;
+}
+
+async function refreshProfilesAccess(profileIds: string[]) {
+  const uniqueProfileIds = [...new Set(profileIds.filter(Boolean))];
+
+  await Promise.all(uniqueProfileIds.map(async (profileId) => {
+    await Promise.all([
+      invalidateAuthCache(profileId),
+      AccessControlService.invalidateCache(profileId),
+    ]);
+    notifyPermissionsChanged(profileId);
+  }));
+}
+
+async function refreshAllAccess() {
+  await Promise.all([
+    invalidateAuthCache(),
+    AccessControlService.invalidateCache(),
+  ]);
+  notifyAllPermissionsChanged();
 }
 
 router.get("/roles", async (req: Request, res: Response) => {
@@ -312,6 +333,13 @@ router.delete("/roles/:roleId", async (req: Request, res: Response) => {
       return;
     }
 
+    const { data: affectedAssignments, error: affectedAssignmentsError } = await supabaseAdmin
+      .from("user_roles")
+      .select("profile_id")
+      .eq("role_id", roleId);
+
+    if (affectedAssignmentsError) throw affectedAssignmentsError;
+
     await supabaseAdmin.from("user_roles").delete().eq("role_id", roleId);
     await supabaseAdmin.from("role_permissions").delete().eq("role_id", roleId);
 
@@ -319,6 +347,8 @@ router.delete("/roles/:roleId", async (req: Request, res: Response) => {
     if (error) throw error;
 
     res.json({ success: true });
+
+    await refreshProfilesAccess((affectedAssignments || []).map(({ profile_id }) => profile_id));
 
     void AuditService.log({
       userId: req.user!.id,
@@ -370,8 +400,7 @@ router.post("/roles/:roleId/permissions", async (req: Request, res: Response) =>
     }
     res.json({ success: true });
 
-    await invalidateAuthCache();
-    notifyAllPermissionsChanged();
+    await refreshAllAccess();
 
     void AuditService.log({
       userId: req.user!.id,
@@ -426,8 +455,7 @@ router.post("/users/:profileId/roles", async (req: Request, res: Response) => {
     if (error) throw error;
     res.json({ success: true });
 
-    await invalidateAuthCache(profileId);
-    notifyPermissionsChanged(profileId);
+    await refreshProfilesAccess([profileId]);
 
     void AuditService.log({
       userId: req.user!.id,
@@ -475,8 +503,7 @@ router.delete("/users/:profileId/roles/:roleId", async (req: Request, res: Respo
     if (error) throw error;
     res.json({ success: true });
 
-    await invalidateAuthCache(profileId);
-    notifyPermissionsChanged(profileId);
+    await refreshProfilesAccess([profileId]);
 
     void AuditService.log({
       userId: req.user!.id,
