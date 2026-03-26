@@ -609,7 +609,7 @@ function calculateAmazonResult(inputs: PriceCalculatorInputs): PriceCalculatorRe
 
 function calculateMagaluResult(inputs: PriceCalculatorInputs): PriceCalculatorResult {
   const weightTier = resolveWeightTierWithFallback(getWeightKg(inputs.weightGrams), MAGALU_WEIGHT_TIERS);
-  const shippingCost = weightTier.fee + 5;
+  const shippingCost = weightTier.fee;
 
   return buildResult({
     marketplaceId: 'magalu',
@@ -621,8 +621,8 @@ function calculateMagaluResult(inputs: PriceCalculatorInputs): PriceCalculatorRe
     calculationBaseValue: inputs.weightGrams,
     calculationBaseDisplay: `${inputs.weightGrams} g`,
     resolvedBand: `${weightTier.label} | coluna > 97%`,
-    ruleSummary: 'Faixa de peso do Magalu na coluna >97% (desconto 50%), somada a R$ 5,00 fixos por pedido.',
-    note: 'Comissao ajustada para 18% e frete composto pela faixa >97% do Programa Frete Gratis + R$ 5,00 fixos.',
+    ruleSummary: 'Faixa de peso do Magalu na coluna >97% (desconto 50%), sem adicional fixo por pedido.',
+    note: 'Comissao ajustada para 18% e frete igual ao valor da faixa >97% do Programa Frete Gratis.',
     warning: weightTier.warning,
   });
 }
