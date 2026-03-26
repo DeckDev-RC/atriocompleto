@@ -9,7 +9,7 @@ import type { CalculatorSnapshot } from '../../types/calculatorSnapshots';
 import { formatCurrencyBRL, formatPercent } from '../../utils/marketplaceCalculator';
 import {
   calculatePriceCalculatorResults,
-  calculatePriceCalculatorWorkbookState,
+  calculatePriceCalculatorRuleState,
   createDefaultPriceCalculatorInputs,
   PRICE_CALCULATOR_MARKETPLACE_ORDER,
   type PriceCalculatorInputs,
@@ -120,11 +120,12 @@ export default function PriceCalculatorPage() {
   useEffect(() => { void loadSavedSnapshots(); }, [loadSavedSnapshots]);
 
   const results = useMemo(() => calculatePriceCalculatorResults(inputs), [inputs]);
-  const workbookState = useMemo(() => calculatePriceCalculatorWorkbookState(inputs), [inputs]);
+  const ruleState = useMemo(() => calculatePriceCalculatorRuleState(inputs), [inputs]);
   const bestProfit = useMemo(() => results.reduce((best, current) => (current.profit > best.profit ? current : best), results[0]!), [results]);
   const lowestPracticed = useMemo(() => results.reduce((best, current) => (current.practicedPrice < best.practicedPrice ? current : best), results[0]!), [results]);
   const fullPriceRange = useMemo(() => ({ min: Math.min(...results.map((result) => result.fullPrice)), max: Math.max(...results.map((result) => result.fullPrice)) }), [results]);
   const baseRows = useMemo(() => savedSnapshots.map((snapshot) => ({ snapshot, results: calculatePriceCalculatorResults(snapshot.payload.inputs) })), [savedSnapshots]);
+  const warningCount = useMemo(() => ruleState.managementRows.filter((row) => row.warning).length, [ruleState.managementRows]);
 
   useEffect(() => {
     setSelectedBaseProductId((current) => current && baseRows.some((row) => row.snapshot.id === current) ? current : baseRows[0]?.snapshot.id ?? null);
@@ -200,7 +201,7 @@ export default function PriceCalculatorPage() {
                     <label className="space-y-1"><span className="text-[11px] font-semibold text-muted">Imposto (%)</span><input type="number" step="0.1" min="0" className={commonInputClass} value={`${inputs.taxPercent}`} onChange={(event) => updateInputs('taxPercent', Number(event.target.value) || 0)} /></label>
                     <label className="space-y-1"><span className="text-[11px] font-semibold text-muted">Difal (%)</span><input type="number" step="0.1" min="0" className={commonInputClass} value={`${inputs.difalPercent}`} onChange={(event) => updateInputs('difalPercent', Number(event.target.value) || 0)} /></label>
                   </div>
-                  <div className="rounded-2xl border border-border bg-body px-4 py-3.5"><p className="text-[11px] font-semibold text-primary">Formula base</p><p className="mt-1 text-[11px] text-muted">Preco praticado = (custo + custo operacional + frete) / (1 - imposto - difal - comissao - margem)</p><p className="mt-2 text-[10px] text-muted">Magalu e Mercado Livre usam a mesma base de preco para definir o frete.</p></div>
+                  <div className="rounded-2xl border border-border bg-body px-4 py-3.5"><p className="text-[11px] font-semibold text-primary">Formula base</p><p className="mt-1 text-[11px] text-muted">Preco praticado = (custo + custo operacional + frete) / (1 - imposto - difal - comissao - margem)</p><p className="mt-2 text-[10px] text-muted">Cada canal resolve o proprio frete pela regra comercial configurada na calculadora.</p></div>
                   <div className="flex flex-wrap gap-2">
                     <button type="button" onClick={handleUseExample} className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-[12px] font-bold text-primary transition-colors hover:bg-body"><Package2 size={14} />Usar exemplo</button>
                     <button type="button" onClick={handleReset} className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-[12px] font-bold text-primary transition-colors hover:bg-body"><RotateCcw size={14} />Limpar</button>
@@ -222,30 +223,37 @@ export default function PriceCalculatorPage() {
         ) : null}
 
         {activeTab === 'management' ? (
-          <SectionCard title="Gestao" subtitle="Visao operacional com parametros globais, bases de calculo e regras por marketplace." icon={Settings2}>
+          <SectionCard title="Gestao" subtitle="Visao operacional das regras atuais por marketplace e dos criterios que cada canal usa no calculo." icon={Settings2}>
             <div className="grid gap-3 lg:grid-cols-4">
-              <StatCard label="Imposto base" value={formatPercent(workbookState.taxPercent, 1)} helper="Aliquota global aplicada no calculo" />
-              <StatCard label="Difal" value={formatPercent(workbookState.difalPercent, 1)} helper="Diferenca de aliquota aplicada no calculo" />
-              <StatCard label="Base da comissao Netshoes" value={workbookState.ap2BasePrice === null ? 'Indefinido' : formatCurrencyBRL(workbookState.ap2BasePrice)} helper="Preco-base que define 26% ou 31% no canal" />
-              <StatCard label="Base de frete Magalu e ML" value={workbookState.ap1BasePrice === null ? 'Indefinido' : formatCurrencyBRL(workbookState.ap1BasePrice)} helper="Preco-base usado para frete de Magalu e Mercado Livre" />
+              <StatCard label="Imposto base" value={formatPercent(ruleState.taxPercent, 1)} helper="Aliquota global aplicada no calculo" />
+              <StatCard label="Difal" value={formatPercent(ruleState.difalPercent, 1)} helper="Diferenca de aliquota aplicada no calculo" />
+              <StatCard label="Base Netshoes 26%" value={ruleState.netshoesCommissionBasePrice === null ? 'Indefinido' : formatCurrencyBRL(ruleState.netshoesCommissionBasePrice)} helper="Base sem frete que decide 26% ou 31% na Netshoes" />
+              <StatCard label="Canais com alerta" value={`${warningCount}`} helper="Regras pendentes ou tabelas com ressalva operacional" />
             </div>
             <div className="mt-4 overflow-x-auto rounded-2xl border border-border">
               <table className="min-w-full">
                 <thead>
                   <tr className="border-b border-border bg-body text-left text-[10px] font-bold uppercase tracking-wider text-muted">
-                    <th className="px-3 py-2.5">Marketplace</th><th className="px-3 py-2.5 text-right">Valor de referencia</th><th className="px-3 py-2.5 text-right">Comissao</th><th className="px-3 py-2.5 text-right">Promo</th><th className="px-3 py-2.5 text-right">Frete final</th><th className="px-3 py-2.5">Base do calculo</th><th className="px-3 py-2.5">Regra do canal</th>
+                    <th className="px-3 py-2.5">Marketplace</th><th className="px-3 py-2.5 text-right">Comissao</th><th className="px-3 py-2.5 text-right">Promo</th><th className="px-3 py-2.5 text-right">Frete final</th><th className="px-3 py-2.5">Base usada</th><th className="px-3 py-2.5">Faixa resolvida</th><th className="px-3 py-2.5">Regra aplicada</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {workbookState.managementRows.map((row: PriceCalculatorManagementRow) => (
+                  {ruleState.managementRows.map((row: PriceCalculatorManagementRow) => (
                     <tr key={row.marketplaceId} className="border-b border-border bg-card text-[12px] last:border-b-0">
                       <td className="px-3 py-2.5"><MarketplacePill result={{ accentColor: row.accentColor, shortLabel: row.shortLabel, marketplaceName: row.marketplaceName }} /></td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-secondary">{formatCurrencyBRL(row.referenceValue)}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-secondary">{formatPercent(row.commissionPercent, 0)}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums text-secondary">{formatPercent(row.promotionPercent, 0)}</td>
                       <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-primary">{formatCurrencyBRL(row.finalShipping)}</td>
-                      <td className="px-3 py-2.5 text-secondary">{row.helperBase}</td>
-                      <td className="px-3 py-2.5 text-muted">{row.ruleSummary}</td>
+                      <td className="px-3 py-2.5 text-secondary">
+                        <p className="font-semibold text-primary">{row.baseLabel}</p>
+                        <p className="mt-1 text-[11px] text-muted">{row.baseDisplay}</p>
+                      </td>
+                      <td className="px-3 py-2.5 text-secondary">{row.resolvedBand}</td>
+                      <td className="px-3 py-2.5 text-muted">
+                        <p>{row.ruleSummary}</p>
+                        {row.note ? <p className="mt-1 text-[11px] text-secondary">{row.note}</p> : null}
+                        {row.warning ? <p className="mt-1 text-[11px] font-medium text-danger">{row.warning}</p> : null}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
