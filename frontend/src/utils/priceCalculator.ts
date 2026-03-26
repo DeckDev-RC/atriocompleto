@@ -174,7 +174,6 @@ const NETSHOES_COMMISSION_THRESHOLD = 150;
 const NETSHOES_FIXED_COST = 5;
 const SHEIN_COMMISSION_PERCENT = 16;
 const SHOPEE_COMMISSION_PERCENT = 20;
-const SHOPEE_FIXED_COST = 4;
 
 const AMAZON_WEIGHT_TIERS: WeightTier[] = [
   { maxKg: 0.25, fee: 0, label: '0 a 250 g' },
@@ -192,7 +191,7 @@ const AMAZON_WEIGHT_TIERS: WeightTier[] = [
 ];
 
 const AMAZON_PRICE_BANDS: Array<PriceBand<{ fixedFee?: number; tierFees?: number[]; additionalFee?: number }>> = [
-  { label: 'Ate R$ 30', max: 30, value: { fixedFee: 4.5 } },
+  { label: 'Ate R$ 30', max: 30, value: { fixedFee: 6.25 } },
   { label: 'R$ 30 a 49,99', min: 30, max: 49.99, value: { fixedFee: 6.5 } },
   { label: 'R$ 50 a 78,99', min: 50, max: 78.99, value: { fixedFee: 6.75 } },
   {
@@ -270,6 +269,21 @@ const MERCADO_LIVRE_PRICE_BANDS: Array<PriceBand<number[]>> = [
 ];
 
 const SHEIN_WEIGHT_TIERS: WeightTier[] = [
+  { maxKg: 0.3, fee: 4, label: 'ate 0,3 kg' },
+  { maxKg: 0.6, fee: 5, label: '0,3 a 0,6 kg' },
+  { maxKg: 0.9, fee: 6, label: '0,6 a 0,9 kg' },
+  { maxKg: 1.2, fee: 8, label: '0,9 a 1,2 kg' },
+  { maxKg: 1.5, fee: 10, label: '1,2 a 1,5 kg' },
+  { maxKg: 2, fee: 12, label: '1,5 a 2 kg' },
+  { maxKg: 5, fee: 15, label: '2 a 5 kg' },
+  { maxKg: 9, fee: 32, label: '5 a 9 kg' },
+  { maxKg: 13, fee: 63, label: '9 a 13 kg' },
+  { maxKg: 17, fee: 73, label: '13 a 17 kg' },
+  { maxKg: 23, fee: 89, label: '17 a 23 kg' },
+  { maxKg: Number.POSITIVE_INFINITY, fee: 106, label: 'acima de 23 kg' },
+];
+
+const SHOPEE_WEIGHT_TIERS: WeightTier[] = [
   { maxKg: 0.3, fee: 4, label: 'ate 0,3 kg' },
   { maxKg: 0.6, fee: 5, label: '0,3 a 0,6 kg' },
   { maxKg: 0.9, fee: 6, label: '0,6 a 0,9 kg' },
@@ -731,19 +745,20 @@ function calculateSheinResult(inputs: PriceCalculatorInputs): PriceCalculatorRes
 }
 
 function calculateShopeeResult(inputs: PriceCalculatorInputs): PriceCalculatorResult {
+  const weightTier = resolveWeightTier(getWeightKg(inputs.weightGrams), SHOPEE_WEIGHT_TIERS);
+
   return buildResult({
     marketplaceId: 'shopee',
     inputs,
     commissionPercent: SHOPEE_COMMISSION_PERCENT,
-    shippingCost: SHOPEE_FIXED_COST,
+    shippingCost: weightTier.fee,
     iterations: 1,
-    calculationBaseLabel: 'Regra atual do canal',
-    calculationBaseValue: null,
-    calculationBaseDisplay: 'Pendente de tabela contratual',
-    resolvedBand: 'Pendente de regra contratual',
-    ruleSummary: 'Shopee mantida com regra atual enquanto a tabela comercial especifica nao e enviada.',
-    note: 'O subsido PIX nao entra neste calculo. O frete permanece no valor atual ate a regra contratual ser formalizada.',
-    warning: 'Regra de frete da Shopee ainda pendente de validacao comercial; o canal segue temporariamente com o valor fixo atual.',
+    calculationBaseLabel: 'Peso do produto',
+    calculationBaseValue: inputs.weightGrams,
+    calculationBaseDisplay: `${inputs.weightGrams} g`,
+    resolvedBand: weightTier.label,
+    ruleSummary: 'Frete da Shopee ajustado para variar por faixa de peso nesta rodada de correcao operacional.',
+    note: 'A Shopee deixou de usar frete fixo e agora acompanha a regra operacional por peso aplicada nesta revisao.',
   });
 }
 
