@@ -173,7 +173,6 @@ const NETSHOES_HIGH_COMMISSION_PERCENT = 31;
 const NETSHOES_COMMISSION_THRESHOLD = 150;
 const NETSHOES_FIXED_COST = 5;
 const SHEIN_COMMISSION_PERCENT = 16;
-const SHOPEE_COMMISSION_PERCENT = 20;
 
 const AMAZON_WEIGHT_TIERS: WeightTier[] = [
   { maxKg: 0.25, fee: 0, label: '0 a 250 g' },
@@ -241,12 +240,12 @@ const AMAZON_PRICE_BANDS: Array<PriceBand<{ fixedFee?: number; tierFees?: number
 ];
 
 const MAGALU_WEIGHT_TIERS: WeightTier[] = [
-  { maxKg: 0.5, fee: 35.9, label: 'Ate 500 g' },
-  { maxKg: 1, fee: 40.9, label: '500 g a 1 kg' },
-  { maxKg: 2, fee: 42.9, label: '1 a 2 kg' },
-  { maxKg: 5, fee: 50.9, label: '2 a 5 kg' },
-  { maxKg: 9, fee: 77.9, label: '5 a 9 kg' },
-  { maxKg: 13, fee: 98.9, label: '9 a 13 kg' },
+  { maxKg: 0.5, fee: 17.95, label: 'Ate 500 g' },
+  { maxKg: 1, fee: 20.45, label: '500 g a 1 kg' },
+  { maxKg: 2, fee: 21.45, label: '1 a 2 kg' },
+  { maxKg: 5, fee: 25.45, label: '2 a 5 kg' },
+  { maxKg: 9, fee: 38.95, label: '5 a 9 kg' },
+  { maxKg: 13, fee: 49.45, label: '9 a 13 kg' },
 ];
 
 const MERCADO_LIVRE_WEIGHT_TIERS: WeightTier[] = [
@@ -283,19 +282,12 @@ const SHEIN_WEIGHT_TIERS: WeightTier[] = [
   { maxKg: Number.POSITIVE_INFINITY, fee: 106, label: 'acima de 23 kg' },
 ];
 
-const SHOPEE_WEIGHT_TIERS: WeightTier[] = [
-  { maxKg: 0.3, fee: 4, label: 'ate 0,3 kg' },
-  { maxKg: 0.6, fee: 5, label: '0,3 a 0,6 kg' },
-  { maxKg: 0.9, fee: 6, label: '0,6 a 0,9 kg' },
-  { maxKg: 1.2, fee: 8, label: '0,9 a 1,2 kg' },
-  { maxKg: 1.5, fee: 10, label: '1,2 a 1,5 kg' },
-  { maxKg: 2, fee: 12, label: '1,5 a 2 kg' },
-  { maxKg: 5, fee: 15, label: '2 a 5 kg' },
-  { maxKg: 9, fee: 32, label: '5 a 9 kg' },
-  { maxKg: 13, fee: 63, label: '9 a 13 kg' },
-  { maxKg: 17, fee: 73, label: '13 a 17 kg' },
-  { maxKg: 23, fee: 89, label: '17 a 23 kg' },
-  { maxKg: Number.POSITIVE_INFINITY, fee: 106, label: 'acima de 23 kg' },
+const SHOPEE_PRICE_BANDS: Array<PriceBand<{ commissionPercent: number; fixedFee: number }>> = [
+  { label: 'R$ 0,00 a 80,00', max: 80, value: { commissionPercent: 20, fixedFee: 4 } },
+  { label: 'R$ 80,01 a 100,00', min: 80.01, max: 100, value: { commissionPercent: 14, fixedFee: 16 } },
+  { label: 'R$ 100,01 a 200,00', min: 100.01, max: 200, value: { commissionPercent: 14, fixedFee: 20 } },
+  { label: 'R$ 200,01 a 500,00', min: 200.01, max: 500, value: { commissionPercent: 14, fixedFee: 26 } },
+  { label: 'R$ 500,01 ou mais', min: 500.01, value: { commissionPercent: 14, fixedFee: 26 } },
 ];
 
 export function createDefaultPriceCalculatorInputs(): PriceCalculatorInputs {
@@ -628,9 +620,9 @@ function calculateMagaluResult(inputs: PriceCalculatorInputs): PriceCalculatorRe
     calculationBaseLabel: 'Peso do produto',
     calculationBaseValue: inputs.weightGrams,
     calculationBaseDisplay: `${inputs.weightGrams} g`,
-    resolvedBand: `${weightTier.label} | coluna < 92%`,
-    ruleSummary: 'Faixa de peso do Magalu no cenario < 92% sem desconto, somada a R$ 5,00 fixos por pedido.',
-    note: 'Comissao ajustada para 18% e frete composto pela faixa do Programa Frete Gratis + R$ 5,00 fixos.',
+    resolvedBand: `${weightTier.label} | coluna > 97%`,
+    ruleSummary: 'Faixa de peso do Magalu na coluna >97% (desconto 50%), somada a R$ 5,00 fixos por pedido.',
+    note: 'Comissao ajustada para 18% e frete composto pela faixa >97% do Programa Frete Gratis + R$ 5,00 fixos.',
     warning: weightTier.warning,
   });
 }
@@ -745,20 +737,35 @@ function calculateSheinResult(inputs: PriceCalculatorInputs): PriceCalculatorRes
 }
 
 function calculateShopeeResult(inputs: PriceCalculatorInputs): PriceCalculatorResult {
-  const weightTier = resolveWeightTier(getWeightKg(inputs.weightGrams), SHOPEE_WEIGHT_TIERS);
+  const candidates = SHOPEE_PRICE_BANDS.map((band) => {
+    const { commissionPercent, fixedFee } = band.value;
+    return {
+      band,
+      commissionPercent,
+      fixedFee,
+    };
+  });
+
+  const matchingIndex = candidates.findIndex((candidate) => {
+    const practicedPrice = calculatePracticedPrice(inputs, candidate.commissionPercent, candidate.fixedFee);
+    return practicedPrice !== null && valueMatchesBand(practicedPrice, candidate.band);
+  });
+
+  const candidate = candidates[matchingIndex >= 0 ? matchingIndex : candidates.length - 1]!;
+  const practicedPrice = calculatePracticedPrice(inputs, candidate.commissionPercent, candidate.fixedFee);
 
   return buildResult({
     marketplaceId: 'shopee',
     inputs,
-    commissionPercent: SHOPEE_COMMISSION_PERCENT,
-    shippingCost: weightTier.fee,
-    iterations: 1,
-    calculationBaseLabel: 'Peso do produto',
-    calculationBaseValue: inputs.weightGrams,
-    calculationBaseDisplay: `${inputs.weightGrams} g`,
-    resolvedBand: weightTier.label,
-    ruleSummary: 'Frete da Shopee ajustado para variar por faixa de peso nesta rodada de correcao operacional.',
-    note: 'A Shopee deixou de usar frete fixo e agora acompanha a regra operacional por peso aplicada nesta revisao.',
+    commissionPercent: candidate.commissionPercent,
+    shippingCost: candidate.fixedFee,
+    iterations: matchingIndex >= 0 ? matchingIndex + 1 : candidates.length,
+    calculationBaseLabel: 'Preco praticado',
+    calculationBaseValue: practicedPrice,
+    calculationBaseDisplay: practicedPrice === null ? 'Indefinido' : `Preco praticado ${roundCurrency(practicedPrice).toFixed(2)}`,
+    resolvedBand: candidate.band.label,
+    ruleSummary: 'Na Shopee, a comissao e a tarifa fixa passam a ser definidas pela faixa do preco final, sem aplicar PIX.',
+    note: 'A Shopee usa a faixa do preco praticado para resolver comissao e tarifa fixa, conforme a regra definitiva enviada pelo cliente.',
   });
 }
 
