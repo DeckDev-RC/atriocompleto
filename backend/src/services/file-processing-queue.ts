@@ -1,12 +1,12 @@
 import { Job, Queue, Worker } from "bullmq";
-import { redis } from "../config/redis";
+import { queueRedis, workerRedis } from "../config/redis";
 import { env } from "../config/env";
 import { FileProcessor } from "./optimus/fileProcessor";
 
 const QUEUE_NAME = "optimus-file-processing";
 
 export const fileProcessingQueue = new Queue(QUEUE_NAME, {
-  connection: redis as any,
+  connection: queueRedis as any,
   prefix: env.BULLMQ_PREFIX,
 });
 
@@ -16,7 +16,7 @@ const worker = new Worker(
     await FileProcessor.processUploadedFile(job.data.uploadedFileId);
   },
   {
-    connection: redis as any,
+    connection: workerRedis as any,
     prefix: env.BULLMQ_PREFIX,
     concurrency: 2,
   },

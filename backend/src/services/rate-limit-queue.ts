@@ -1,11 +1,11 @@
 import { Queue, Worker, Job } from "bullmq";
-import { redis } from "../config/redis";
+import { queueRedis, workerRedis } from "../config/redis";
 import { env } from "../config/env";
 import { AuditService } from "./audit";
 
 // ── Queue Configuration ──────────────────────────────────
 export const rateLimitQueue = new Queue("rate-limit-tasks", {
-    connection: redis as any,
+    connection: queueRedis as any,
     prefix: env.BULLMQ_PREFIX,
 });
 
@@ -53,7 +53,7 @@ const worker = new Worker(
         }
     },
     {
-        connection: redis as any,
+        connection: workerRedis as any,
         prefix: env.BULLMQ_PREFIX
     }
 );

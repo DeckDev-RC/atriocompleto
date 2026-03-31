@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
-import { globalLimiter, checkIPBlock, publicApiLimiter } from "./middleware/rate-limit";
+import { globalLimiter, checkIPBlock } from "./middleware/rate-limit";
 
 import { env } from "./config/env";
 import { setupDailyCrons } from "./services/cron.service";
@@ -27,60 +27,55 @@ import { ScheduledReportsQueueService } from "./jobs/scheduledReports.job";
 import "./jobs/reportExports.job";
 
 const app = express();
-app.set('trust proxy', 1); // Confia no proxy reverso do Easypanel/Traefik para o rate-limit funcionar
+app.set("trust proxy", 1); // Trust Easypanel/Traefik reverse proxy headers.
 
-// ── Security ────────────────────────────────────────────
 app.use(helmet());
 
-// CORS configuration - allow frontend origin
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, etc)
     if (!origin) return callback(null, true);
 
-    // Check if origin matches FRONTEND_URL
     const allowedOrigins = [
       env.FRONTEND_URL,
-      env.FRONTEND_URL.replace('https://', 'http://'), // Allow HTTP variant
+      env.FRONTEND_URL.replace("https://", "http://"),
     ];
 
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       console.warn(`CORS blocked origin: ${origin}`);
-      callback(null, true); // Allow anyway for now to debug
+      callback(null, true);
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
 };
+
 app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
-// Handle preflight requests explicitly
-app.options('*', cors(corsOptions));
+// Health endpoints must stay lightweight and avoid Redis-backed middleware.
+app.use("/api/health", healthRoutes);
 
-// ── Rate Limiting & Security ────────────────────────────
-app.use(checkIPBlock); // Bloqueio imediato para IPs na blacklist/blocked
-app.use(globalLimiter); // Limite global de 100 req/min via Redis
+app.use(checkIPBlock);
+app.use(globalLimiter);
 
-// ── Compression ─────────────────────────────────────────
-// Skip compression for SSE (text/event-stream) to prevent corruption
-// of multi-byte UTF-8 characters at chunk boundaries (U+FFFD issue)
-app.use(compression({
-  filter: (req, res) => {
-    const contentType = res.getHeader("Content-Type");
-    if (typeof contentType === "string" && contentType.includes("text/event-stream")) {
-      return false;
-    }
-    return compression.filter(req, res);
-  },
-}));
+// Skip compression for SSE (text/event-stream) to prevent chunk corruption.
+app.use(
+  compression({
+    filter: (_req, res) => {
+      const contentType = res.getHeader("Content-Type");
+      if (typeof contentType === "string" && contentType.includes("text/event-stream")) {
+        return false;
+      }
+      return compression.filter(_req, res);
+    },
+  }),
+);
 
-// ── Body Parsing ────────────────────────────────────────
 app.use(express.json({ limit: "1mb" }));
 
-// ── UTF-8 Charset ───────────────────────────────────────
 app.use((_req, res, next) => {
   const originalJson = res.json.bind(res);
   res.json = (body: unknown) => {
@@ -92,10 +87,8 @@ app.use((_req, res, next) => {
   next();
 });
 
-// ── Audit Info Capture ──────────────────────────────────
 app.use(auditMiddleware);
 
-// ── Request Logging (dev only) ──────────────────────────
 if (env.NODE_ENV !== "production") {
   app.use((req, _res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
@@ -103,14 +96,12 @@ if (env.NODE_ENV !== "production") {
   });
 }
 
-// ── Routes ──────────────────────────────────────────────
-app.use("/api/health", publicApiLimiter, healthRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/ai", aiInsightsRoutes);
-app.use("/api/chat", aiInsightsRoutes); // Backward compatibility
+app.use("/api/chat", aiInsightsRoutes);
 app.use("/api/audit-logs", auditRoutes);
 app.use("/api/benchmarking", benchmarkingRoutes);
 app.use("/api/simulations", simulationsRoutes);
@@ -118,47 +109,37 @@ app.use("/api/inventory", inventoryRoutes);
 app.use("/api/optimus", optimusSuggestionsRoutes);
 app.use("/api/reports", reportsRoutes);
 
-// ── Error Handler ───────────────────────────────────────
 app.use(errorHandler);
 
-// ── Start Server ────────────────────────────────────────
 const server = app.listen(env.PORT, () => {
   console.log(`
-  ╔══════════════════════════════════════════╗
-  ║   🤖 Agente IA Ambro — Backend API      ║
-  ║                                          ║
-  ║   Port: ${env.PORT}                           ║
-  ║   Env:  ${env.NODE_ENV.padEnd(30)}║
-  ║   CORS: ${env.FRONTEND_URL.padEnd(30)}║
-  ║   PID:  ${String(process.pid).padEnd(30)}║
-  ╚══════════════════════════════════════════╝
+  ============================================
+   Agente IA Ambro - Backend API
+   Port: ${env.PORT}
+   Env:  ${env.NODE_ENV}
+   CORS: ${env.FRONTEND_URL}
+   PID:  ${process.pid}
+  ============================================
   `);
 
-  // Initialize Background Jobs
   setupDailyCrons();
   void ScheduledReportsQueueService.syncActiveSchedules().catch((error) => {
     console.error("[ScheduledReports] Failed to sync active schedules on boot:", error);
   });
 });
 
-// ── Graceful Shutdown + Self-Healing ────────────────────
-
-// Track connection health
 let isShuttingDown = false;
 
-// Graceful shutdown handler
 function shutdown(signal: string) {
   if (isShuttingDown) return;
   isShuttingDown = true;
-  console.log(`\n[${new Date().toISOString()}] ${signal} received — graceful shutdown...`);
+  console.log(`\n[${new Date().toISOString()}] ${signal} received - graceful shutdown...`);
 
-  // Stop accepting new connections
   server.close(() => {
     console.log("[Shutdown] HTTP server closed");
     process.exit(0);
   });
 
-  // Force exit after 10s if connections don't close
   setTimeout(() => {
     console.error("[Shutdown] Forcing exit after timeout");
     process.exit(1);
@@ -168,17 +149,13 @@ function shutdown(signal: string) {
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
 
-// Catch unhandled errors — log and let Docker restart
 process.on("uncaughtException", (err) => {
   console.error(`[${new Date().toISOString()}] UNCAUGHT EXCEPTION:`, err);
-  // Exit with error code so Docker/Easypanel restarts the container
   process.exit(1);
 });
 
 process.on("unhandledRejection", (reason) => {
   console.error(`[${new Date().toISOString()}] UNHANDLED REJECTION:`, reason);
-  // Don't crash on unhandled promise rejections — log and continue
-  // Docker health check will catch if the server is unhealthy
 });
 
 export default app;
