@@ -1,6 +1,6 @@
 import { Job, Queue, Worker } from "bullmq";
 import { env } from "../config/env";
-import { redis } from "../config/redis";
+import { queueRedis, workerRedis } from "../config/redis";
 import { ReportExporterService } from "../services/reportExporter.service";
 
 const QUEUE_NAME = "report-exports";
@@ -10,7 +10,7 @@ type ReportExportJob = {
 };
 
 export const reportExportsQueue = new Queue<ReportExportJob>(QUEUE_NAME, {
-  connection: redis as never,
+  connection: queueRedis as never,
   prefix: env.BULLMQ_PREFIX,
 });
 
@@ -21,7 +21,7 @@ const worker = new Worker<ReportExportJob>(
     return result.id;
   },
   {
-    connection: redis as never,
+    connection: workerRedis as never,
     prefix: env.BULLMQ_PREFIX,
     concurrency: 2,
   },

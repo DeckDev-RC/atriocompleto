@@ -1,6 +1,6 @@
 import { Job, Queue, Worker } from "bullmq";
 import { env } from "../config/env";
-import { redis } from "../config/redis";
+import { queueRedis, workerRedis } from "../config/redis";
 import { ReportSchedulerService } from "../services/reportScheduler.service";
 import { type ScheduledReportRow } from "../services/reportScheduler.utils";
 
@@ -12,7 +12,7 @@ type ScheduledReportJob = {
 };
 
 export const scheduledReportsQueue = new Queue<ScheduledReportJob>(QUEUE_NAME, {
-  connection: redis as never,
+  connection: queueRedis as never,
   prefix: env.BULLMQ_PREFIX,
 });
 
@@ -31,7 +31,7 @@ const worker = new Worker<ScheduledReportJob>(
     return result.execution.id;
   },
   {
-    connection: redis as never,
+    connection: workerRedis as never,
     prefix: env.BULLMQ_PREFIX,
     concurrency: 2,
   },

@@ -1,6 +1,6 @@
 import { Job, Queue, Worker } from "bullmq";
 import { env } from "../config/env";
-import { redis } from "../config/redis";
+import { queueRedis, workerRedis } from "../config/redis";
 import { MemoryService } from "./optimus/memoryService";
 import { buildMemoryRefreshJobId } from "./memory-processing-utils";
 
@@ -13,7 +13,7 @@ type MemoryRefreshJob = {
 };
 
 export const memoryProcessingQueue = new Queue<MemoryRefreshJob>(QUEUE_NAME, {
-  connection: redis as any,
+  connection: queueRedis as any,
   prefix: env.BULLMQ_PREFIX,
 });
 
@@ -23,7 +23,7 @@ const worker = new Worker<MemoryRefreshJob>(
     await MemoryService.refreshConversationArtifacts(job.data);
   },
   {
-    connection: redis as any,
+    connection: workerRedis as any,
     prefix: env.BULLMQ_PREFIX,
     concurrency: 2,
   },

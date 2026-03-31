@@ -6,182 +6,181 @@ import { env } from "../config/env";
 import { RateLimitQueueService } from "../services/rate-limit-queue";
 import { supabaseAdmin } from "../config/supabase";
 
-// ── Helpers ─────────────────────────────────────────────
-const whitelist = env.WHITELIST_IPS.split(",").map(ip => ip.trim()).filter(Boolean);
+const whitelist = env.WHITELIST_IPS.split(",").map((ip) => ip.trim()).filter(Boolean);
+const healthCheckPathPattern = /^\/api\/health(?:\/|$)/;
 
 const isWhitelisted = (req: Request) => {
-    const ip = req.ip || req.socket.remoteAddress || "";
-    return whitelist.includes(ip);
+  const ip = req.ip || req.socket.remoteAddress || "";
+  return whitelist.includes(ip);
+};
+
+const isHealthCheckRequest = (req: Request) => {
+  const requestPath = req.originalUrl || req.url || req.path || "";
+  return healthCheckPathPattern.test(requestPath);
 };
 
 const handleViolation = (req: Request, res: Response, options: any) => {
-    const ip = req.ip || req.socket.remoteAddress || "unknown";
+  const ip = req.ip || req.socket.remoteAddress || "unknown";
 
-    // Enviar para a fila do BullMQ para logar no Audit
-    RateLimitQueueService.logViolation(ip, {
-        endpoint: req.originalUrl,
-        limit: options.limit,
-        userAgent: req.headers["user-agent"],
-        userId: (req as any).user?.id
+  void RateLimitQueueService.logViolation(ip, {
+    endpoint: req.originalUrl,
+    limit: options.limit,
+    userAgent: req.headers["user-agent"],
+    userId: (req as any).user?.id,
+  }).catch((error) => {
+    console.error("[RateLimit] Failed to enqueue violation log:", error);
+  });
+
+  const violationKey = `ratelimit:violations:${ip}`;
+
+  void redis
+    .incr(violationKey)
+    .then(async (violations) => {
+      if (violations === 1) {
+        await redis.expire(violationKey, 3600);
+      }
+
+      if (violations >= 10) {
+        const blockKey = `ratelimit:blocked:${ip}`;
+        await redis.set(blockKey, "true", "EX", 3600);
+        void RateLimitQueueService.reportBlock(ip).catch((error) => {
+          console.error("[RateLimit] Failed to enqueue IP block report:", error);
+        });
+        console.warn(`[RateLimit] IP ${ip} blocked due to 10 violations`);
+      }
+    })
+    .catch((error) => {
+      console.error("[RateLimit] Failed to persist violation state:", error);
     });
 
-    // Lógica de bloqueio progressivo (Redis Side)
-    const violationKey = `ratelimit:violations:${ip}`;
-
-    redis.incr(violationKey).then(async (violations) => {
-        if (violations === 1) {
-            await redis.expire(violationKey, 3600); // Reset violation count after 1h
-        }
-
-        if (violations >= 10) {
-            const blockKey = `ratelimit:blocked:${ip}`;
-            await redis.set(blockKey, "true", "EX", 3600); // Block for 1h
-            RateLimitQueueService.reportBlock(ip);
-            console.warn(`[RateLimit] IP ${ip} blocked due to 10 violations`);
-        }
-    });
-
-    res.status(429).json(options.message);
+  res.status(429).json(options.message);
 };
 
-// ── Check Blocked IP Middleware ──────────────────────────
 export const checkIPBlock = async (req: Request, res: Response, next: any) => {
-    if (isWhitelisted(req)) return next();
+  if (isWhitelisted(req) || isHealthCheckRequest(req)) return next();
 
-    const ip = req.ip || req.socket.remoteAddress || "unknown";
+  const ip = req.ip || req.socket.remoteAddress || "unknown";
+
+  try {
     const blocked = await redis.get(`ratelimit:blocked:${ip}`);
 
     if (blocked) {
-        return res.status(403).json({
-            success: false,
-            error: "Seu IP está temporariamente bloqueado por abuso da API. Tente novamente em 1 hora."
-        });
+      return res.status(403).json({
+        success: false,
+        error: "Seu IP esta temporariamente bloqueado por abuso da API. Tente novamente em 1 hora.",
+      });
     }
-    next();
+  } catch (error) {
+    console.error("[RateLimit] Failed to check blocked IP:", error);
+  }
+
+  next();
 };
 
-// ── Limiter Configurations ──────────────────────────────
+const redisStore = (prefix: string) =>
+  new RedisStore({
+    sendCommand: (async (...args: string[]) => redis.call(args[0], ...args.slice(1))) as any,
+    prefix,
+  });
 
-// 1. Global Limiter (100 req/min)
 export const globalLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    limit: 100,
-    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-    legacyHeaders: true, // Send the `X-RateLimit-*` headers
-    skip: isWhitelisted,
-    store: new RedisStore({
-        sendCommand: (async (...args: string[]) => redis.call(args[0], ...args.slice(1))) as any,
-        prefix: "ratelimit:global:",
-    }),
-    message: { success: false, error: "Muitas requisições. Tente novamente em 1 minuto." },
-    handler: handleViolation
+  windowMs: 60 * 1000,
+  limit: 100,
+  standardHeaders: true,
+  legacyHeaders: true,
+  skip: (req) => isWhitelisted(req) || isHealthCheckRequest(req),
+  passOnStoreError: true,
+  store: redisStore("ratelimit:global:"),
+  message: { success: false, error: "Muitas requisicoes. Tente novamente em 1 minuto." },
+  handler: handleViolation,
 });
 
-// 2. Auth Limiter (Login: 5/min)
 export const authLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    limit: 5,
-    standardHeaders: true,
-    legacyHeaders: true,
-    skip: isWhitelisted,
-    store: new RedisStore({
-        sendCommand: (async (...args: string[]) => redis.call(args[0], ...args.slice(1))) as any,
-        prefix: "ratelimit:auth:",
-    }),
-    message: { success: false, error: "Muitas tentativas de login. Tente novamente em 1 minuto." },
-    handler: handleViolation
+  windowMs: 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: true,
+  skip: isWhitelisted,
+  passOnStoreError: true,
+  store: redisStore("ratelimit:auth:"),
+  message: { success: false, error: "Muitas tentativas de login. Tente novamente em 1 minuto." },
+  handler: handleViolation,
 });
 
-// 3. Register Limiter (3/hour)
 export const registerLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000,
-    limit: 10,
-    standardHeaders: true,
-    legacyHeaders: true,
-    skip: isWhitelisted,
-    store: new RedisStore({
-        sendCommand: (async (...args: string[]) => redis.call(args[0], ...args.slice(1))) as any,
-        prefix: "ratelimit:register:",
-    }),
-    message: { success: false, error: "Limite de cadastros excedido. Tente novamente em 1 hora." },
-    handler: handleViolation
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: true,
+  skip: isWhitelisted,
+  passOnStoreError: true,
+  store: redisStore("ratelimit:register:"),
+  message: { success: false, error: "Limite de cadastros excedido. Tente novamente em 1 hora." },
+  handler: handleViolation,
 });
 
-// 4. Public API Limiter (20/min)
 export const publicApiLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    limit: 20,
-    standardHeaders: true,
-    legacyHeaders: true,
-    skip: (req) => isWhitelisted(req) || !!(req as any).user, // Skip if whitelisted or authenticated
-    store: new RedisStore({
-        sendCommand: (async (...args: string[]) => redis.call(args[0], ...args.slice(1))) as any,
-        prefix: "ratelimit:public:",
-    }),
-    message: { success: false, error: "Limite de API pública excedido. Tente novamente daqui a pouco." },
-    handler: handleViolation
+  windowMs: 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: true,
+  skip: (req) => isWhitelisted(req) || isHealthCheckRequest(req) || !!(req as any).user,
+  passOnStoreError: true,
+  store: redisStore("ratelimit:public:"),
+  message: { success: false, error: "Limite de API publica excedido. Tente novamente daqui a pouco." },
+  handler: handleViolation,
 });
 
-// 5. AI Read-Only Limiter (cheap endpoints: insights, patterns, segments, history)
 export const aiReadLimiter = rateLimit({
-    windowMs: 60 * 1000, // 1 minute
-    limit: 30,
-    standardHeaders: true,
-    legacyHeaders: false,
-    skip: isWhitelisted,
-    keyGenerator: (req: Request) => (req as any).user?.id || req.ip || "unknown",
-    store: new RedisStore({
-        sendCommand: (async (...args: string[]) => redis.call(args[0], ...args.slice(1))) as any,
-        prefix: "ratelimit:ai-read:",
-    }),
-    message: { success: false, error: "Muitas requisições de leitura. Tente novamente em breve." },
-    handler: handleViolation
+  windowMs: 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: isWhitelisted,
+  passOnStoreError: true,
+  keyGenerator: (req: Request) => (req as any).user?.id || req.ip || "unknown",
+  store: redisStore("ratelimit:ai-read:"),
+  message: { success: false, error: "Muitas requisicoes de leitura. Tente novamente em breve." },
+  handler: handleViolation,
 });
 
-// 6. AI Chat Limiter (expensive: Gemini calls, configurable per Tenant)
 export const aiLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000, // 1 hour window
-    limit: async (req: Request) => {
-        const tenantId = (req as any).user?.tenant_id;
-        if (!tenantId) return 20; // Default fallback
+  windowMs: 60 * 60 * 1000,
+  limit: async (req: Request) => {
+    const tenantId = (req as any).user?.tenant_id;
+    if (!tenantId) return 20;
 
-        const cacheKey = `config:tenant:${tenantId}:ai_limit`;
+    const cacheKey = `config:tenant:${tenantId}:ai_limit`;
 
-        try {
-            // Check Redis cache first
-            const cachedLimit = await redis.get(cacheKey);
-            if (cachedLimit) return parseInt(cachedLimit);
+    try {
+      const cachedLimit = await redis.get(cacheKey);
+      if (cachedLimit) return Number.parseInt(cachedLimit, 10);
 
-            // Fetch from Supabase
-            const { data, error } = await supabaseAdmin
-                .from("tenants")
-                .select("ai_rate_limit")
-                .eq("id", tenantId)
-                .single();
+      const { data, error } = await supabaseAdmin
+        .from("tenants")
+        .select("ai_rate_limit")
+        .eq("id", tenantId)
+        .single();
 
-            if (error || !data) return 20;
+      if (error || !data) return 20;
 
-            const limit = data.ai_rate_limit || 20;
+      const limit = data.ai_rate_limit || 20;
+      await redis.set(cacheKey, limit.toString(), "EX", 3600);
 
-            // Cache for 1 hour
-            await redis.set(cacheKey, limit.toString(), "EX", 3600);
-
-            return limit;
-        } catch (err) {
-            console.error("[RateLimit] Error fetching AI limit:", err);
-            return 20;
-        }
-    },
-    standardHeaders: true,
-    legacyHeaders: false,
-    keyGenerator: (req: Request) => (req as any).user?.id || req.ip || "unknown",
-    store: new RedisStore({
-        sendCommand: (async (...args: string[]) => redis.call(args[0], ...args.slice(1))) as any,
-        prefix: "ratelimit:ai:",
-    }),
-    message: {
-        success: false,
-        error: "Limite de perguntas excedido para esta hora. Tente novamente mais tarde."
-    },
-    handler: handleViolation
+      return limit;
+    } catch (error) {
+      console.error("[RateLimit] Error fetching AI limit:", error);
+      return 20;
+    }
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  passOnStoreError: true,
+  keyGenerator: (req: Request) => (req as any).user?.id || req.ip || "unknown",
+  store: redisStore("ratelimit:ai:"),
+  message: {
+    success: false,
+    error: "Limite de perguntas excedido para esta hora. Tente novamente mais tarde.",
+  },
+  handler: handleViolation,
 });
