@@ -269,7 +269,7 @@ export function Sidebar() {
 
         {/* User area */}
         <div className="flex flex-col gap-4 overflow-hidden mt-auto shrink-0 pt-2">
-          <div className="h-px w-full bg-border/40 mx-2" />
+          <div className="h-px w-full bg-border/40" />
 
           {collapsed ? (
             <div className="px-2 pb-4">
@@ -286,7 +286,7 @@ export function Sidebar() {
                 <button
                   onClick={() => { navigate('/configuracoes'); closeSidebar(); }}
                   title="Configurações"
-                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium transition-[background-color,color] duration-150 active:scale-95 ${settingsActive
+                  className={`flex min-w-[110px] items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium transition-[background-color,color] duration-150 active:scale-95 ${settingsActive
                     ? 'bg-primary/5'
                     : 'text-secondary/60 hover:bg-border/40 hover:text-primary'
                     }`}
@@ -296,7 +296,7 @@ export function Sidebar() {
                 </button>
                 <button
                   onClick={logout}
-                  className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium text-secondary/60 transition-[background-color,color] duration-150 hover:bg-danger/5 hover:text-danger active:scale-95"
+                  className="flex min-w-[86px] items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium text-secondary/60 transition-[background-color,color] duration-150 hover:bg-danger/5 hover:text-danger active:scale-95"
                 >
                   <LogOut size={14} strokeWidth={2} />
                   <span>Sair</span>
@@ -312,7 +312,7 @@ export function Sidebar() {
             </div>
           ) : (
             <div className="px-2 pb-4">
-              <div className="flex items-center gap-3 px-2 py-2 rounded-2xl transition-colors duration-150">
+              <div className="mx-auto flex max-w-[176px] items-center gap-3 px-2 py-2 rounded-2xl transition-colors duration-150">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden bg-primary/5 text-[11px] font-bold text-primary border border-border/60">
                   {user?.avatar_url ? (
                     <img src={user.avatar_url} alt={user.full_name} className="h-full w-full object-cover" />
@@ -325,11 +325,11 @@ export function Sidebar() {
                     {user?.full_name || 'Usuário'}
                   </p>
                   <p className="text-[11px] text-muted/60 truncate uppercase tracking-wider font-medium">
-                    {user?.role === 'master' ? 'Master' : hasPermission('gerenciar_feature_flags') ? 'Admin de Flags' : 'Usuário'}
+                    {user?.role === 'master' ? 'Master' : hasPermission('gerenciar_feature_flags') ? 'Gestor da Marca' : 'Usuário'}
                   </p>
                 </div>
               </div>
-              <div className="flex items-center mt-1 px-2 gap-1">
+              <div className="mt-2 flex items-center justify-center gap-2">
                 <button
                   onClick={() => { navigate('/configuracoes'); closeSidebar(); }}
                   className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-medium transition-[background-color,color] duration-150 active:scale-95 ${settingsActive
