@@ -10,6 +10,9 @@ import { ReportSchedulerService } from "./reportScheduler.service";
 import { ReportExporterService } from "./reportExporter.service";
 
 export function setupDailyCrons() {
+  console.log("[Cron] Agendamentos desativados temporariamente ate segunda ordem.");
+  return;
+
   cron.schedule("0 6 * * *", async () => {
     console.log("[Cron] Iniciando pre-computacao de padroes...");
     try {

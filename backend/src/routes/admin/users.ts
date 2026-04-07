@@ -3,9 +3,13 @@ import { z } from "zod";
 import { supabaseAdmin } from "../../config/supabase";
 import { invalidateAuthCache } from "../../middleware/auth";
 import { strongPasswordSchema } from "../../utils/password";
-import { env } from "../../config/env";
-import { AuthVerificationService } from "../../services/verification";
 import { AuditService } from "../../services/audit";
+import { notifyPermissionsChanged } from "../../services/sse";
+import { VALID_FEATURE_KEYS, normalizeExplicitFeatureFlags } from "../../constants/feature-flags";
+import { normalizeManageableTenantIds } from "../../utils/tenant-access";
+import { resolveFrontendBaseUrl } from "../../services/frontend-url";
+import { sendInvitationEmail } from "../../services/email";
+import { getPartnerById, getTenantPartnerId } from "../../services/partners";
 
 const router = Router();
 
@@ -17,7 +21,7 @@ router.get("/", async (req: Request, res: Response) => {
   try {
     let query = supabaseAdmin
       .from("profiles")
-      .select("id, email, full_name, role, tenant_id, is_active, created_at, permissions, bypass_2fa")
+      .select("id, email, full_name, role, tenant_id, is_active, created_at, permissions, manageable_features, manageable_tenant_ids, bypass_2fa")
       .order("created_at", { ascending: false });
 
     const tenantId = req.query.tenant_id as string | undefined;
@@ -71,6 +75,11 @@ const createUserSchema = z.object({
   tenant_id: z.string().uuid("Empresa inválida").nullable(),
   access_request_id: z.string().uuid().nullable().optional(),
   permissions: z.record(z.any()).default({}),
+  manageable_features: z.record(
+    z.enum(VALID_FEATURE_KEYS as [string, ...string[]]),
+    z.boolean(),
+  ).default({}),
+  manageable_tenant_ids: z.array(z.string().uuid("Tenant inválido")).default([]),
 });
 
 router.post("/", async (req: Request, res: Response) => {
@@ -87,6 +96,12 @@ router.post("/", async (req: Request, res: Response) => {
 
     const { full_name, role, tenant_id, access_request_id, permissions } = parsed.data;
     const email = normalizeEmail(parsed.data.email);
+    const manageableFeatures = role === "master"
+      ? normalizeExplicitFeatureFlags()
+      : normalizeExplicitFeatureFlags(parsed.data.manageable_features);
+    const manageableTenantIds = role === "master"
+      ? []
+      : normalizeManageableTenantIds(parsed.data.manageable_tenant_ids);
 
     if (tenant_id) {
       const { data: tenant } = await supabaseAdmin
@@ -101,16 +116,35 @@ router.post("/", async (req: Request, res: Response) => {
       }
     }
 
+    if (manageableTenantIds.length > 0) {
+      const { data: selectedTenants, error: selectedTenantsError } = await supabaseAdmin
+        .from("tenants")
+        .select("id")
+        .in("id", manageableTenantIds);
+
+      if (selectedTenantsError || (selectedTenants || []).length !== manageableTenantIds.length) {
+        res.status(400).json({ success: false, error: "Uma ou mais empresas delegadas são inválidas" });
+        return;
+      }
+    }
+
+    const partnerId = tenant_id ? await getTenantPartnerId(tenant_id) : null;
+    const frontendBaseUrl = await resolveFrontendBaseUrl({ tenantId: tenant_id, partnerId });
+    const partner = await getPartnerById(partnerId);
+
     const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.generateLink({
       type: 'invite',
       email,
       options: {
-        redirectTo: `${env.FRONTEND_URL}/redefinir-senha`,
+        redirectTo: `${frontendBaseUrl}/redefinir-senha`,
         data: {
           full_name,
           role,
           tenant_id,
+          partner_id: partnerId,
           permissions,
+          manageable_features: manageableFeatures,
+          manageable_tenant_ids: manageableTenantIds,
         },
       }
     });
@@ -125,12 +159,11 @@ router.post("/", async (req: Request, res: Response) => {
     }
 
     try {
-      const token = await AuthVerificationService.createToken(inviteData.user.id, email, inviteData.properties.action_link);
-      await AuthVerificationService.sendVerificationEmail({
-        email,
+      await sendInvitationEmail({
+        to: email,
         fullName: full_name,
-        token,
-        invitationLink: inviteData.properties.action_link
+        setupLink: inviteData.properties.action_link,
+        brandName: partner?.name || null,
       });
     } catch (error) {
       console.error("[Admin] Verification flow error:", error);
@@ -148,9 +181,24 @@ router.post("/", async (req: Request, res: Response) => {
         .eq("id", access_request_id);
     }
 
+    await supabaseAdmin
+      .from("profiles")
+      .upsert({
+        id: inviteData.user.id,
+        email,
+        full_name,
+        role,
+        tenant_id,
+        partner_id: partnerId,
+        permissions,
+        manageable_features: manageableFeatures,
+        manageable_tenant_ids: manageableTenantIds,
+        updated_at: new Date().toISOString(),
+      });
+
     const { data: profile } = await supabaseAdmin
       .from("profiles")
-      .select("id, email, full_name, role, tenant_id, is_active, created_at, permissions")
+      .select("id, email, full_name, role, tenant_id, is_active, created_at, permissions, manageable_features, manageable_tenant_ids")
       .eq("id", inviteData.user.id)
       .single();
 
@@ -178,6 +226,11 @@ const updateUserSchema = z.object({
   tenant_id: z.string().uuid().nullable().optional(),
   is_active: z.boolean().optional(),
   permissions: z.record(z.any()).optional(),
+  manageable_features: z.record(
+    z.enum(VALID_FEATURE_KEYS as [string, ...string[]]),
+    z.boolean(),
+  ).optional(),
+  manageable_tenant_ids: z.array(z.string().uuid("Tenant inválido")).optional(),
   bypass_2fa: z.boolean().optional(),
 });
 
@@ -188,16 +241,6 @@ router.put("/:id", async (req: Request, res: Response) => {
       res.status(400).json({ success: false, error: "Dados inválidos" });
       return;
     }
-
-    const updates: Record<string, unknown> = {
-      updated_at: new Date().toISOString(),
-    };
-    if (parsed.data.full_name !== undefined) updates.full_name = parsed.data.full_name;
-    if (parsed.data.role !== undefined) updates.role = parsed.data.role;
-    if (parsed.data.tenant_id !== undefined) updates.tenant_id = parsed.data.tenant_id;
-    if (parsed.data.is_active !== undefined) updates.is_active = parsed.data.is_active;
-    if (parsed.data.permissions !== undefined) updates.permissions = parsed.data.permissions;
-    if (parsed.data.bypass_2fa !== undefined) updates.bypass_2fa = parsed.data.bypass_2fa;
 
     if (req.params.id === req.user!.id) {
       if (parsed.data.role !== undefined && parsed.data.role !== "master") {
@@ -211,6 +254,40 @@ router.put("/:id", async (req: Request, res: Response) => {
     }
 
     const { data: previousUser } = await supabaseAdmin.from("profiles").select("*").eq("id", req.params.id).single();
+    const effectiveRole = parsed.data.role ?? previousUser?.role ?? "user";
+    const manageableTenantIds = effectiveRole === "master"
+      ? []
+      : normalizeManageableTenantIds(parsed.data.manageable_tenant_ids ?? previousUser?.manageable_tenant_ids);
+
+    if (manageableTenantIds.length > 0) {
+      const { data: selectedTenants, error: selectedTenantsError } = await supabaseAdmin
+        .from("tenants")
+        .select("id")
+        .in("id", manageableTenantIds);
+
+      if (selectedTenantsError || (selectedTenants || []).length !== manageableTenantIds.length) {
+        res.status(400).json({ success: false, error: "Uma ou mais empresas delegadas são inválidas" });
+        return;
+      }
+    }
+
+    const updates: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (parsed.data.full_name !== undefined) updates.full_name = parsed.data.full_name;
+    if (parsed.data.role !== undefined) updates.role = parsed.data.role;
+    if (parsed.data.tenant_id !== undefined) updates.tenant_id = parsed.data.tenant_id;
+    if (parsed.data.is_active !== undefined) updates.is_active = parsed.data.is_active;
+    if (parsed.data.permissions !== undefined) updates.permissions = parsed.data.permissions;
+    if (parsed.data.manageable_features !== undefined || effectiveRole === "master") {
+      updates.manageable_features = effectiveRole === "master"
+        ? normalizeExplicitFeatureFlags()
+        : normalizeExplicitFeatureFlags(parsed.data.manageable_features);
+    }
+    if (parsed.data.manageable_tenant_ids !== undefined || effectiveRole === "master") {
+      updates.manageable_tenant_ids = manageableTenantIds;
+    }
+    if (parsed.data.bypass_2fa !== undefined) updates.bypass_2fa = parsed.data.bypass_2fa;
 
     const { data, error } = await supabaseAdmin
       .from("profiles")
@@ -230,10 +307,15 @@ router.put("/:id", async (req: Request, res: Response) => {
         role: parsed.data.role,
         tenant_id: parsed.data.tenant_id,
         permissions: parsed.data.permissions,
+        manageable_features: effectiveRole === "master"
+          ? normalizeExplicitFeatureFlags()
+          : parsed.data.manageable_features,
+        manageable_tenant_ids: manageableTenantIds,
       },
     });
 
     await invalidateAuthCache(String(req.params.id));
+    notifyPermissionsChanged(String(req.params.id));
 
     res.json({ success: true, data });
 

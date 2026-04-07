@@ -4,6 +4,7 @@ import { Eye, EyeOff } from 'lucide-react';
 import { agentApi } from '../services/agentApi';
 import { useAuth } from '../contexts/AuthContext';
 import { PasswordStrengthIndicator } from '../components/PasswordStrengthIndicator';
+import logotipoAtrio from '../assets/logotipo-atrio.png';
 
 export function RegisterPage() {
   const { login } = useAuth();
@@ -20,6 +21,12 @@ export function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [error, setError] = useState('');
+  const [publicBranding, setPublicBranding] = useState<{
+    partner_name: string | null;
+    primary_color: string | null;
+    login_logo_url: string | null;
+    partner_slug: string | null;
+  } | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -27,6 +34,12 @@ export function RegisterPage() {
     agentApi.getPublicSignupConfig().then((result) => {
       if (!mounted) return;
       setSignupEnabled(result.success ? !!result.data?.enabled : false);
+      setPublicBranding(result.success && result.data?.resolved_branding ? {
+        partner_name: result.data.resolved_branding.partner_name,
+        primary_color: result.data.resolved_branding.primary_color,
+        login_logo_url: result.data.resolved_branding.login_logo_url,
+        partner_slug: result.data.resolved_branding.partner_slug,
+      } : null);
       setLoadingConfig(false);
     });
 
@@ -34,6 +47,11 @@ export function RegisterPage() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!publicBranding?.primary_color) return;
+    document.documentElement.style.setProperty('--color-brand-primary', publicBranding.primary_color);
+  }, [publicBranding?.primary_color]);
 
   const setField = (field: keyof typeof form, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -55,7 +73,10 @@ export function RegisterPage() {
     setError('');
     setLoading(true);
 
-    const registerResult = await agentApi.register(form);
+    const registerResult = await agentApi.register({
+      ...form,
+      partner_slug: publicBranding?.partner_slug || undefined,
+    });
     if (!registerResult.success) {
       setLoading(false);
       setError(registerResult.error || 'Erro ao criar conta');
@@ -94,7 +115,7 @@ export function RegisterPage() {
           <p className="text-[14px] text-muted mb-6">
             O cadastro publico nao esta ativo no momento.
           </p>
-          <Link to="/" className="text-sm text-(--color-brand-primary) hover:underline">
+          <Link to="/login" className="text-sm text-(--color-brand-primary) hover:underline">
             Voltar para login
           </Link>
         </div>
@@ -105,6 +126,13 @@ export function RegisterPage() {
   return (
     <div className="min-h-screen bg-body flex items-center justify-center p-5">
       <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-soft">
+        <div className="mb-6 flex justify-center">
+          <img
+            src={publicBranding?.login_logo_url || logotipoAtrio}
+            alt={publicBranding?.partner_name || 'Átrio'}
+            className="h-12 w-auto object-contain"
+          />
+        </div>
         <h1 className="text-2xl font-bold text-primary mb-2">Criar conta</h1>
         <p className="text-[14px] text-muted mb-6">
           Cadastre sua conta e, no primeiro acesso, voce criara a empresa para comecar a usar a plataforma.
@@ -194,7 +222,7 @@ export function RegisterPage() {
         </form>
 
         <div className="mt-6 text-center">
-          <Link to="/" className="text-sm text-(--color-brand-primary) hover:underline">
+          <Link to="/login" className="text-sm text-(--color-brand-primary) hover:underline">
             Voltar para login
           </Link>
         </div>

@@ -58,6 +58,14 @@ export function Sidebar() {
 
   const logoSrc = theme === 'dark' ? logoDark : logoLight;
   const brandPrimaryColor = useBrandPrimaryColor();
+  const resolvedBranding = user?.resolved_branding;
+  const mainLogoSrc = theme === 'dark'
+    ? (resolvedBranding?.sidebar_logo_dark_url || resolvedBranding?.sidebar_logo_light_url || logoAtrioBranca)
+    : (resolvedBranding?.sidebar_logo_light_url || resolvedBranding?.sidebar_logo_dark_url || logoAtrio);
+  const footerLogoSrc = resolvedBranding?.footer_logo_url || logoSrc;
+  const collapsedFooterLogoSrc = resolvedBranding?.footer_logo_url || (theme === 'dark' ? sidebarLogoDark : sidebarLogoWhite);
+  const brandName = resolvedBranding?.partner_name || 'Atrio';
+  const footerBrandName = resolvedBranding?.partner_name || 'Agregar Negocios';
 
   // Build menu items dynamically
   const menuSections: { section: string; items: (SidebarMenuItem & { permission?: string })[] }[] = [
@@ -88,7 +96,7 @@ export function Sidebar() {
     {
       section: 'Sistema',
       items: [
-        ...(isMaster ? [{ icon: Shield, label: 'Administração', path: '/admin' }] : []),
+        ...((isMaster || hasPermission('gerenciar_feature_flags')) ? [{ icon: Shield, label: 'Administração', path: '/admin' }] : []),
       ],
     },
   ];
@@ -163,8 +171,8 @@ export function Sidebar() {
             ) : (
               <div className="flex w-full flex-col items-center justify-center min-w-0 py-4">
                 <img
-                  src={theme === 'dark' ? logoAtrioBranca : logoAtrio}
-                  alt="Átrio"
+                  src={mainLogoSrc}
+                  alt={brandName}
                   className="h-14 max-sm:h-10 w-auto object-contain"
                 />
                 {/* Logo da Agregar movida para a área inferior, abaixo do botão Sair */}
@@ -296,8 +304,8 @@ export function Sidebar() {
               </div>
               <div className="mt-4 flex justify-center px-1">
                 <img
-                  src={theme === 'dark' ? sidebarLogoDark : sidebarLogoWhite}
-                  alt="Agregar Negócios"
+                  src={collapsedFooterLogoSrc}
+                  alt={footerBrandName}
                   className="w-full max-h-12 object-contain"
                 />
               </div>
@@ -317,7 +325,7 @@ export function Sidebar() {
                     {user?.full_name || 'Usuário'}
                   </p>
                   <p className="text-[11px] text-muted/60 truncate uppercase tracking-wider font-medium">
-                    {user?.role === 'master' ? 'Master' : 'Usuário'}
+                    {user?.role === 'master' ? 'Master' : hasPermission('gerenciar_feature_flags') ? 'Admin de Flags' : 'Usuário'}
                   </p>
                 </div>
               </div>
@@ -345,8 +353,8 @@ export function Sidebar() {
               {/* Logo da Agregar abaixo da caixa com o botão Sair */}
               <div className="mt-4 flex justify-center">
                 <img
-                  src={logoSrc}
-                  alt="Agregar Negócios"
+                  src={footerLogoSrc}
+                  alt={footerBrandName}
                   className="h-6 w-auto object-contain"
                 />
               </div>
@@ -360,6 +368,9 @@ export function Sidebar() {
 
 function BrandIcon() {
   const brandPrimaryColor = useBrandPrimaryColor();
+  const { user } = useAuth();
+  const iconLogoSrc = user?.resolved_branding?.icon_logo_url || logotipoAtrioPng;
+  const brandName = user?.resolved_branding?.partner_name || 'Atrio';
 
   return (
     <div
@@ -368,7 +379,7 @@ function BrandIcon() {
         backgroundColor: brandPrimaryColor ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.1) : 'color-mix(in srgb, var(--color-brand-primary) 10%, transparent)',
       }}
     >
-      <img src={logotipoAtrioPng} alt="Átrio" className="w-full h-full object-contain p-1.5" />
+      <img src={iconLogoSrc} alt={brandName} className="w-full h-full object-contain p-1.5" />
     </div>
   );
 }

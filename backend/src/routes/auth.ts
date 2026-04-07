@@ -7,8 +7,6 @@ import {
   sendAccessRequestNotification,
   sendAccessRequestReceivedEmail,
   sendPasswordResetEmail,
-  sendTwoFactorCodeEmail,
-  sendEmailVerification,
 } from "../services/email";
 import { strongPasswordSchema } from "../utils/password";
 import {
@@ -26,6 +24,22 @@ import {
   getPublicSignupPublicView,
 } from "../services/publicSignup";
 import { buildDisabledTenantFeatures, generateUniqueTenantCode } from "../services/tenantIdentity";
+import {
+  hasAnyExplicitFeatureFlag,
+  normalizeExplicitFeatureFlags,
+} from "../constants/feature-flags";
+import { normalizeManageableTenantIds } from "../utils/tenant-access";
+import { normalizeHost } from "../services/partners";
+import { resolveFrontendBaseUrl } from "../services/frontend-url";
+import {
+  buildResolvedBranding,
+  getManagedPartnerIds,
+  getPartnerByHost,
+  getPartnerById,
+  getPartnerBySlug,
+  getRequestHost,
+  getTenantPartnerId,
+} from "../services/partners";
 
 
 const router = Router();
@@ -36,10 +50,13 @@ interface ProfileRow {
   full_name: string;
   role: "master" | "user";
   tenant_id: string | null;
+  partner_id: string | null;
   is_active: boolean;
   avatar_url: string | null;
   email_verified: boolean;
   permissions: Record<string, any>;
+  manageable_features: Record<string, boolean>;
+  manageable_tenant_ids: string[];
   two_factor_enabled: boolean;
   two_factor_secret: string | null;
   recovery_codes_hash: string[] | null;
@@ -54,7 +71,7 @@ function normalizeEmail(email: string): string {
 async function getProfile(userId: string): Promise<ProfileRow | null> {
   const { data, error } = await supabaseAdmin
     .from("profiles")
-    .select("id, email, full_name, role, tenant_id, is_active, avatar_url, email_verified, permissions, two_factor_enabled, two_factor_secret, recovery_codes_hash, bypass_2fa, needs_tenant_setup")
+    .select("id, email, full_name, role, tenant_id, partner_id, is_active, avatar_url, email_verified, permissions, manageable_features, manageable_tenant_ids, two_factor_enabled, two_factor_secret, recovery_codes_hash, bypass_2fa, needs_tenant_setup")
     .eq("id", userId)
     .single();
 
@@ -98,12 +115,31 @@ async function getTenantFeatures(tenantId: string | null): Promise<Record<string
   return data?.enabled_features || {};
 }
 
+async function resolvePartnerForProfile(profile: Pick<ProfileRow, "partner_id" | "tenant_id">) {
+  const tenantPartnerId = await getTenantPartnerId(profile.tenant_id);
+  return getPartnerById(tenantPartnerId || profile.partner_id);
+}
+
 async function buildAuthUserPayload(profile: ProfileRow) {
-  const [tenant_name, enabled_features, rbacPermissions] = await Promise.all([
+  const [tenant_name, enabled_features, rbacPermissions, managedPartnerIds, resolvedPartner] = await Promise.all([
     getTenantName(profile.tenant_id),
     getTenantFeatures(profile.tenant_id),
     AccessControlService.getUserPermissions(profile.id),
+    getManagedPartnerIds(profile.id),
+    resolvePartnerForProfile(profile),
   ]);
+  const manageableFeatures = normalizeExplicitFeatureFlags(profile.manageable_features);
+  const manageableTenantIds = normalizeManageableTenantIds(profile.manageable_tenant_ids);
+  const resolvedBranding = buildResolvedBranding(resolvedPartner);
+  const defaultResolvedHost = normalizeHost(env.FRONTEND_URL);
+  const permissions = {
+    ...(profile.permissions || {}),
+    ...rbacPermissions,
+  };
+
+  if (hasAnyExplicitFeatureFlag(manageableFeatures)) {
+    permissions.gerenciar_feature_flags = true;
+  }
 
   return {
     id: profile.id,
@@ -111,16 +147,32 @@ async function buildAuthUserPayload(profile: ProfileRow) {
     full_name: profile.full_name,
     role: profile.role,
     tenant_id: profile.tenant_id,
+    partner_id: profile.partner_id,
     tenant_name,
     avatar_url: profile.avatar_url || null,
-    permissions: {
-      ...(profile.permissions || {}),
-      ...rbacPermissions,
-    },
+    permissions,
     enabled_features,
-    two_factor_enabled: profile.two_factor_enabled,
+    manageable_features: manageableFeatures,
+    manageable_tenant_ids: manageableTenantIds,
+    managed_partner_ids: managedPartnerIds,
+    resolved_branding: {
+      ...resolvedBranding,
+      resolved_host: resolvedBranding.resolved_host || defaultResolvedHost,
+    },
+    resolved_host: resolvedBranding.resolved_host || defaultResolvedHost,
+    two_factor_enabled: false,
     needs_tenant_setup: profile.needs_tenant_setup,
   };
+}
+
+async function resolveRequestedPartner(req: Request, explicitSlug?: string | null) {
+  if (explicitSlug) {
+    const bySlug = await getPartnerBySlug(explicitSlug);
+    if (bySlug) return bySlug;
+  }
+
+  const requestHost = getRequestHost(req);
+  return getPartnerByHost(requestHost);
 }
 
 const loginSchema = z.object({
@@ -170,6 +222,60 @@ router.post("/login", authLimiter, async (req: Request, res: Response) => {
       return;
     }
 
+    // Verificação de email e 2FA estão desabilitados globalmente.
+    await supabaseAdmin
+      .from("profiles")
+      .update({
+        email_verified: true,
+        bypass_2fa: true,
+        two_factor_enabled: false,
+        two_factor_secret: null,
+        recovery_codes_hash: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", profile.id);
+
+    await supabaseAdmin
+      .from("auth_login_challenges")
+      .delete()
+      .eq("user_id", profile.id);
+
+    const userPayload = await buildAuthUserPayload({
+      ...profile,
+      email_verified: true,
+      bypass_2fa: true,
+      two_factor_enabled: false,
+      two_factor_secret: null,
+      recovery_codes_hash: null,
+    });
+
+    const expiresAt = data.session.expires_at
+      ? Math.floor(new Date(data.session.expires_at * 1000).getTime() / 1000)
+      : null;
+
+    res.json({
+      success: true,
+      data: {
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        expires_at: expiresAt,
+        user: userPayload,
+      },
+    });
+
+    void AuditService.log({
+      userId: profile.id,
+      action: "user.login",
+      resource: "auth",
+      entityId: profile.id,
+      ipAddress: req.auditInfo?.ip,
+      userAgent: req.auditInfo?.userAgent,
+      tenantId: profile.tenant_id || undefined,
+      details: { message: "Login realizado" },
+    });
+    return;
+
+    /*
     // Auto-verify email on first login
     if (!profile.email_verified) {
       await supabaseAdmin
@@ -387,6 +493,12 @@ router.post("/logout", async (req: Request, res: Response) => {
 
 router.post("/resend-verification", publicApiLimiter, async (req: Request, res: Response) => {
   try {
+    res.json({
+      success: true,
+      data: { message: "A verificacao de email esta desabilitada para esta plataforma." },
+    });
+    return;
+
     const { email } = req.body;
     if (!email) {
       res.status(400).json({ success: false, error: "Email obrigatório" });
@@ -433,6 +545,15 @@ router.post("/resend-verification", publicApiLimiter, async (req: Request, res: 
 
 router.get("/verify-email/:token", publicApiLimiter, async (req: Request, res: Response) => {
   try {
+    res.json({
+      success: true,
+      data: {
+        message: "A verificacao de email esta desabilitada. Voce ja pode acessar sua conta.",
+        invitationLink: null,
+      },
+    });
+    return;
+
     const { token } = req.params;
     const { invitationLink } = await AuthVerificationService.verify(token as string);
 
@@ -462,6 +583,13 @@ const verify2FASchema = z.object({
 
 router.post("/verify-2fa", authLimiter, async (req: Request, res: Response) => {
   try {
+    res.status(410).json({
+      success: false,
+      error: "O 2FA esta desabilitado nesta plataforma.",
+    });
+    return;
+
+    /*
     const parsed = verify2FASchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({
@@ -622,6 +750,7 @@ router.post("/verify-2fa", authLimiter, async (req: Request, res: Response) => {
       tenantId: profile.tenant_id || undefined,
       details: { message: "Login realizado via 2FA" },
     });
+    */
   } catch (error) {
     console.error("[Auth] verify-2fa error:", error);
     res.status(500).json({ success: false, error: "Erro interno" });
@@ -634,16 +763,26 @@ const publicSignupSchema = z
     email: z.string().email("Email invalido"),
     password: strongPasswordSchema,
     confirm_password: z.string().min(1, "Confirmacao obrigatoria"),
+    partner_slug: z.string().trim().min(1).optional(),
   })
   .refine((data) => data.password === data.confirm_password, {
     message: "As senhas nao coincidem",
     path: ["confirm_password"],
   });
 
-router.get("/public-signup-config", publicApiLimiter, async (_req: Request, res: Response) => {
+router.get("/public-signup-config", publicApiLimiter, async (req: Request, res: Response) => {
   try {
     const data = await getPublicSignupPublicView();
-    res.json({ success: true, data });
+    const partner = await resolveRequestedPartner(req);
+    res.json({
+      success: true,
+      data: {
+        ...data,
+        resolved_branding: buildResolvedBranding(partner),
+      },
+    });
+   
+   
   } catch (error) {
     console.error("[Auth] public-signup-config error:", error);
     res.status(500).json({ success: false, error: "Erro ao carregar configuracao do cadastro publico" });
@@ -663,6 +802,7 @@ router.post("/register", registerLimiter, async (req: Request, res: Response) =>
     }
 
     const email = normalizeEmail(parsed.data.email);
+    const partner = await resolveRequestedPartner(req, parsed.data.partner_slug);
 
     try {
       await assertPublicSignupEnabled();
@@ -694,6 +834,7 @@ router.post("/register", registerLimiter, async (req: Request, res: Response) =>
         full_name: parsed.data.full_name,
         role: "user",
         tenant_id: null,
+        partner_id: partner?.id || null,
         permissions: {},
       },
     });
@@ -719,6 +860,7 @@ router.post("/register", registerLimiter, async (req: Request, res: Response) =>
           full_name: parsed.data.full_name,
           role: "user",
           tenant_id: null,
+          partner_id: partner?.id || null,
           permissions: {},
           email_verified: true,
           bypass_2fa: true,
@@ -741,6 +883,7 @@ router.post("/register", registerLimiter, async (req: Request, res: Response) =>
         email_verified: true,
         bypass_2fa: true,
         needs_tenant_setup: true,
+        partner_id: partner?.id || null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", createdUser.user.id);
@@ -970,7 +1113,9 @@ router.post("/forgot-password", publicApiLimiter, async (req: Request, res: Resp
       return;
     }
 
-    const baseUrl = env.APP_BASE_URL.replace(/\/+$/, "");
+    const fullProfile = await getProfile(profile.id);
+    const profilePartner = fullProfile ? await resolvePartnerForProfile(fullProfile) : null;
+    const baseUrl = await resolveFrontendBaseUrl({ profileId: profile.id });
     const resetLink = `${baseUrl}/reset-password/${rawToken}`;
 
     try {
@@ -979,6 +1124,7 @@ router.post("/forgot-password", publicApiLimiter, async (req: Request, res: Resp
         fullName: profile.full_name,
         resetLink,
         expiresInMinutes: env.PASSWORD_RESET_TOKEN_TTL_MINUTES,
+        brandName: profilePartner?.name || null,
       });
     } catch (mailError) {
       console.error("[Auth] Forgot password mail error:", mailError);
@@ -1169,9 +1315,10 @@ router.post("/onboarding/company", requireAuth, async (req: Request, res: Respon
         name: parsed.data.name,
         ai_rate_limit: 20,
         tenant_code: tenantCode,
+        partner_id: profile.partner_id,
         enabled_features: buildDisabledTenantFeatures(),
       })
-      .select("id, name, tenant_code")
+      .select("id, name, tenant_code, partner_id")
       .single();
 
     if (tenantError || !tenant) {
@@ -1202,6 +1349,7 @@ router.post("/onboarding/company", requireAuth, async (req: Request, res: Respon
           full_name: profile.full_name,
           role: profile.role,
           tenant_id: tenant.id,
+          partner_id: profile.partner_id,
           permissions: profile.permissions || {},
         },
       });
@@ -1281,10 +1429,16 @@ router.get("/me", requireAuth, async (req: Request, res: Response) => {
         full_name: user.full_name,
         role: user.role,
         tenant_id: user.tenant_id,
+        partner_id: user.partner_id,
         tenant_name,
         avatar_url: user.avatar_url,
         permissions: user.permissions,
         enabled_features: user.enabled_features,
+        manageable_features: user.manageable_features,
+        manageable_tenant_ids: user.manageable_tenant_ids,
+        managed_partner_ids: user.managed_partner_ids,
+        resolved_branding: user.resolved_branding,
+        resolved_host: user.resolved_host,
         two_factor_enabled: user.two_factor_enabled,
         needs_tenant_setup: user.needs_tenant_setup,
       },
@@ -1299,6 +1453,13 @@ router.get("/me", requireAuth, async (req: Request, res: Response) => {
 
 router.post("/2fa/enable", requireAuth, async (req: Request, res: Response) => {
   try {
+    res.status(410).json({
+      success: false,
+      error: "O 2FA esta desabilitado nesta plataforma.",
+    });
+    return;
+
+    /*
     const user = req.user!;
     const profile = await getProfile(user.id);
 
@@ -1333,6 +1494,7 @@ router.post("/2fa/enable", requireAuth, async (req: Request, res: Response) => {
         recoveryCodes,
       }
     });
+    */
   } catch (error) {
     console.error("[Auth] 2FA Enable error:", error);
     res.status(500).json({ success: false, error: "Erro ao gerar configuração 2FA" });
@@ -1341,6 +1503,13 @@ router.post("/2fa/enable", requireAuth, async (req: Request, res: Response) => {
 
 router.post("/2fa/verify", requireAuth, async (req: Request, res: Response) => {
   try {
+    res.status(410).json({
+      success: false,
+      error: "O 2FA esta desabilitado nesta plataforma.",
+    });
+    return;
+
+    /*
     const { code } = req.body;
     if (!code || code.length !== 6) {
       res.status(400).json({ success: false, error: "Código inválido" });
@@ -1374,6 +1543,7 @@ router.post("/2fa/verify", requireAuth, async (req: Request, res: Response) => {
     }
 
     res.json({ success: true, data: { message: "2FA ativado com sucesso!" } });
+    */
   } catch (error) {
     console.error("[Auth] 2FA Verify error:", error);
     res.status(500).json({ success: false, error: "Erro ao validar 2FA" });
@@ -1382,6 +1552,13 @@ router.post("/2fa/verify", requireAuth, async (req: Request, res: Response) => {
 
 router.post("/2fa/disable", requireAuth, async (req: Request, res: Response) => {
   try {
+    res.status(410).json({
+      success: false,
+      error: "O 2FA esta desabilitado nesta plataforma.",
+    });
+    return;
+
+    /*
     const { password } = req.body;
     if (!password) {
       res.status(400).json({ success: false, error: "Senha obrigatória para desativar 2FA" });
@@ -1416,6 +1593,7 @@ router.post("/2fa/disable", requireAuth, async (req: Request, res: Response) => 
     }
 
     res.json({ success: true, data: { message: "2FA desativado com sucesso" } });
+    */
   } catch (error) {
     console.error("[Auth] 2FA Disable error:", error);
     res.status(500).json({ success: false, error: "Erro ao desativar 2FA" });

@@ -26,6 +26,12 @@ export function getDefaultFeatureFlags(): Record<FeatureKey, boolean> {
   ) as Record<FeatureKey, boolean>;
 }
 
+export function getAllDisabledFeatureFlags(): Record<FeatureKey, boolean> {
+  return Object.fromEntries(
+    (Object.keys(FEATURE_REGISTRY) as FeatureKey[]).map((key) => [key, false]),
+  ) as Record<FeatureKey, boolean>;
+}
+
 export function isFeatureEnabled(
   featureKey: FeatureKey | string,
   flags?: Record<string, boolean> | null,

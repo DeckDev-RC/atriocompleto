@@ -2,6 +2,8 @@ import { supabaseAdmin } from "../config/supabase";
 import { queryFunctions } from "./query-functions";
 import { genai, GEMINI_MODEL } from "../config/gemini";
 import { z } from "zod";
+import { resolveFrontendBaseUrl } from "./frontend-url";
+import { getTenantPartnerId, getPartnerById } from "./partners";
 
 // ── Zod schema for strategic actions ────────────────────
 const strategicActionSchema = z.object({
@@ -287,6 +289,9 @@ RETORNE APENAS UM JSON VÁLIDO no formato:
         if (!profiles || profiles.length === 0) return;
 
         const { sendWeeklyStrategicReport } = await import("./email");
+        const partnerId = await getTenantPartnerId(tenantId);
+        const partner = await getPartnerById(partnerId);
+        const frontendBaseUrl = await resolveFrontendBaseUrl({ tenantId, partnerId });
 
         for (const profile of profiles) {
             if (profile.email) {
@@ -294,6 +299,8 @@ RETORNE APENAS UM JSON VÁLIDO no formato:
                     to: profile.email,
                     fullName: profile.full_name,
                     report,
+                    strategicUrl: `${frontendBaseUrl}/estrategia`,
+                    brandName: partner?.name || null,
                 });
             }
         }

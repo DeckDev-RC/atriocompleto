@@ -28,6 +28,12 @@ export function LoginPage() {
   const [resendStatus, setResendStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [resendMessage, setResendMessage] = useState('');
   const [publicSignupEnabled, setPublicSignupEnabled] = useState(false);
+  const [publicBranding, setPublicBranding] = useState<{
+    partner_name: string | null;
+    primary_color: string | null;
+    login_logo_url: string | null;
+    footer_logo_url: string | null;
+  } | null>(null);
 
   const isUnverified = error.includes('verifique seu email');
   const isRateLimited = error.includes('Muitas requisições') || error.includes('Muitas tentativas');
@@ -39,12 +45,28 @@ export function LoginPage() {
     agentApi.getPublicSignupConfig().then((result) => {
       if (!mounted) return;
       setPublicSignupEnabled(result.success ? !!result.data?.enabled : false);
+      setPublicBranding(result.success && result.data?.resolved_branding ? {
+        partner_name: result.data.resolved_branding.partner_name,
+        primary_color: result.data.resolved_branding.primary_color,
+        login_logo_url: result.data.resolved_branding.login_logo_url,
+        footer_logo_url: result.data.resolved_branding.footer_logo_url,
+      } : null);
     });
 
     return () => {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!publicBranding?.primary_color) return;
+    document.documentElement.style.setProperty('--color-brand-primary', publicBranding.primary_color);
+  }, [publicBranding?.primary_color]);
+
+  const topLogoSrc = publicBranding?.login_logo_url || logotipoAtrio;
+  const footerLogoSrc = publicBranding?.footer_logo_url || logoLight;
+  const brandName = publicBranding?.partner_name || 'Átrio';
+  const footerBrandName = publicBranding?.partner_name || 'Agregar Negócios';
 
   const handleCredentialsSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -164,8 +186,8 @@ export function LoginPage() {
 
               <div className="absolute top-4 left-4 md:top-6 md:left-8 z-20">
                 <img
-                  src={logotipoAtrio}
-                  alt="Átrio"
+                  src={topLogoSrc}
+                  alt={brandName}
                   className="h-15 w-auto object-contain brightness-0 invert"
                 />
               </div>
@@ -178,8 +200,8 @@ export function LoginPage() {
                 </div>
                 <div className="flex justify-center">
                   <img
-                    src={logoLight}
-                    alt="Agregar Negócios"
+                    src={footerLogoSrc}
+                    alt={footerBrandName}
                     className="h-5.5 w-auto object-contain brightness-0 invert"
                   />
                 </div>
@@ -192,7 +214,7 @@ export function LoginPage() {
                   <div className="mb-6 md:mb-8">
                     <h2 className="text-2xl md:text-3xl font-bold text-primary mb-2">Entrar</h2>
                     <p className="text-secondary text-[14px] leading-relaxed">
-                      Faça login com email e senha. Em seguida enviaremos um código no seu email.
+                      Faça login com email e senha para acessar sua conta.
                     </p>
                   </div>
 
@@ -360,7 +382,7 @@ export function LoginPage() {
               )}
 
               <div className="mt-8 text-center">
-                <p className="text-xs text-gray-500">© {new Date().getFullYear()} Agregar Negócios</p>
+                <p className="text-xs text-gray-500">© {new Date().getFullYear()} {footerBrandName}</p>
               </div>
             </div>
           </div>

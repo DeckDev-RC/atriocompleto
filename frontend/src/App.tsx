@@ -83,7 +83,8 @@ function AppRoutes() {
     return (
       <Suspense fallback={<PageLoader />}>
         <Routes>
-          <Route path="/" element={<LoginPage />} />
+          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/login" element={<LoginPage />} />
           <Route path="/criar-conta" element={<RegisterPage />} />
           <Route path="/solicitar-acesso" element={<AccessRequestPage />} />
           <Route path="/esqueci-senha" element={<ForgotPasswordPage />} />
@@ -128,7 +129,7 @@ function AppRoutes() {
               </ProtectedRoute>
             } />
             <Route path="admin" element={
-              <ProtectedRoute requireMaster>
+              <ProtectedRoute permission="gerenciar_feature_flags">
                 <AdminPage />
               </ProtectedRoute>
             } />

@@ -1,12 +1,38 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { agentApi } from '../services/agentApi';
+import logotipoAtrio from '../assets/logotipo-atrio.png';
 
 export function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [publicBranding, setPublicBranding] = useState<{
+    partner_name: string | null;
+    primary_color: string | null;
+    login_logo_url: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    agentApi.getPublicSignupConfig().then((result) => {
+      if (!mounted) return;
+      setPublicBranding(result.success && result.data?.resolved_branding ? {
+        partner_name: result.data.resolved_branding.partner_name,
+        primary_color: result.data.resolved_branding.primary_color,
+        login_logo_url: result.data.resolved_branding.login_logo_url,
+      } : null);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!publicBranding?.primary_color) return;
+    document.documentElement.style.setProperty('--color-brand-primary', publicBranding.primary_color);
+  }, [publicBranding?.primary_color]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -28,6 +54,13 @@ export function ForgotPasswordPage() {
   return (
     <div className="min-h-screen bg-body flex items-center justify-center p-5">
       <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-soft">
+        <div className="mb-6 flex justify-center">
+          <img
+            src={publicBranding?.login_logo_url || logotipoAtrio}
+            alt={publicBranding?.partner_name || 'Átrio'}
+            className="h-12 w-auto object-contain"
+          />
+        </div>
         <h1 className="text-2xl font-bold text-primary mb-2">Esqueci minha senha</h1>
         <p className="text-[14px] text-muted mb-6">
           Informe seu email para receber o link de redefinição.
@@ -64,7 +97,7 @@ export function ForgotPasswordPage() {
         </form>
 
         <div className="mt-6 text-center">
-          <Link to="/" className="text-sm text-(--color-brand-primary) hover:underline">
+          <Link to="/login" className="text-sm text-(--color-brand-primary) hover:underline">
             Voltar para login
           </Link>
         </div>

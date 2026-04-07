@@ -2,6 +2,8 @@ import { supabaseAdmin } from "../config/supabase";
 import { queryFunctions } from "./query-functions";
 import { genai, GEMINI_MODEL } from "../config/gemini";
 import { z } from "zod";
+import { resolveFrontendBaseUrl } from "./frontend-url";
+import { getTenantPartnerId, getPartnerById } from "./partners";
 
 export interface AutoInsight {
     id: string;
@@ -276,13 +278,18 @@ export class AutoInsightsService {
 
             // 3. Import email service dynamically to avoid circular dependencies if any
             const { sendDailyInsightsSummary } = await import("./email");
+            const partnerId = await getTenantPartnerId(tenantId);
+            const partner = await getPartnerById(partnerId);
+            const frontendBaseUrl = await resolveFrontendBaseUrl({ tenantId, partnerId });
 
             for (const profile of profiles) {
                 if (profile.email) {
                     await sendDailyInsightsSummary({
                         to: profile.email,
                         fullName: profile.full_name,
-                        insights: insights as AutoInsight[]
+                        insights: insights as AutoInsight[],
+                        dashboardUrl: `${frontendBaseUrl}/`,
+                        brandName: partner?.name || null,
                     });
                 }
             }

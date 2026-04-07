@@ -8,6 +8,7 @@ import { AuditService } from "./audit";
 import { sendScheduledReportEmail, sendScheduledReportFailureEmail } from "./email";
 import { CustomReportBuilderService } from "./customReportBuilder.service";
 import { buildScheduledReportDocument } from "./reportDocumentBuilder.service";
+import { resolveFrontendBaseUrl } from "./frontend-url";
 import {
   type EligibleRecipient,
   type GeneratedSheet,
@@ -575,12 +576,13 @@ async function buildCustomSheets(schedule: ScheduledReportRow) {
 
 async function generateReportData(schedule: ScheduledReportRow, downloadUrl: string): Promise<GeneratedReportArtifact> {
   const generated = await buildScheduledReportDocument(schedule);
+  const frontendBaseUrl = await resolveFrontendBaseUrl({ tenantId: schedule.tenant_id });
 
   return buildArtifact({
     schedule,
     sheets: generated.sheets,
     periodLabel: generated.periodLabel,
-    dashboardUrl: `${process.env.FRONTEND_URL || ""}/relatorios`,
+    dashboardUrl: `${frontendBaseUrl}/relatorios`,
     downloadUrl,
   });
 }
@@ -952,6 +954,7 @@ export class ReportSchedulerService {
       const artifact = await generateReportData(schedule, `https://atrio.invalid/${execution.id}`);
       const uploaded = await uploadArtifact(schedule, execution.id, artifact);
       const downloadUrl = await createSignedDownloadUrl(uploaded.storagePath, artifact.fileName, DOWNLOAD_URL_TTL_SECONDS);
+      const frontendBaseUrl = await resolveFrontendBaseUrl({ tenantId: schedule.tenant_id });
 
       const emailBody = buildEmailBody({
         reportName: `${schedule.name} (${REPORT_TYPE_LABELS[schedule.report_type]})`,
@@ -959,7 +962,7 @@ export class ReportSchedulerService {
         scheduleName: schedule.name,
         periodLabel: artifact.periodLabel,
         previewRows: artifact.previewRows,
-        dashboardUrl: `${process.env.FRONTEND_URL || ""}/relatorios`,
+        dashboardUrl: `${frontendBaseUrl}/relatorios`,
         downloadUrl,
       });
 

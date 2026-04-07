@@ -34,6 +34,28 @@ export function getAllDisabledFeatureFlags(): Record<FeatureKey, boolean> {
   ) as Record<FeatureKey, boolean>;
 }
 
+export function normalizeExplicitFeatureFlags(
+  flags?: Record<string, boolean> | null,
+): Record<FeatureKey, boolean> {
+  const normalized = getAllDisabledFeatureFlags();
+
+  if (!flags) {
+    return normalized;
+  }
+
+  for (const key of VALID_FEATURE_KEYS) {
+    normalized[key] = flags[key] === true;
+  }
+
+  return normalized;
+}
+
+export function hasAnyExplicitFeatureFlag(
+  flags?: Record<string, boolean> | null,
+): boolean {
+  return VALID_FEATURE_KEYS.some((key) => flags?.[key] === true);
+}
+
 export function isFeatureEnabled(
   featureKey: FeatureKey | string,
   flags?: Record<string, boolean> | null,

@@ -2,6 +2,20 @@ import { Request, Response, NextFunction } from "express";
 import { supabase, supabaseAdmin } from "../config/supabase";
 import { AccessControlService } from "../services/access-control";
 import { redis } from "../config/redis";
+import { env } from "../config/env";
+import {
+  hasAnyExplicitFeatureFlag,
+  normalizeExplicitFeatureFlags,
+} from "../constants/feature-flags";
+import {
+  buildResolvedBranding,
+  getManagedPartnerIds,
+  normalizeHost,
+  getPartnerById,
+  getTenantPartnerId,
+  type ResolvedBranding,
+} from "../services/partners";
+import { normalizeManageableTenantIds } from "../utils/tenant-access";
 
 /**
  * User info attached to req after auth middleware.
@@ -11,10 +25,16 @@ export interface AuthUser {
   email: string;
   role: "master" | "user";
   tenant_id: string | null;
+  partner_id: string | null;
   full_name: string;
   avatar_url: string | null;
   permissions: Record<string, any>; // Granular permissions
   enabled_features: Record<string, boolean>; // Feature flags per tenant
+  manageable_features: Record<string, boolean>; // Feature flags delegated by master to this user
+  manageable_tenant_ids: string[]; // Tenant scope delegated by master to this user
+  managed_partner_ids: string[]; // Partners administrados por este usuário
+  resolved_branding: ResolvedBranding;
+  resolved_host: string | null;
   two_factor_enabled: boolean;
   needs_tenant_setup: boolean;
 }
@@ -112,7 +132,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     const profileStart = Date.now();
     let { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
-      .select("id, email, full_name, role, tenant_id, is_active, avatar_url, permissions, two_factor_enabled, needs_tenant_setup")
+      .select("id, email, full_name, role, tenant_id, partner_id, is_active, avatar_url, permissions, manageable_features, manageable_tenant_ids, two_factor_enabled, needs_tenant_setup")
       .eq("id", user.id)
       .single();
 
@@ -122,7 +142,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       await new Promise(resolve => setTimeout(resolve, 500));
       const retry = await supabaseAdmin
         .from("profiles")
-        .select("id, email, full_name, role, tenant_id, is_active, avatar_url, permissions, two_factor_enabled, needs_tenant_setup")
+        .select("id, email, full_name, role, tenant_id, partner_id, is_active, avatar_url, permissions, manageable_features, manageable_tenant_ids, two_factor_enabled, needs_tenant_setup")
         .eq("id", user.id)
         .single();
       profile = retry.data;
@@ -144,11 +164,24 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     const rbacStart = Date.now();
     const rbacPermissions = await AccessControlService.getUserPermissions(profile.id);
     const rbacTime = Date.now() - rbacStart;
+    const manageableFeatures = normalizeExplicitFeatureFlags(profile.manageable_features);
+    const manageableTenantIds = normalizeManageableTenantIds(profile.manageable_tenant_ids);
+    const [managedPartnerIds, tenantPartnerId] = await Promise.all([
+      getManagedPartnerIds(profile.id),
+      getTenantPartnerId(profile.tenant_id),
+    ]);
+    const resolvedPartner = await getPartnerById(tenantPartnerId || profile.partner_id);
+    const resolvedBranding = buildResolvedBranding(resolvedPartner);
+    const defaultResolvedHost = normalizeHost(env.FRONTEND_URL);
 
     const finalPermissions = {
       ...(profile.permissions || {}),
       ...rbacPermissions,
     };
+
+    if (hasAnyExplicitFeatureFlag(manageableFeatures)) {
+      finalPermissions.gerenciar_feature_flags = true;
+    }
 
     // Fetch tenant feature flags
     let enabledFeatures: Record<string, boolean> = {};
@@ -166,11 +199,20 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       email: profile.email,
       role: profile.role as "master" | "user",
       tenant_id: profile.tenant_id,
+      partner_id: profile.partner_id || null,
       full_name: profile.full_name,
       avatar_url: profile.avatar_url || null,
       permissions: finalPermissions,
       enabled_features: enabledFeatures,
-      two_factor_enabled: profile.two_factor_enabled || false,
+      manageable_features: manageableFeatures,
+      manageable_tenant_ids: manageableTenantIds,
+      managed_partner_ids: managedPartnerIds,
+      resolved_branding: {
+        ...resolvedBranding,
+        resolved_host: resolvedBranding.resolved_host || defaultResolvedHost,
+      },
+      resolved_host: resolvedBranding.resolved_host || defaultResolvedHost,
+      two_factor_enabled: false,
       needs_tenant_setup: profile.needs_tenant_setup || false,
     };
 

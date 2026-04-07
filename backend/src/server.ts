@@ -23,7 +23,6 @@ import optimusSuggestionsRoutes from "./routes/optimus_suggestions";
 import reportsRoutes from "./routes/reports";
 import "./services/file-processing-queue";
 import "./services/memory-processing-queue";
-import { ScheduledReportsQueueService } from "./jobs/scheduledReports.job";
 import "./jobs/reportExports.job";
 
 const app = express();
@@ -35,12 +34,25 @@ const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
 
+    const configuredExtraOrigins = env.FRONTEND_URLS
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const normalizedHostname = (() => {
+      try {
+        return new URL(origin).hostname.toLowerCase();
+      } catch {
+        return "";
+      }
+    })();
+
     const allowedOrigins = [
       env.FRONTEND_URL,
       env.FRONTEND_URL.replace("https://", "http://"),
+      ...configuredExtraOrigins,
     ];
 
-    if (allowedOrigins.includes(origin)) {
+    if (allowedOrigins.includes(origin) || normalizedHostname.endsWith(".agregarnegocios.com.br")) {
       callback(null, true);
     } else {
       console.warn(`CORS blocked origin: ${origin}`);
@@ -123,9 +135,6 @@ const server = app.listen(env.PORT, () => {
   `);
 
   setupDailyCrons();
-  void ScheduledReportsQueueService.syncActiveSchedules().catch((error) => {
-    console.error("[ScheduledReports] Failed to sync active schedules on boot:", error);
-  });
 });
 
 let isShuttingDown = false;

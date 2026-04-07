@@ -148,11 +148,12 @@ export async function sendPasswordResetEmail(params: {
   fullName?: string | null;
   resetLink: string;
   expiresInMinutes: number;
+  brandName?: string | null;
 }): Promise<void> {
   await ensureTransportReady();
 
   const greeting = params.fullName?.trim() ? `Oi ${params.fullName.trim()},` : "Oi,";
-  const subject = "Recuperacao de senha - Atrio";
+  const subject = `Recuperacao de senha - ${params.brandName?.trim() || "Átrio"}`;
   const text = [
     greeting,
     "",
@@ -219,15 +220,55 @@ export async function sendEmailVerification(params: {
   });
 }
 
-export async function sendDailyInsightsSummary(params: {
+export async function sendInvitationEmail(params: {
   to: string;
   fullName?: string | null;
-  insights: any[];
+  setupLink: string;
+  brandName?: string | null;
 }): Promise<void> {
   await ensureTransportReady();
 
   const greeting = params.fullName?.trim() ? `Oi ${params.fullName.trim()},` : "Oi,";
-  const subject = `📊 Resumo Diário: ${params.insights.length} novos insights para você`;
+  const brandName = params.brandName?.trim() || "Átrio";
+  const subject = `Seu acesso foi liberado - ${brandName}`;
+  const text = [
+    greeting,
+    "",
+    `Seu acesso à plataforma ${brandName} foi liberado.`,
+    `Use este link para definir sua senha e entrar: ${params.setupLink}`,
+    "",
+    "Se você não esperava este convite, ignore este email.",
+  ].join("\n");
+
+  const html = `
+    <p>${escapeHtml(greeting)}</p>
+    <p>Seu acesso à plataforma <strong>${escapeHtml(brandName)}</strong> foi liberado.</p>
+    <p><a href="${escapeHtml(params.setupLink)}" style="display: inline-block; padding: 12px 24px; background-color: #0070f3; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600;">Definir minha senha</a></p>
+    <p>Ou copie e cole este link no navegador:</p>
+    <p>${escapeHtml(params.setupLink)}</p>
+    <p>Se você não esperava este convite, ignore este email.</p>
+  `;
+
+  await transporter.sendMail({
+    from: env.SMTP_FROM,
+    to: params.to,
+    subject,
+    text,
+    html,
+  });
+}
+
+export async function sendDailyInsightsSummary(params: {
+  to: string;
+  fullName?: string | null;
+  insights: any[];
+  dashboardUrl: string;
+  brandName?: string | null;
+}): Promise<void> {
+  await ensureTransportReady();
+
+  const greeting = params.fullName?.trim() ? `Oi ${params.fullName.trim()},` : "Oi,";
+  const subject = `Resumo Diario: ${params.insights.length} novos insights para voce - ${params.brandName?.trim() || "Átrio"}`;
 
   const insightsHtml = params.insights.map(insight => {
     const priorityColor = insight.priority === 'critical' ? '#ef4444' : insight.priority === 'high' ? '#f97316' : '#3b82f6';
@@ -263,7 +304,7 @@ export async function sendDailyInsightsSummary(params: {
       
       <div style="margin-top: 32px; padding: 20px; text-align: center; background: #f1f5f9; border-radius: 8px;">
         <p style="margin-bottom: 16px; font-size: 14px; color: #475569;">Para ver mais detalhes e agir sobre estes insights, acesse seu painel:</p>
-        <a href="${env.FRONTEND_URL}/dashboard" style="display: inline-block; padding: 12px 24px; background-color: #000000; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600;">Ver Todos no Dashboard</a>
+        <a href="${escapeHtml(params.dashboardUrl)}" style="display: inline-block; padding: 12px 24px; background-color: #000000; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600;">Ver Todos no Dashboard</a>
       </div>
       
       <p style="font-size: 12px; color: #94a3b8; margin-top: 24px; text-align: center;">
@@ -284,6 +325,8 @@ export async function sendWeeklyStrategicReport(params: {
   to: string;
   fullName?: string | null;
   report: any;
+  strategicUrl: string;
+  brandName?: string | null;
 }): Promise<void> {
   await ensureTransportReady();
 
@@ -293,7 +336,7 @@ export async function sendWeeklyStrategicReport(params: {
   const periodStart = params.report.period_start || "";
   const periodEnd = params.report.period_end || "";
 
-  const subject = `📋 Relatório Estratégico Semanal — ${periodStart} a ${periodEnd}`;
+  const subject = `Relatorio Estrategico Semanal - ${params.brandName?.trim() || "Átrio"} - ${periodStart} a ${periodEnd}`;
 
   const categoryColors: Record<string, string> = {
     investimento: "#22c55e",
@@ -373,7 +416,7 @@ export async function sendWeeklyStrategicReport(params: {
 
       <div style="margin-top: 32px; padding: 20px; text-align: center; background: #f1f5f9; border-radius: 8px;">
         <p style="margin-bottom: 16px; font-size: 14px; color: #475569;">Ver relatório completo com Matriz BCG e todas as ações:</p>
-        <a href="${env.FRONTEND_URL}/estrategia" style="display: inline-block; padding: 12px 24px; background-color: #000000; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600;">Abrir Painel Estratégico</a>
+        <a href="${escapeHtml(params.strategicUrl)}" style="display: inline-block; padding: 12px 24px; background-color: #000000; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600;">Abrir Painel Estratégico</a>
       </div>
       
       <p style="font-size: 11px; color: #94a3b8; margin-top: 24px; text-align: center;">

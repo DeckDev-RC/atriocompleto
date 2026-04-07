@@ -1,9 +1,10 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { agentApi } from '../services/agentApi';
 import { useAuth } from '../contexts/AuthContext';
 import { PasswordStrengthIndicator } from '../components/PasswordStrengthIndicator';
+import logotipoAtrio from '../assets/logotipo-atrio.png';
 
 export function ResetPasswordPage() {
   const navigate = useNavigate();
@@ -22,10 +23,35 @@ export function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [publicBranding, setPublicBranding] = useState<{
+    partner_name: string | null;
+    primary_color: string | null;
+    login_logo_url: string | null;
+  } | null>(null);
 
   const [isSuccess, setIsSuccess] = useState(false);
   const [isPasswordValid, setIsPasswordValid] = useState(false);
   const passwordsMatch = newPassword.length > 0 && newPassword === confirmPassword;
+
+  useEffect(() => {
+    let mounted = true;
+    agentApi.getPublicSignupConfig().then((result) => {
+      if (!mounted) return;
+      setPublicBranding(result.success && result.data?.resolved_branding ? {
+        partner_name: result.data.resolved_branding.partner_name,
+        primary_color: result.data.resolved_branding.primary_color,
+        login_logo_url: result.data.resolved_branding.login_logo_url,
+      } : null);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!publicBranding?.primary_color) return;
+    document.documentElement.style.setProperty('--color-brand-primary', publicBranding.primary_color);
+  }, [publicBranding?.primary_color]);
 
   // Can submit if:
   // 1. We have a token (reset flow)
@@ -70,7 +96,7 @@ export function ResetPasswordPage() {
     logout();
 
     // Sucesso generalizado: redireciona para login após 3 segundos
-    setTimeout(() => navigate('/'), 3000);
+    setTimeout(() => navigate('/login'), 3000);
   };
 
   if (!isSuccess && !token && !isAuthenticated) {
@@ -90,6 +116,13 @@ export function ResetPasswordPage() {
   return (
     <div className="min-h-screen bg-body flex items-center justify-center p-5">
       <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-soft">
+        <div className="mb-6 flex justify-center">
+          <img
+            src={publicBranding?.login_logo_url || logotipoAtrio}
+            alt={publicBranding?.partner_name || 'Átrio'}
+            className="h-12 w-auto object-contain"
+          />
+        </div>
         <h1 className="text-2xl font-bold text-primary mb-2">
           {isInviteMode ? 'Bem-vindo! Defina sua senha' : 'Redefinir senha'}
         </h1>
@@ -169,7 +202,7 @@ export function ResetPasswordPage() {
         </form>
 
         <div className="mt-6 text-center">
-          <Link to="/" className="text-sm text-(--color-brand-primary) hover:underline">
+          <Link to="/login" className="text-sm text-(--color-brand-primary) hover:underline">
             Voltar para login
           </Link>
         </div>

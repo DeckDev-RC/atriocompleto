@@ -77,16 +77,20 @@ function loadGoogleFont(fontFamily: string) {
 const UserPreferencesContext = createContext<UserPreferencesContextValue | null>(null);
 
 export function UserPreferencesProvider({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const [preferences, setPreferences] = useState<UserPreferences>(loadFromStorage);
   const [isLoading, setIsLoading] = useState(false);
 
   // Aplica CSS sempre que preferências mudam
   useEffect(() => {
-    applyCSSVariables(preferences);
-    loadGoogleFont(preferences.font_family);
+    const effectivePreferences = user?.resolved_branding?.primary_color
+      ? { ...preferences, primary_color: user.resolved_branding.primary_color }
+      : preferences;
+
+    applyCSSVariables(effectivePreferences);
+    loadGoogleFont(effectivePreferences.font_family);
     saveToStorage(preferences);
-  }, [preferences]);
+  }, [preferences, user?.resolved_branding?.primary_color]);
 
   // Sincroniza do DB quando autenticado e auth terminou de carregar
   useEffect(() => {

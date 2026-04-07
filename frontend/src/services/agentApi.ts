@@ -17,10 +17,29 @@ interface AuthSessionPayload {
     full_name: string;
     role: 'master' | 'user';
     tenant_id: string | null;
+    partner_id?: string | null;
     tenant_name: string | null;
     avatar_url: string | null;
     permissions: Record<string, any>;
     enabled_features: Record<string, boolean>;
+    manageable_features: Record<string, boolean>;
+    manageable_tenant_ids: string[];
+    managed_partner_ids?: string[];
+    resolved_branding?: {
+      is_whitelabel: boolean;
+      partner_id: string | null;
+      partner_name: string | null;
+      partner_slug: string | null;
+      resolved_host: string | null;
+      primary_color: string | null;
+      login_logo_url: string | null;
+      sidebar_logo_light_url: string | null;
+      sidebar_logo_dark_url: string | null;
+      icon_logo_url: string | null;
+      footer_logo_url: string | null;
+      favicon_url: string | null;
+    };
+    resolved_host?: string | null;
     two_factor_enabled: boolean;
     needs_tenant_setup: boolean;
   };
@@ -201,16 +220,51 @@ class AgentApiService {
       full_name: string;
       role: 'master' | 'user';
       tenant_id: string | null;
+      partner_id?: string | null;
       tenant_name: string | null;
       permissions: Record<string, any>;
       enabled_features: Record<string, boolean>;
+      manageable_features: Record<string, boolean>;
+      manageable_tenant_ids: string[];
+      managed_partner_ids?: string[];
+      resolved_branding?: {
+        is_whitelabel: boolean;
+        partner_id: string | null;
+        partner_name: string | null;
+        partner_slug: string | null;
+        resolved_host: string | null;
+        primary_color: string | null;
+        login_logo_url: string | null;
+        sidebar_logo_light_url: string | null;
+        sidebar_logo_dark_url: string | null;
+        icon_logo_url: string | null;
+        footer_logo_url: string | null;
+        favicon_url: string | null;
+      };
+      resolved_host?: string | null;
       two_factor_enabled: boolean;
       needs_tenant_setup: boolean;
     }>('/api/auth/me');
   }
 
   async getPublicSignupConfig() {
-    return this.request<{ enabled: boolean }>('/api/auth/public-signup-config');
+    return this.request<{
+      enabled: boolean;
+      resolved_branding?: {
+        is_whitelabel: boolean;
+        partner_id: string | null;
+        partner_name: string | null;
+        partner_slug: string | null;
+        resolved_host: string | null;
+        primary_color: string | null;
+        login_logo_url: string | null;
+        sidebar_logo_light_url: string | null;
+        sidebar_logo_dark_url: string | null;
+        icon_logo_url: string | null;
+        footer_logo_url: string | null;
+        favicon_url: string | null;
+      };
+    }>('/api/auth/public-signup-config');
   }
 
   async register(data: {
@@ -218,6 +272,7 @@ class AgentApiService {
     email: string;
     password: string;
     confirm_password: string;
+    partner_slug?: string;
   }) {
     return this.request<{ message: string }>('/api/auth/register', {
       method: 'POST',
@@ -325,20 +380,22 @@ class AgentApiService {
       created_at: string;
       user_count: number;
       enabled_features: Record<string, boolean>;
+      partner_id?: string | null;
+      partner_name?: string | null;
     }>>('/api/admin/tenants');
   }
 
-  async createTenant(name: string, aiRateLimit?: number) {
+  async createTenant(name: string, aiRateLimit?: number, partnerId?: string | null) {
     return this.request<{ id: string; name: string; tenant_code: string; ai_rate_limit: number }>('/api/admin/tenants', {
       method: 'POST',
-      body: JSON.stringify({ name, ai_rate_limit: aiRateLimit || 20 }),
+      body: JSON.stringify({ name, ai_rate_limit: aiRateLimit || 20, partner_id: partnerId || null }),
     });
   }
 
-  async updateTenant(id: string, name: string, aiRateLimit: number) {
+  async updateTenant(id: string, name: string, aiRateLimit: number, partnerId?: string | null) {
     return this.request<{ id: string; name: string; tenant_code: string; ai_rate_limit: number }>(`/api/admin/tenants/${id}`, {
       method: 'PUT',
-      body: JSON.stringify({ name, ai_rate_limit: aiRateLimit }),
+      body: JSON.stringify({ name, ai_rate_limit: aiRateLimit, partner_id: partnerId || null }),
     });
   }
 
@@ -346,10 +403,70 @@ class AgentApiService {
     return this.request(`/api/admin/tenants/${id}`, { method: 'DELETE' });
   }
 
-  async updateTenantFeatures(id: string, enabledFeatures: Record<string, boolean>) {
+  async updateTenantFeatures(id: string, changes: Record<string, boolean>) {
     return this.request(`/api/admin/tenants/${id}/features`, {
       method: 'PUT',
-      body: JSON.stringify({ enabled_features: enabledFeatures }),
+      body: JSON.stringify({ changes }),
+    });
+  }
+
+  async getPartners() {
+    return this.request<Array<{
+      id: string;
+      name: string;
+      slug: string;
+      host: string;
+      admin_profile_id: string | null;
+      admin_profile?: { id: string; full_name: string; email: string } | null;
+      tenant_count: number;
+      is_active: boolean;
+      primary_color: string | null;
+      login_logo_url: string | null;
+      sidebar_logo_light_url: string | null;
+      sidebar_logo_dark_url: string | null;
+      icon_logo_url: string | null;
+      footer_logo_url: string | null;
+      favicon_url: string | null;
+    }>>('/api/admin/partners');
+  }
+
+  async createPartner(data: {
+    name: string;
+    slug: string;
+    host: string;
+    admin_profile_id?: string | null;
+    is_active?: boolean;
+    primary_color?: string | null;
+    login_logo_url?: string | null;
+    sidebar_logo_light_url?: string | null;
+    sidebar_logo_dark_url?: string | null;
+    icon_logo_url?: string | null;
+    footer_logo_url?: string | null;
+    favicon_url?: string | null;
+  }) {
+    return this.request('/api/admin/partners', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updatePartner(id: string, data: {
+    name: string;
+    slug: string;
+    host: string;
+    admin_profile_id?: string | null;
+    is_active?: boolean;
+    primary_color?: string | null;
+    login_logo_url?: string | null;
+    sidebar_logo_light_url?: string | null;
+    sidebar_logo_dark_url?: string | null;
+    icon_logo_url?: string | null;
+    footer_logo_url?: string | null;
+    favicon_url?: string | null;
+  }) {
+    return this.request(`/api/admin/partners/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
     });
   }
 
@@ -369,6 +486,8 @@ class AgentApiService {
       is_active: boolean;
       bypass_2fa: boolean;
       created_at: string;
+      manageable_features: Record<string, boolean>;
+      manageable_tenant_ids: string[];
     }>>(url);
   }
 
@@ -379,6 +498,8 @@ class AgentApiService {
     tenant_id: string | null;
     access_request_id?: string | null;
     bypass_2fa?: boolean;
+    manageable_features?: Record<string, boolean>;
+    manageable_tenant_ids?: string[];
   }) {
     return this.request('/api/admin/users', {
       method: 'POST',

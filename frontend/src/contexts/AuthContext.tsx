@@ -32,13 +32,38 @@ function normalizeAuthUser(user: Partial<AuthUser> | null | undefined): AuthUser
   return {
     ...user,
     tenant_id: user.tenant_id ?? null,
+    partner_id: user.partner_id ?? null,
     tenant_name: user.tenant_name ?? null,
     avatar_url: user.avatar_url ?? null,
     permissions: user.permissions || {},
     enabled_features: user.enabled_features || {},
+    manageable_features: user.manageable_features || {},
+    manageable_tenant_ids: user.manageable_tenant_ids || [],
+    managed_partner_ids: user.managed_partner_ids || [],
+    resolved_branding: user.resolved_branding,
+    resolved_host: user.resolved_host ?? user.resolved_branding?.resolved_host ?? null,
     two_factor_enabled: user.two_factor_enabled || false,
     needs_tenant_setup: user.needs_tenant_setup || false,
   } as AuthUser;
+}
+
+function shouldRedirectToResolvedHost(resolvedHost?: string | null) {
+  if (typeof window === 'undefined') return false;
+  if (!resolvedHost) return false;
+  return window.location.hostname.toLowerCase() !== resolvedHost.toLowerCase();
+}
+
+function redirectToResolvedHost(payload: {
+  access_token: string;
+  refresh_token: string;
+  user: AuthUser;
+}) {
+  const resolvedHost = payload.user.resolved_host || payload.user.resolved_branding?.resolved_host;
+  if (!shouldRedirectToResolvedHost(resolvedHost)) return false;
+
+  const targetUrl = `${window.location.protocol}//${resolvedHost}/#access_token=${encodeURIComponent(payload.access_token)}&refresh_token=${encodeURIComponent(payload.refresh_token)}`;
+  window.location.href = targetUrl;
+  return true;
 }
 
 function parseStoredUser(): AuthUser | null {
@@ -108,6 +133,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!currentUser) {
           clearAuth();
           setIsLoading(false);
+          return;
+        }
+        if (shouldRedirectToResolvedHost(currentUser.resolved_host)) {
+          const refreshToken = localStorage.getItem(REFRESH_KEY);
+          if (token && refreshToken) {
+            window.location.href = `${window.location.protocol}//${currentUser.resolved_host}/#access_token=${encodeURIComponent(token)}&refresh_token=${encodeURIComponent(refreshToken)}`;
+            return;
+          }
+          window.location.href = `${window.location.protocol}//${currentUser.resolved_host}/`;
           return;
         }
         setUser(currentUser);
@@ -193,11 +227,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       && typeof payload.refresh_token === 'string'
       && !!payload.user
     ) {
-      persistSession({
+      const sessionPayload = {
         access_token: payload.access_token,
         refresh_token: payload.refresh_token,
         user: payload.user as AuthUser,
-      });
+      };
+      if (redirectToResolvedHost(sessionPayload)) {
+        return { success: true, requires2FA: false };
+      }
+      persistSession(sessionPayload);
       return { success: true, requires2FA: false };
     }
 
@@ -215,6 +253,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refresh_token: string;
       user: AuthUser;
     };
+    if (redirectToResolvedHost(payload)) {
+      return { success: true };
+    }
     persistSession(payload);
     return { success: true };
   }, [persistSession]);

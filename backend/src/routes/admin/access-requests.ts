@@ -1,9 +1,10 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
 import { supabaseAdmin } from "../../config/supabase";
-import { env } from "../../config/env";
-import { AuthVerificationService } from "../../services/verification";
 import { AuditService } from "../../services/audit";
+import { resolveFrontendBaseUrl } from "../../services/frontend-url";
+import { sendInvitationEmail } from "../../services/email";
+import { getPartnerById, getTenantPartnerId } from "../../services/partners";
 
 const router = Router();
 
@@ -168,16 +169,20 @@ router.post("/:id/convert", async (req: Request, res: Response) => {
     }
 
     const email = normalizeEmail(accessRequest.email);
+    const partnerId = parsed.data.tenant_id ? await getTenantPartnerId(parsed.data.tenant_id) : null;
+    const frontendBaseUrl = await resolveFrontendBaseUrl({ tenantId: parsed.data.tenant_id, partnerId });
+    const partner = await getPartnerById(partnerId);
 
     const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.generateLink({
       type: 'invite',
       email,
       options: {
-        redirectTo: `${env.FRONTEND_URL}/redefinir-senha`,
+        redirectTo: `${frontendBaseUrl}/redefinir-senha`,
         data: {
           full_name: accessRequest.full_name,
           role: parsed.data.role,
           tenant_id: parsed.data.tenant_id,
+          partner_id: partnerId,
         },
       }
     });
@@ -192,16 +197,27 @@ router.post("/:id/convert", async (req: Request, res: Response) => {
     }
 
     try {
-      const token = await AuthVerificationService.createToken(inviteData.user.id, email, inviteData.properties.action_link);
-      await AuthVerificationService.sendVerificationEmail({
-        email,
+      await sendInvitationEmail({
+        to: email,
         fullName: accessRequest.full_name,
-        token,
-        invitationLink: inviteData.properties.action_link
+        setupLink: inviteData.properties.action_link,
+        brandName: partner?.name || null,
       });
     } catch (verifError) {
       console.error("[Admin] Verification flow error:", verifError);
     }
+
+    await supabaseAdmin
+      .from("profiles")
+      .upsert({
+        id: inviteData.user.id,
+        email,
+        full_name: accessRequest.full_name,
+        role: parsed.data.role,
+        tenant_id: parsed.data.tenant_id,
+        partner_id: partnerId,
+        updated_at: new Date().toISOString(),
+      });
 
     const { data: profile } = await supabaseAdmin
       .from("profiles")
