@@ -165,6 +165,31 @@ async function buildAuthUserPayload(profile: ProfileRow) {
   };
 }
 
+async function assignAllSystemRoles(profileId: string) {
+  const { data: roles, error: rolesError } = await supabaseAdmin
+    .from("roles")
+    .select("id")
+    .eq("is_system", true);
+
+  if (rolesError) {
+    throw rolesError;
+  }
+
+  if (!roles || roles.length === 0) {
+    return;
+  }
+
+  await supabaseAdmin
+    .from("user_roles")
+    .upsert(
+      roles.map((role) => ({
+        profile_id: profileId,
+        role_id: role.id,
+      })),
+      { onConflict: "profile_id,role_id" },
+    );
+}
+
 async function resolveRequestedPartner(req: Request, explicitSlug?: string | null) {
   if (explicitSlug) {
     const bySlug = await getPartnerBySlug(explicitSlug);
@@ -892,6 +917,16 @@ router.post("/register", registerLimiter, async (req: Request, res: Response) =>
       console.error("[Auth] register profile update error:", updateProfileError);
       res.status(500).json({ success: false, error: "Nao foi possivel finalizar a configuracao da conta." });
       return;
+    }
+
+    if (partner?.id) {
+      try {
+        await assignAllSystemRoles(createdUser.user.id);
+      } catch (roleError) {
+        console.error("[Auth] register role assignment error:", roleError);
+        res.status(500).json({ success: false, error: "Conta criada, mas os acessos iniciais nao foram aplicados corretamente." });
+        return;
+      }
     }
 
     res.status(201).json({
