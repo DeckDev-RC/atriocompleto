@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ComponentType } from 'react';
+import { lazy, Suspense, type ComponentType, useMemo } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './contexts/AppContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -65,6 +65,58 @@ function PageLoader() {
   );
 }
 
+function AuthenticatedHomeRedirect() {
+  const { isMaster, hasPermission, hasFeature } = useAuth();
+
+  const destination = useMemo(() => {
+    const candidates = [
+      { path: '/', permission: 'visualizar_venda', featureKey: 'ecommerce' },
+      { path: '/insights', permission: 'acessar_agente', featureKey: 'insights' },
+      { path: '/agente', permission: 'acessar_agente', featureKey: 'optimus' },
+      { path: '/optimus/sugestoes', permission: 'acessar_agente', featureKey: 'sugestoes' },
+      { path: '/analytics/patterns', permission: 'acessar_agente', featureKey: 'padroes' },
+      { path: '/estrategia', permission: 'acessar_agente', featureKey: 'estrategia' },
+      { path: '/relatorios', permission: 'visualizar_relatorios', featureKey: 'relatorios' },
+      { path: '/campanhas', permission: 'acessar_agente', featureKey: 'campanhas' },
+      { path: '/benchmarking', permission: 'acessar_agente', featureKey: 'benchmarking' },
+      { path: '/simulacoes', permission: 'acessar_agente', featureKey: 'calculadora' },
+      { path: '/simulacoes/precos', permission: 'acessar_agente', featureKey: 'calculadora_precos' },
+      { path: '/simulacoes/inventory', permission: 'acessar_agente', featureKey: 'estoque_eoq' },
+    ];
+
+    const firstAvailable = candidates.find((candidate) => (
+      (!candidate.permission || hasPermission(candidate.permission))
+      && (!candidate.featureKey || hasFeature(candidate.featureKey))
+    ));
+
+    if (firstAvailable && firstAvailable.path !== '/') {
+      return firstAvailable.path;
+    }
+
+    if (firstAvailable?.path === '/') {
+      return null;
+    }
+
+    if (isMaster || hasPermission('gerenciar_feature_flags')) {
+      return '/admin';
+    }
+
+    return '/configuracoes';
+  }, [hasFeature, hasPermission, isMaster]);
+
+  if (!destination) {
+    return (
+      <ProtectedRoute permission="visualizar_venda" featureKey="ecommerce">
+        <ErrorBoundary name="Dashboard">
+          <DashboardPage />
+        </ErrorBoundary>
+      </ProtectedRoute>
+    );
+  }
+
+  return <Navigate to={destination} replace />;
+}
+
 function AppRoutes() {
   const { isAuthenticated, isLoading } = useAuth();
 
@@ -109,13 +161,7 @@ function AppRoutes() {
 
         <Route element={<TenantSetupGate />}>
           <Route element={<DashboardLayout />}>
-            <Route index element={
-              <ProtectedRoute permission="visualizar_venda" featureKey="ecommerce">
-                <ErrorBoundary name="Dashboard">
-                  <DashboardPage />
-                </ErrorBoundary>
-              </ProtectedRoute>
-            } />
+            <Route index element={<AuthenticatedHomeRedirect />} />
             <Route path="agente" element={
               <ProtectedRoute permission="acessar_agente" featureKey="optimus">
                 <ErrorBoundary name="Agent">
