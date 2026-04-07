@@ -1,4 +1,5 @@
 const AGENT_API_URL = import.meta.env.VITE_AGENT_API_URL || '';
+const CLIENT_HOST_HEADER = 'X-Client-Host';
 
 interface ApiResponse<T = unknown> {
   success: boolean;
@@ -74,6 +75,10 @@ class AgentApiService {
 
     if (this.token) {
       headers['Authorization'] = `Bearer ${this.token}`;
+    }
+
+    if (typeof window !== 'undefined' && window.location.host) {
+      headers[CLIENT_HOST_HEADER] = window.location.host;
     }
 
     // Limpar o base URL e o path para evitar barras duplas ou falta de barra
@@ -481,6 +486,9 @@ class AgentApiService {
     const headers: Record<string, string> = {};
     if (this.token) {
       headers.Authorization = `Bearer ${this.token}`;
+    }
+    if (typeof window !== 'undefined' && window.location.host) {
+      headers[CLIENT_HOST_HEADER] = window.location.host;
     }
 
     try {

@@ -22,6 +22,7 @@ export function RegisterPage() {
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [error, setError] = useState('');
   const [publicBranding, setPublicBranding] = useState<{
+    is_whitelabel: boolean;
     partner_name: string | null;
     primary_color: string | null;
     login_logo_url: string | null;
@@ -35,6 +36,7 @@ export function RegisterPage() {
       if (!mounted) return;
       setSignupEnabled(result.success ? !!result.data?.enabled : false);
       setPublicBranding(result.success && result.data?.resolved_branding ? {
+        is_whitelabel: !!result.data.resolved_branding.is_whitelabel,
         partner_name: result.data.resolved_branding.partner_name,
         primary_color: result.data.resolved_branding.primary_color,
         login_logo_url: result.data.resolved_branding.login_logo_url,
@@ -58,12 +60,15 @@ export function RegisterPage() {
   };
 
   const passwordsMatch = form.password.length > 0 && form.password === form.confirm_password;
+  const requiresPartnerSlug = !!publicBranding?.is_whitelabel;
+  const hasPartnerSlug = !!publicBranding?.partner_slug;
   const canSubmit = Boolean(
     signupEnabled
     && form.full_name.trim()
     && form.email.trim()
     && passwordsMatch
-    && isPasswordValid,
+    && isPasswordValid
+    && (!requiresPartnerSlug || hasPartnerSlug),
   );
 
   const handleSubmit = async (e: FormEvent) => {
@@ -72,6 +77,12 @@ export function RegisterPage() {
 
     setError('');
     setLoading(true);
+
+    if (requiresPartnerSlug && !hasPartnerSlug) {
+      setLoading(false);
+      setError('Este cadastro ainda nao foi configurado corretamente para esta marca. Tente novamente em instantes.');
+      return;
+    }
 
     const registerResult = await agentApi.register({
       ...form,

@@ -44,9 +44,19 @@ export function normalizeHost(host: string | null | undefined): string | null {
 }
 
 export function getRequestHost(req: Request): string | null {
+  const clientHost = req.headers["x-client-host"];
   const forwardedHost = req.headers["x-forwarded-host"];
   const origin = req.headers.origin;
   const hostHeader = req.headers.host;
+  const referer = req.headers.referer;
+
+  if (Array.isArray(clientHost) && clientHost[0]) {
+    return normalizeHost(clientHost[0]);
+  }
+
+  if (typeof clientHost === "string" && clientHost.trim()) {
+    return normalizeHost(clientHost);
+  }
 
   if (Array.isArray(forwardedHost) && forwardedHost[0]) {
     return normalizeHost(forwardedHost[0]);
@@ -58,6 +68,10 @@ export function getRequestHost(req: Request): string | null {
 
   if (typeof origin === "string" && origin.trim()) {
     return normalizeHost(origin);
+  }
+
+  if (typeof referer === "string" && referer.trim()) {
+    return normalizeHost(referer);
   }
 
   if (typeof hostHeader === "string" && hostHeader.trim()) {

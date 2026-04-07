@@ -66,6 +66,26 @@ function redirectToResolvedHost(payload: {
   return true;
 }
 
+function redirectWithStoredSession(user: AuthUser) {
+  const resolvedHost = user.resolved_host || user.resolved_branding?.resolved_host;
+  if (!shouldRedirectToResolvedHost(resolvedHost)) return false;
+
+  const accessToken = localStorage.getItem(TOKEN_KEY);
+  const refreshToken = localStorage.getItem(REFRESH_KEY);
+
+  if (accessToken && refreshToken && resolvedHost) {
+    window.location.href = `${window.location.protocol}//${resolvedHost}/#access_token=${encodeURIComponent(accessToken)}&refresh_token=${encodeURIComponent(refreshToken)}`;
+    return true;
+  }
+
+  if (resolvedHost) {
+    window.location.href = `${window.location.protocol}//${resolvedHost}/`;
+    return true;
+  }
+
+  return false;
+}
+
 function parseStoredUser(): AuthUser | null {
   try {
     const stored = localStorage.getItem(USER_KEY);
@@ -98,6 +118,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     agentApi.setToken(payload.access_token);
     setToken(payload.access_token);
     setUser(normalizedUser);
+
+    // Revalidate right after persisting the session so onboarding accounts
+    // don't stay on the default host if the login payload was stale.
+    window.setTimeout(() => {
+      void agentApi.getMe().then((result) => {
+        if (!result.success || !result.data) return;
+        const refreshedUser = normalizeAuthUser(result.data as Partial<AuthUser>);
+        if (!refreshedUser) return;
+        if (redirectWithStoredSession(refreshedUser)) return;
+        localStorage.setItem(USER_KEY, JSON.stringify(refreshedUser));
+        setUser(refreshedUser);
+      });
+    }, 0);
   }, []);
 
   // Effect for Auth Initialization and URL hash handling
@@ -279,6 +312,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (result.success && result.data) {
         const currentUser = normalizeAuthUser(result.data as Partial<AuthUser>);
         if (currentUser) {
+          if (redirectWithStoredSession(currentUser)) {
+            return;
+          }
           setUser(currentUser);
           localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
         }

@@ -200,6 +200,53 @@ async function resolveRequestedPartner(req: Request, explicitSlug?: string | nul
   return getPartnerByHost(requestHost);
 }
 
+function isLocalDevelopmentHost(host: string | null) {
+  if (!host) return false;
+  return ["localhost", "127.0.0.1"].includes(host) || host.endsWith(".local");
+}
+
+async function resolveValidatedPublicSignupPartner(req: Request, explicitSlug?: string | null) {
+  const requestHost = getRequestHost(req);
+  const hostPartner = await getPartnerByHost(requestHost);
+  const slugPartner = explicitSlug ? await getPartnerBySlug(explicitSlug) : null;
+
+  if (hostPartner) {
+    if (!explicitSlug?.trim()) {
+      return {
+        ok: false as const,
+        status: 400,
+        error: "Cadastro incompleto: identificador da marca nao informado para este endereco.",
+      };
+    }
+
+    if (!slugPartner || slugPartner.id !== hostPartner.id) {
+      return {
+        ok: false as const,
+        status: 400,
+        error: "Cadastro invalido: o endereco acessado nao corresponde a marca informada.",
+      };
+    }
+
+    return {
+      ok: true as const,
+      partner: hostPartner,
+    };
+  }
+
+  if (slugPartner && !isLocalDevelopmentHost(requestHost)) {
+    return {
+      ok: false as const,
+      status: 400,
+      error: "Cadastro invalido: utilize o endereco oficial da marca para criar esta conta.",
+    };
+  }
+
+  return {
+    ok: true as const,
+    partner: slugPartner,
+  };
+}
+
 const loginSchema = z.object({
   email: z.string().email("Email inválido"),
   password: z.string().min(1, "Senha obrigatória"),
@@ -236,6 +283,7 @@ router.post("/login", authLimiter, async (req: Request, res: Response) => {
       return;
     }
 
+    const requestedPartner = await resolveRequestedPartner(req);
     const profile = await getProfile(data.user.id);
     if (!profile) {
       res.status(403).json({ success: false, error: "Perfil não encontrado" });
@@ -245,6 +293,37 @@ router.post("/login", authLimiter, async (req: Request, res: Response) => {
     if (!profile.is_active) {
       res.status(403).json({ success: false, error: "Conta desativada" });
       return;
+    }
+
+    let effectiveProfile = profile;
+    if (
+      !profile.partner_id
+      && !profile.tenant_id
+      && profile.needs_tenant_setup
+      && requestedPartner?.id
+    ) {
+      const { error: partnerRepairError } = await supabaseAdmin
+        .from("profiles")
+        .update({
+          partner_id: requestedPartner.id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", profile.id);
+
+      if (partnerRepairError) {
+        console.error("[Auth] login partner repair error:", partnerRepairError);
+      } else {
+        effectiveProfile = {
+          ...profile,
+          partner_id: requestedPartner.id,
+        };
+
+        try {
+          await assignAllSystemRoles(profile.id);
+        } catch (roleRepairError) {
+          console.error("[Auth] login role repair error:", roleRepairError);
+        }
+      }
     }
 
     // Verificação de email e 2FA estão desabilitados globalmente.
@@ -266,7 +345,7 @@ router.post("/login", authLimiter, async (req: Request, res: Response) => {
       .eq("user_id", profile.id);
 
     const userPayload = await buildAuthUserPayload({
-      ...profile,
+      ...effectiveProfile,
       email_verified: true,
       bypass_2fa: true,
       two_factor_enabled: false,
@@ -827,7 +906,15 @@ router.post("/register", registerLimiter, async (req: Request, res: Response) =>
     }
 
     const email = normalizeEmail(parsed.data.email);
-    const partner = await resolveRequestedPartner(req, parsed.data.partner_slug);
+    const partnerResolution = await resolveValidatedPublicSignupPartner(req, parsed.data.partner_slug);
+    if (!partnerResolution.ok) {
+      res.status(partnerResolution.status).json({
+        success: false,
+        error: partnerResolution.error,
+      });
+      return;
+    }
+    const partner = partnerResolution.partner;
 
     try {
       await assertPublicSignupEnabled();
