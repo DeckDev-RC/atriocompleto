@@ -46,6 +46,14 @@ interface Partner {
   favicon_url: string | null;
 }
 
+type PartnerAssetKey =
+  | 'login_logo_url'
+  | 'sidebar_logo_light_url'
+  | 'sidebar_logo_dark_url'
+  | 'icon_logo_url'
+  | 'footer_logo_url'
+  | 'favicon_url';
+
 interface UserProfile {
   id: string;
   email: string;
@@ -84,8 +92,9 @@ function countSelectedTenants(tenantIds?: string[] | null) {
 }
 
 export function AdminPage() {
-  const { isMaster, hasPermission } = useAuth();
+  const { isMaster, hasPermission, user } = useAuth();
   const canManageFeatureFlags = isMaster || hasPermission('gerenciar_feature_flags');
+  const canManageOwnBrand = !!user?.managed_partner_ids?.length;
   const availableTabs: Array<{ id: Tab; label: string }> = isMaster
     ? [
       { id: 'tenants', label: 'Empresas' },
@@ -97,7 +106,10 @@ export function AdminPage() {
       { id: 'security', label: 'Seguranca' },
     ]
     : canManageFeatureFlags
-      ? [{ id: 'tenants', label: 'Feature Flags' }]
+      ? [
+        { id: 'tenants', label: 'Clientes' },
+        ...(canManageOwnBrand ? [{ id: 'partners' as Tab, label: 'Minha Marca' }] : []),
+      ]
       : [];
   const [tab, setTab] = useState<Tab>(availableTabs[0]?.id || 'tenants');
 
@@ -110,8 +122,8 @@ export function AdminPage() {
   return (
     <div className="p-6 max-md:p-4">
       <Header
-        title="Administracao"
-        subtitle={isMaster ? 'Gerenciar empresas, usuarios e acessos' : 'Operar feature flags delegadas pelo master'}
+        title={isMaster ? 'Painel de Gestão' : 'Painel da sua marca'}
+        subtitle={isMaster ? 'Gerenciar empresas, usuarios e acessos' : 'Gerencie os recursos dos seus clientes e a aparencia da sua marca'}
       />
 
       <div className="mt-6 mb-6 flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
@@ -128,7 +140,7 @@ export function AdminPage() {
 
       <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
         {tab === 'tenants' && <TenantsPanel />}
-        {isMaster && tab === 'partners' && <PartnersPanel />}
+        {(isMaster || canManageOwnBrand) && tab === 'partners' && <PartnersPanel />}
         {isMaster && tab === 'users' && <UsersPanel />}
         {isMaster && tab === 'access' && <AccessControlPanel />}
         {isMaster && tab === 'requests' && <RequestsPanel />}
@@ -305,29 +317,29 @@ function TenantsPanel() {
         <div className="rounded-xl border border-border bg-card p-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-sm font-semibold">Feature flags delegadas</p>
+              <p className="text-sm font-semibold">Recursos liberados para seus clientes</p>
               <p className="mt-1 text-[12px] text-muted">
-                Voce pode operar apenas as flags liberadas pelo master.
+                Aqui voce liga ou desliga os recursos que o master liberou para cada empresa.
               </p>
             </div>
             <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
               <div className="grid grid-cols-2 gap-2 sm:flex">
                 <div className="rounded-lg border border-border bg-body/40 px-3 py-2">
-                  <p className="text-[10px] uppercase tracking-wide text-muted">Tenants</p>
+                  <p className="text-[10px] uppercase tracking-wide text-muted">Clientes</p>
                   <p className="text-sm font-semibold text-primary">{filteredTenants.length}</p>
                 </div>
                 <div className="rounded-lg border border-border bg-body/40 px-3 py-2">
-                  <p className="text-[10px] uppercase tracking-wide text-muted">Com flags ativas</p>
+                  <p className="text-[10px] uppercase tracking-wide text-muted">Com recursos ligados</p>
                   <p className="text-sm font-semibold text-primary">{delegatedActiveTenants}</p>
                 </div>
                 <div className="rounded-lg border border-border bg-body/40 px-3 py-2">
-                  <p className="text-[10px] uppercase tracking-wide text-muted">Flags liberadas</p>
+                  <p className="text-[10px] uppercase tracking-wide text-muted">Recursos disponiveis</p>
                   <p className="text-sm font-semibold text-primary">{visibleFeatureEntries.length}</p>
                 </div>
               </div>
               <input
                 className="w-full rounded-lg border border-border bg-body/50 px-3 py-2 text-sm sm:w-56"
-                placeholder="Buscar tenant..."
+                placeholder="Buscar empresa..."
                 value={tenantSearch}
                 onChange={(event) => setTenantSearch(event.target.value)}
               />
@@ -363,7 +375,7 @@ function TenantsPanel() {
                   )}
                   {!isMaster && (
                     <p className="rounded-full border border-brand-primary/20 bg-brand-primary/5 px-2 py-0.5 text-[11px] font-medium text-brand-primary">
-                      {enabledCount}/{visibleFeatureEntries.length} ativas
+                      {enabledCount}/{visibleFeatureEntries.length} ligados
                     </p>
                   )}
                   {isMaster && (
@@ -383,7 +395,7 @@ function TenantsPanel() {
                   className="rounded-md border border-border px-3 py-1.5 text-[11px] text-muted transition-colors hover:text-primary"
                   onClick={() => setFeaturesOpenId(featuresOpenId === tenant.id ? null : tenant.id)}
                 >
-                  {isOpen ? 'Ocultar' : 'Gerenciar'}
+                  {isOpen ? 'Fechar' : 'Abrir'}
                 </button>
               )}
             </div>
@@ -391,10 +403,10 @@ function TenantsPanel() {
             {isOpen && (
               <div className="mt-3 pt-3 border-t border-border">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <p className="text-xs font-semibold text-muted">Funcionalidades habilitadas</p>
+                  <p className="text-xs font-semibold text-muted">Recursos desta empresa</p>
                   {!isMaster && (
                     <p className="text-[11px] text-muted">
-                      Toque para ativar ou desativar
+                      Toque para ligar ou desligar
                     </p>
                   )}
                 </div>
@@ -1071,10 +1083,12 @@ function SecurityPanel() {
 }
 
 function PartnersPanel() {
+  const { isMaster, user } = useAuth();
   const [partners, setPartners] = useState<Partner[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [assetBusyKey, setAssetBusyKey] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: '',
     slug: '',
@@ -1096,7 +1110,7 @@ function PartnersPanel() {
     setError('');
     const [partnersResult, usersResult] = await Promise.all([
       agentApi.getPartners(),
-      agentApi.getUsers(),
+      isMaster ? agentApi.getUsers() : Promise.resolve({ success: true, data: [] as UserProfile[] }),
     ]);
 
     if (partnersResult.success && partnersResult.data) {
@@ -1110,11 +1124,17 @@ function PartnersPanel() {
     }
 
     setLoading(false);
-  }, []);
+  }, [isMaster]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!isMaster && partners.length > 0 && !editingId) {
+      startEdit(partners[0]);
+    }
+  }, [isMaster, partners, editingId]);
 
   const resetForm = () => {
     setEditingId(null);
@@ -1184,42 +1204,141 @@ function PartnersPanel() {
     });
   };
 
+  const assetDefinitions: Array<{ key: PartnerAssetKey; label: string; value: string }> = [
+    { key: 'login_logo_url', label: 'Logo do login', value: form.login_logo_url },
+    { key: 'sidebar_logo_light_url', label: 'Logo sidebar claro', value: form.sidebar_logo_light_url },
+    { key: 'sidebar_logo_dark_url', label: 'Logo sidebar escuro', value: form.sidebar_logo_dark_url },
+    { key: 'icon_logo_url', label: 'Ícone/logo compacto', value: form.icon_logo_url },
+    { key: 'footer_logo_url', label: 'Logo rodapé', value: form.footer_logo_url },
+    { key: 'favicon_url', label: 'Favicon', value: form.favicon_url },
+  ];
+
+  const handleAssetUpload = async (assetKey: PartnerAssetKey, file?: File | null) => {
+    if (!editingId || !file) return;
+
+    const busyKey = `${editingId}:${assetKey}`;
+    setAssetBusyKey(busyKey);
+    const result = await agentApi.uploadPartnerAsset(editingId, assetKey, file);
+    setAssetBusyKey(null);
+
+    if (!result.success) {
+      setError(result.error || 'Erro ao enviar asset');
+      return;
+    }
+
+    const nextUrl = result.data?.url || '';
+    setForm((current) => ({ ...current, [assetKey]: nextUrl }));
+    await load();
+  };
+
+  const handleAssetDelete = async (assetKey: PartnerAssetKey) => {
+    if (!editingId) return;
+
+    const busyKey = `${editingId}:${assetKey}`;
+    setAssetBusyKey(busyKey);
+    const result = await agentApi.deletePartnerAsset(editingId, assetKey);
+    setAssetBusyKey(null);
+
+    if (!result.success) {
+      setError(result.error || 'Erro ao remover asset');
+      return;
+    }
+
+    setForm((current) => ({ ...current, [assetKey]: '' }));
+    await load();
+  };
+
   return (
     <div className="grid gap-4">
       <form onSubmit={submit} className="rounded-xl border border-border bg-card p-4">
-        <p className="mb-3 text-sm font-semibold">{editingId ? 'Editar parceiro' : 'Novo parceiro'}</p>
+        <p className="mb-3 text-sm font-semibold">{isMaster ? (editingId ? 'Editar parceiro' : 'Novo parceiro') : 'Minha marca'}</p>
         {error && <p className="mb-3 text-xs text-danger">{error}</p>}
 
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-          <input className="rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" placeholder="Nome" value={form.name} onChange={(e) => setForm((current) => ({ ...current, name: e.target.value }))} required />
-          <input className="rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" placeholder="Slug" value={form.slug} onChange={(e) => setForm((current) => ({ ...current, slug: e.target.value }))} required />
-          <input className="rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" placeholder="Host (ex: parceiros.agregarnegocios.com.br)" value={form.host} onChange={(e) => setForm((current) => ({ ...current, host: e.target.value }))} required />
-          <select className="rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" value={form.admin_profile_id} onChange={(e) => setForm((current) => ({ ...current, admin_profile_id: e.target.value }))}>
+          <input className="rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" placeholder={isMaster ? 'Nome' : 'Nome da sua marca'} value={form.name} onChange={(e) => setForm((current) => ({ ...current, name: e.target.value }))} required />
+          {isMaster ? <input className="rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" placeholder="Slug" value={form.slug} onChange={(e) => setForm((current) => ({ ...current, slug: e.target.value }))} required /> : <div className="rounded-lg border border-border bg-body/40 px-3 py-2 text-sm text-muted">Seu endereço: <span className="font-medium text-primary">{form.host || user?.resolved_host || 'Não definido'}</span></div>}
+          {isMaster && <input className="rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" placeholder="Host (ex: parceiros.agregarnegocios.com.br)" value={form.host} onChange={(e) => setForm((current) => ({ ...current, host: e.target.value }))} required />}
+          <select hidden={!isMaster} disabled={!isMaster} className="rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" value={form.admin_profile_id} onChange={(e) => setForm((current) => ({ ...current, admin_profile_id: e.target.value }))}>
             <option value="">Sem admin responsavel</option>
             {users.filter((user) => user.role !== 'master').map((user) => (
               <option key={user.id} value={user.id}>{user.full_name} • {user.email}</option>
             ))}
           </select>
           <input type="color" className="h-10 rounded-lg border border-border bg-body/60 px-2 py-1" value={form.primary_color} onChange={(e) => setForm((current) => ({ ...current, primary_color: e.target.value }))} />
-          <label className="flex items-center gap-2 rounded-lg border border-border bg-body/40 px-3 py-2 text-sm text-primary">
-            <input type="checkbox" checked={form.is_active} onChange={(e) => setForm((current) => ({ ...current, is_active: e.target.checked }))} className="h-4 w-4 accent-brand-primary" />
-            Parceiro ativo
-          </label>
-          <input className="rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" placeholder="URL logo login" value={form.login_logo_url} onChange={(e) => setForm((current) => ({ ...current, login_logo_url: e.target.value }))} />
-          <input className="rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" placeholder="URL logo sidebar claro" value={form.sidebar_logo_light_url} onChange={(e) => setForm((current) => ({ ...current, sidebar_logo_light_url: e.target.value }))} />
-          <input className="rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" placeholder="URL logo sidebar escuro" value={form.sidebar_logo_dark_url} onChange={(e) => setForm((current) => ({ ...current, sidebar_logo_dark_url: e.target.value }))} />
-          <input className="rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" placeholder="URL icone/logo compacto" value={form.icon_logo_url} onChange={(e) => setForm((current) => ({ ...current, icon_logo_url: e.target.value }))} />
-          <input className="rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" placeholder="URL logo rodape" value={form.footer_logo_url} onChange={(e) => setForm((current) => ({ ...current, footer_logo_url: e.target.value }))} />
-          <input className="rounded-lg border border-border bg-body/60 px-3 py-2 text-sm" placeholder="URL favicon" value={form.favicon_url} onChange={(e) => setForm((current) => ({ ...current, favicon_url: e.target.value }))} />
+          {isMaster ? (
+            <label className="flex items-center gap-2 rounded-lg border border-border bg-body/40 px-3 py-2 text-sm text-primary">
+              <input type="checkbox" checked={form.is_active} onChange={(e) => setForm((current) => ({ ...current, is_active: e.target.checked }))} className="h-4 w-4 accent-brand-primary" />
+              Parceiro ativo
+            </label>
+          ) : (
+            <div className="rounded-lg border border-border bg-body/40 px-3 py-2 text-sm text-muted">
+              Cor principal da sua marca
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 rounded-xl border border-border bg-body/30 p-4">
+          <div className="mb-3">
+            <p className="text-sm font-semibold">{isMaster ? 'Branding do parceiro' : 'Aparência da sua marca'}</p>
+            <p className="text-xs text-muted">
+              Faça upload das imagens diretamente aqui. Não precisa mais hospedar e colar URL manual.
+            </p>
+          </div>
+
+          {!editingId ? (
+            <div className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted">
+              Salve o parceiro primeiro para liberar os uploads de branding.
+            </div>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {assetDefinitions.map((asset) => {
+                const busy = assetBusyKey === `${editingId}:${asset.key}`;
+                return (
+                  <div key={asset.key} className="rounded-xl border border-border bg-card p-3">
+                    <p className="mb-2 text-xs font-medium text-muted">{asset.label}</p>
+                    <div className="mb-3 flex h-24 items-center justify-center overflow-hidden rounded-lg border border-border bg-body/40">
+                      {asset.value ? (
+                        <img src={asset.value} alt={asset.label} className="h-full w-full object-contain p-2" />
+                      ) : (
+                        <span className="text-xs text-muted">Sem imagem</span>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        id={`partner-asset-${asset.key}`}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml,image/x-icon,image/vnd.microsoft.icon"
+                        className="hidden"
+                        onChange={(event) => void handleAssetUpload(asset.key, event.target.files?.[0] || null)}
+                      />
+                      <label htmlFor={`partner-asset-${asset.key}`} className={`flex-1 cursor-pointer rounded-lg border border-border px-3 py-2 text-center text-xs transition-colors ${busy ? 'opacity-50' : 'hover:border-brand-primary hover:text-primary'}`}>
+                        {busy ? 'Enviando...' : asset.value ? 'Trocar imagem' : 'Enviar imagem'}
+                      </label>
+                      {asset.value && (
+                        <button
+                          type="button"
+                          onClick={() => void handleAssetDelete(asset.key)}
+                          className="rounded-lg border border-danger/30 px-3 py-2 text-xs text-danger"
+                          disabled={busy}
+                        >
+                          Remover
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div className="mt-4 flex gap-2">
-          <button className="rounded-lg bg-(--color-brand-primary) px-4 py-2 text-sm text-white">{editingId ? 'Salvar parceiro' : 'Criar parceiro'}</button>
-          {editingId && <button type="button" className="rounded-lg border border-border px-4 py-2 text-sm" onClick={resetForm}>Cancelar</button>}
+          <button className="rounded-lg bg-(--color-brand-primary) px-4 py-2 text-sm text-white">{isMaster ? (editingId ? 'Salvar parceiro' : 'Criar parceiro') : 'Salvar minha marca'}</button>
+          {isMaster && editingId && <button type="button" className="rounded-lg border border-border px-4 py-2 text-sm" onClick={resetForm}>Cancelar</button>}
         </div>
       </form>
 
-      <div className="rounded-xl border border-border bg-card p-4">
+      {isMaster && <div className="rounded-xl border border-border bg-card p-4">
         <div className="mb-3 flex items-center justify-between">
           <p className="text-sm font-semibold">Parceiros</p>
           <button type="button" className="rounded-lg border border-border px-3 py-1 text-xs" onClick={() => void load()}>Atualizar</button>
@@ -1245,7 +1364,7 @@ function PartnersPanel() {
             </div>
           </div>
         ))}
-      </div>
+      </div>}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAuth, requireMaster } from "../../middleware/auth";
+import { requirePermission } from "../../middleware/rbac";
 import tenantRoutes from "./tenants";
 import accessRequestRoutes from "./access-requests";
 import userRoutes from "./users";
@@ -17,6 +18,6 @@ router.use("/access-requests", requireMaster, accessRequestRoutes);
 router.use("/users", requireMaster, userRoutes);
 router.use("/rbac", requireMaster, rbacRoutes);
 router.use("/public-signup", requireMaster, publicSignupRoutes);
-router.use("/partners", requireMaster, partnerRoutes);
+router.use("/partners", requirePermission("gerenciar_feature_flags"), partnerRoutes);
 
 export default router;

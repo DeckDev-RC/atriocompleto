@@ -470,6 +470,40 @@ class AgentApiService {
     });
   }
 
+  async uploadPartnerAsset(
+    partnerId: string,
+    assetKey: 'login_logo_url' | 'sidebar_logo_light_url' | 'sidebar_logo_dark_url' | 'icon_logo_url' | 'footer_logo_url' | 'favicon_url',
+    file: File,
+  ) {
+    const formData = new FormData();
+    formData.append('asset', file);
+
+    const headers: Record<string, string> = {};
+    if (this.token) {
+      headers.Authorization = `Bearer ${this.token}`;
+    }
+
+    try {
+      const response = await fetch(`${AGENT_API_URL}/api/admin/partners/${partnerId}/assets/${assetKey}`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+      return await response.json();
+    } catch {
+      return { success: false, error: 'Erro ao enviar asset do parceiro' };
+    }
+  }
+
+  async deletePartnerAsset(
+    partnerId: string,
+    assetKey: 'login_logo_url' | 'sidebar_logo_light_url' | 'sidebar_logo_dark_url' | 'icon_logo_url' | 'footer_logo_url' | 'favicon_url',
+  ) {
+    return this.request(`/api/admin/partners/${partnerId}/assets/${assetKey}`, {
+      method: 'DELETE',
+    });
+  }
+
   // ══════════════════════════════════════════════════════
   // ADMIN — Users
   // ══════════════════════════════════════════════════════
