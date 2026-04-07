@@ -8,6 +8,7 @@ import logotipoAtrio from '../assets/logotipo-atrio.png';
 import loginBackground from '../assets/loginpage-background.jpg';
 
 const MERGE_ANIMATION_MS = 800;
+const DEFAULT_LOGIN_BRAND_PRIMARY = '#09CAFF';
 
 type LoginStep = 'credentials' | 'two_factor';
 
@@ -45,6 +46,10 @@ export function LoginPage() {
     return () => {
       mounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--color-brand-primary', DEFAULT_LOGIN_BRAND_PRIMARY);
   }, []);
 
 
