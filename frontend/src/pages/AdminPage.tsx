@@ -87,8 +87,13 @@ function countEnabledFlags(flags?: Record<string, boolean> | null) {
   return Object.values(flags || {}).filter(Boolean).length;
 }
 
-function countSelectedTenants(tenantIds?: string[] | null) {
-  return (tenantIds || []).length;
+function filterExistingTenantIds(tenantIds: string[], tenants: Tenant[]) {
+  const validTenantIds = new Set(tenants.map((tenant) => tenant.id));
+  return tenantIds.filter((tenantId) => validTenantIds.has(tenantId));
+}
+
+function mergeTenantIds(...tenantIdGroups: string[][]) {
+  return Array.from(new Set(tenantIdGroups.flat()));
 }
 
 export function AdminPage() {
@@ -439,6 +444,7 @@ function UsersPanel() {
   const { user: currentUser, refreshUser } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [partners, setPartners] = useState<Partner[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -457,7 +463,11 @@ function UsersPanel() {
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
-    const [usersResult, tenantsResult] = await Promise.all([agentApi.getUsers(), agentApi.getTenants()]);
+    const [usersResult, tenantsResult, partnersResult] = await Promise.all([
+      agentApi.getUsers(),
+      agentApi.getTenants(),
+      agentApi.getPartners(),
+    ]);
 
     if (usersResult.success && usersResult.data) {
       setUsers(usersResult.data as UserProfile[]);
@@ -469,6 +479,10 @@ function UsersPanel() {
 
     if (tenantsResult.success && tenantsResult.data) {
       setTenants(tenantsResult.data as Tenant[]);
+    }
+
+    if (partnersResult.success && partnersResult.data) {
+      setPartners(partnersResult.data as Partner[]);
     }
     setLoading(false);
   }, []);
@@ -499,7 +513,7 @@ function UsersPanel() {
       : form.manageable_features;
     const manageableTenantIds = form.role === 'master'
       ? []
-      : form.manageable_tenant_ids;
+      : filterExistingTenantIds(form.manageable_tenant_ids, tenants);
 
     if (editingId) {
       const result = await agentApi.updateUser(editingId, {
@@ -510,7 +524,10 @@ function UsersPanel() {
         manageable_features: manageableFeatures,
         manageable_tenant_ids: manageableTenantIds,
       });
-      if (!result.success) setError(result.error || 'Erro ao salvar');
+      if (!result.success) {
+        setError(result.error || 'Erro ao salvar');
+        return;
+      }
     } else {
       const result = await agentApi.createUser({
         full_name: form.full_name,
@@ -521,7 +538,10 @@ function UsersPanel() {
         manageable_features: manageableFeatures,
         manageable_tenant_ids: manageableTenantIds,
       });
-      if (!result.success) setError(result.error || 'Erro ao criar');
+      if (!result.success) {
+        setError(result.error || 'Erro ao criar');
+        return;
+      }
     }
 
     resetForm();
@@ -536,6 +556,24 @@ function UsersPanel() {
       || profile.tenant_name.toLowerCase().includes(query);
   });
 
+  const getInheritedTenantIdsForUser = useCallback((profileId: string | null | undefined) => {
+    if (!profileId) return [];
+
+    const managedPartnerIds = partners
+      .filter((partner) => partner.admin_profile_id === profileId)
+      .map((partner) => partner.id);
+
+    if (managedPartnerIds.length === 0) return [];
+
+    return tenants
+      .filter((tenant) => tenant.partner_id && managedPartnerIds.includes(String(tenant.partner_id)))
+      .map((tenant) => tenant.id);
+  }, [partners, tenants]);
+
+  const inheritedTenantIds = editingId ? getInheritedTenantIdsForUser(editingId) : [];
+  const effectiveTenantIds = mergeTenantIds(form.manageable_tenant_ids, inheritedTenantIds);
+  const automaticTenantCount = inheritedTenantIds.filter((tenantId) => !form.manageable_tenant_ids.includes(tenantId)).length;
+
   const startEdit = (profile: UserProfile) => {
     setEditingId(profile.id);
     setForm({
@@ -548,7 +586,7 @@ function UsersPanel() {
         ...createEmptyManageableFeatures(),
         ...(profile.manageable_features || {}),
       },
-      manageable_tenant_ids: [...(profile.manageable_tenant_ids || [])],
+      manageable_tenant_ids: filterExistingTenantIds([...(profile.manageable_tenant_ids || [])], tenants),
     });
   };
 
@@ -652,39 +690,48 @@ function UsersPanel() {
         )}
 
         {form.role !== 'master' && (
-          <div className="mt-4 rounded-xl border border-border bg-body/30 p-4">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <div>
-                <p className="text-sm font-semibold">Clientes com acesso</p>
-                <p className="text-xs text-muted">
-                  Defina quais empresas esse admin delegado pode visualizar e controlar.
-                </p>
-              </div>
-              <p className="rounded-full border border-brand-primary/20 bg-brand-primary/5 px-2 py-1 text-[11px] font-medium text-brand-primary">
-                {form.manageable_tenant_ids.length} selecionado(s)
+        <div className="mt-4 rounded-xl border border-border bg-body/30 p-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold">Clientes com acesso</p>
+              <p className="text-xs text-muted">
+                Defina quais empresas esse admin delegado pode visualizar e controlar.
               </p>
+              {automaticTenantCount > 0 && (
+                <p className="mt-1 text-[11px] text-brand-primary">
+                  Clientes do parceiro aparecem automaticamente e nao precisam ser marcados manualmente.
+                </p>
+              )}
             </div>
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
-              {tenants.map((tenant) => {
-                const active = form.manageable_tenant_ids.includes(tenant.id);
+            <p className="rounded-full border border-brand-primary/20 bg-brand-primary/5 px-2 py-1 text-[11px] font-medium text-brand-primary">
+                {effectiveTenantIds.length} selecionado(s)
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {tenants.map((tenant) => {
+                const active = effectiveTenantIds.includes(tenant.id);
+                const inherited = inheritedTenantIds.includes(tenant.id);
                 return (
                   <button
                     key={tenant.id}
                     type="button"
-                    className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-xs transition-colors ${active ? 'border-brand-primary/30 bg-brand-primary/5 text-primary' : 'border-border bg-card text-muted'}`}
-                    onClick={() => setForm((current) => ({
+                    disabled={inherited}
+                    className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-xs transition-colors ${active ? 'border-brand-primary/30 bg-brand-primary/5 text-primary' : 'border-border bg-card text-muted'} ${inherited ? 'cursor-default opacity-80' : ''}`}
+                    onClick={() => inherited ? undefined : setForm((current) => ({
                       ...current,
                       manageable_tenant_ids: active
                         ? current.manageable_tenant_ids.filter((tenantId) => tenantId !== tenant.id)
                         : [...current.manageable_tenant_ids, tenant.id],
                     }))}
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-primary">{tenant.name}</p>
-                      <p className="truncate text-[11px] text-muted">{tenant.tenant_code}</p>
-                    </div>
-                    <div className={`h-2.5 w-2.5 shrink-0 rounded-full ${active ? 'bg-brand-primary' : 'bg-muted/30'}`} />
-                  </button>
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-primary">{tenant.name}</p>
+                        <p className="truncate text-[11px] text-muted">
+                          {tenant.tenant_code}{inherited ? ' • Automatico via parceiro' : ''}
+                        </p>
+                      </div>
+                      <div className={`h-2.5 w-2.5 shrink-0 rounded-full ${active ? 'bg-brand-primary' : 'bg-muted/30'}`} />
+                    </button>
                 );
               })}
             </div>
@@ -717,7 +764,10 @@ function UsersPanel() {
           const delegatedFeatureEntries = (Object.entries(FEATURE_REGISTRY) as [FeatureKey, { label: string }][]).filter(
             ([key]) => profile.manageable_features?.[key] === true,
           );
-          const delegatedTenants = tenants.filter((tenant) => profile.manageable_tenant_ids?.includes(tenant.id));
+          const delegatedTenants = tenants.filter((tenant) => mergeTenantIds(
+            profile.manageable_tenant_ids || [],
+            getInheritedTenantIdsForUser(profile.id),
+          ).includes(tenant.id));
 
           return (
             <div key={profile.id} className="mb-2 rounded-lg border border-border p-3">
@@ -732,7 +782,7 @@ function UsersPanel() {
                   ))}
                 </div>
               )}
-              {profile.role !== 'master' && countSelectedTenants(profile.manageable_tenant_ids) > 0 && (
+              {profile.role !== 'master' && delegatedTenants.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {delegatedTenants.map((tenant) => (
                     <span key={tenant.id} className="rounded-full border border-border bg-body/40 px-2 py-1 text-[11px] text-muted">

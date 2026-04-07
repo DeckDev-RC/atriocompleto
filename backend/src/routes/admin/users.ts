@@ -17,6 +17,32 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+async function resolveExistingManageableTenantIds(tenantIds: string[]) {
+  if (tenantIds.length === 0) {
+    return {
+      validTenantIds: [] as string[],
+      invalidTenantIds: [] as string[],
+    };
+  }
+
+  const { data: selectedTenants, error } = await supabaseAdmin
+    .from("tenants")
+    .select("id")
+    .in("id", tenantIds);
+
+  if (error) {
+    throw error;
+  }
+
+  const validTenantIds = (selectedTenants || []).map((tenant) => String(tenant.id));
+  const validTenantSet = new Set(validTenantIds);
+
+  return {
+    validTenantIds,
+    invalidTenantIds: tenantIds.filter((tenantId) => !validTenantSet.has(tenantId)),
+  };
+}
+
 router.get("/", async (req: Request, res: Response) => {
   try {
     let query = supabaseAdmin
@@ -54,10 +80,10 @@ router.get("/", async (req: Request, res: Response) => {
       userId: req.user!.id,
       action: "user.list",
       resource: "profiles",
-      entityId: (tenantId as string) || "all",
+      entityId: tenantId || "all",
       details: {
         message: `Listagem de usuários realizada${tenantId ? ` (Empresa: ${tenantId})` : ""}`,
-        filters: req.query
+        filters: req.query,
       },
       ipAddress: req.auditInfo?.ip,
       userAgent: req.auditInfo?.userAgent,
@@ -117,12 +143,8 @@ router.post("/", async (req: Request, res: Response) => {
     }
 
     if (manageableTenantIds.length > 0) {
-      const { data: selectedTenants, error: selectedTenantsError } = await supabaseAdmin
-        .from("tenants")
-        .select("id")
-        .in("id", manageableTenantIds);
-
-      if (selectedTenantsError || (selectedTenants || []).length !== manageableTenantIds.length) {
+      const { invalidTenantIds } = await resolveExistingManageableTenantIds(manageableTenantIds);
+      if (invalidTenantIds.length > 0) {
         res.status(400).json({ success: false, error: "Uma ou mais empresas delegadas são inválidas" });
         return;
       }
@@ -133,7 +155,7 @@ router.post("/", async (req: Request, res: Response) => {
     const partner = await getPartnerById(partnerId);
 
     const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'invite',
+      type: "invite",
       email,
       options: {
         redirectTo: `${frontendBaseUrl}/redefinir-senha`,
@@ -146,7 +168,7 @@ router.post("/", async (req: Request, res: Response) => {
           manageable_features: manageableFeatures,
           manageable_tenant_ids: manageableTenantIds,
         },
-      }
+      },
     });
 
     if (inviteError || !inviteData.user) {
@@ -202,7 +224,10 @@ router.post("/", async (req: Request, res: Response) => {
       .eq("id", inviteData.user.id)
       .single();
 
-    res.status(201).json({ success: true, data: profile || { id: inviteData.user.id, email, full_name, role, tenant_id } });
+    res.status(201).json({
+      success: true,
+      data: profile || { id: inviteData.user.id, email, full_name, role, tenant_id },
+    });
 
     void AuditService.log({
       userId: req.user!.id,
@@ -253,22 +278,20 @@ router.put("/:id", async (req: Request, res: Response) => {
       }
     }
 
-    const { data: previousUser } = await supabaseAdmin.from("profiles").select("*").eq("id", req.params.id).single();
+    const { data: previousUser } = await supabaseAdmin
+      .from("profiles")
+      .select("*")
+      .eq("id", req.params.id)
+      .single();
+
     const effectiveRole = parsed.data.role ?? previousUser?.role ?? "user";
-    const manageableTenantIds = effectiveRole === "master"
+    let manageableTenantIds = effectiveRole === "master"
       ? []
       : normalizeManageableTenantIds(parsed.data.manageable_tenant_ids ?? previousUser?.manageable_tenant_ids);
 
     if (manageableTenantIds.length > 0) {
-      const { data: selectedTenants, error: selectedTenantsError } = await supabaseAdmin
-        .from("tenants")
-        .select("id")
-        .in("id", manageableTenantIds);
-
-      if (selectedTenantsError || (selectedTenants || []).length !== manageableTenantIds.length) {
-        res.status(400).json({ success: false, error: "Uma ou mais empresas delegadas são inválidas" });
-        return;
-      }
+      const { validTenantIds } = await resolveExistingManageableTenantIds(manageableTenantIds);
+      manageableTenantIds = validTenantIds;
     }
 
     const updates: Record<string, unknown> = {

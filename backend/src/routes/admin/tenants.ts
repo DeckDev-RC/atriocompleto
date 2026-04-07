@@ -62,6 +62,28 @@ async function refreshTenantUsers(tenantId: string) {
   }
 }
 
+async function removeTenantFromDelegations(tenantId: string) {
+  const { data: delegatedProfiles } = await supabaseAdmin
+    .from("profiles")
+    .select("id, manageable_tenant_ids")
+    .contains("manageable_tenant_ids", [tenantId]);
+
+  for (const profile of delegatedProfiles || []) {
+    const nextTenantIds = (profile.manageable_tenant_ids || []).filter((id: string) => id !== tenantId);
+
+    await supabaseAdmin
+      .from("profiles")
+      .update({
+        manageable_tenant_ids: nextTenantIds,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", profile.id);
+
+    await invalidateAuthCache(String(profile.id));
+    notifyPermissionsChanged(String(profile.id));
+  }
+}
+
 router.get("/", requirePermission("gerenciar_feature_flags"), async (req: Request, res: Response) => {
   try {
     const { data, error } = await supabaseAdmin
@@ -221,6 +243,8 @@ router.put("/:id", requireMaster, async (req: Request, res: Response) => {
 
 router.delete("/:id", requireMaster, async (req: Request, res: Response) => {
   try {
+    await removeTenantFromDelegations(String(req.params.id));
+
     const { data: users } = await supabaseAdmin
       .from("profiles")
       .select("id")
