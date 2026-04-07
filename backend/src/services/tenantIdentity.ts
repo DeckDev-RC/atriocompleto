@@ -6,6 +6,14 @@ export function buildDisabledTenantFeatures() {
   return getAllDisabledFeatureFlags();
 }
 
+export function buildPartnerSignupTenantFeatures() {
+  return {
+    ...buildDisabledTenantFeatures(),
+    calculadora: true,
+    calculadora_precos: true,
+  };
+}
+
 function slugifyTenantBase(name: string): string {
   const normalized = name
     .normalize("NFD")

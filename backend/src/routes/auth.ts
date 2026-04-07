@@ -23,7 +23,11 @@ import {
   assertPublicSignupEnabled,
   getPublicSignupPublicView,
 } from "../services/publicSignup";
-import { buildDisabledTenantFeatures, generateUniqueTenantCode } from "../services/tenantIdentity";
+import {
+  buildDisabledTenantFeatures,
+  buildPartnerSignupTenantFeatures,
+  generateUniqueTenantCode,
+} from "../services/tenantIdentity";
 import {
   hasAnyExplicitFeatureFlag,
   normalizeExplicitFeatureFlags,
@@ -1438,7 +1442,9 @@ router.post("/onboarding/company", requireAuth, async (req: Request, res: Respon
         ai_rate_limit: 20,
         tenant_code: tenantCode,
         partner_id: profile.partner_id,
-        enabled_features: buildDisabledTenantFeatures(),
+        enabled_features: profile.partner_id
+          ? buildPartnerSignupTenantFeatures()
+          : buildDisabledTenantFeatures(),
       })
       .select("id, name, tenant_code, partner_id")
       .single();
