@@ -560,7 +560,7 @@ export default function PriceCalculatorPage() {
     }));
   };
 
-  const useAutomaticReference = (marketplaceId: PriceCalculatorMarketplaceId) => {
+  const applyAutomaticReference = (marketplaceId: PriceCalculatorMarketplaceId) => {
     const automaticRow = automaticManagementRowsById[marketplaceId];
     if (!automaticRow) return;
 
@@ -1114,7 +1114,7 @@ export default function PriceCalculatorPage() {
                       <div className="mt-3 flex flex-wrap items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => useAutomaticReference(marketplaceId)}
+                          onClick={() => applyAutomaticReference(marketplaceId)}
                           className="rounded-lg border border-border px-3 py-1.5 text-[11px] font-bold text-primary transition-colors hover:bg-body"
                         >
                           Preencher com a referencia oficial
