@@ -8,6 +8,11 @@ import {
   type ReactNode,
 } from 'react';
 import { agentApi } from '../services/agentApi';
+import {
+  createDefaultPriceCalculatorManagementOverrides,
+  normalizePriceCalculatorManagementOverrides,
+  type PriceCalculatorManagementOverrides,
+} from '../utils/priceCalculator';
 import { useAuth } from './AuthContext';
 
 // ── Types ────────────────────────────────────────────────
@@ -17,13 +22,14 @@ export interface UserPreferences {
   number_locale: string;
   number_decimals: number;
   currency_symbol: string;
+  price_calculator_management_overrides: PriceCalculatorManagementOverrides;
 }
 
 interface UserPreferencesContextValue {
   preferences: UserPreferences;
   isLoading: boolean;
-  updatePreferences: (partial: Partial<UserPreferences>) => Promise<void>;
-  resetToDefaults: () => Promise<void>;
+  updatePreferences: (partial: Partial<UserPreferences>) => Promise<boolean>;
+  resetToDefaults: () => Promise<boolean>;
 }
 
 // ── Defaults ─────────────────────────────────────────────
@@ -33,6 +39,7 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   number_locale: 'pt-BR',
   number_decimals: 2,
   currency_symbol: 'R$',
+  price_calculator_management_overrides: createDefaultPriceCalculatorManagementOverrides(),
 };
 
 const PREFS_STORAGE_KEY = 'agregar-user-preferences';
@@ -43,7 +50,13 @@ function loadFromStorage(): UserPreferences {
     const stored = localStorage.getItem(PREFS_STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
-      return { ...DEFAULT_PREFERENCES, ...parsed };
+      return {
+        ...DEFAULT_PREFERENCES,
+        ...parsed,
+        price_calculator_management_overrides: normalizePriceCalculatorManagementOverrides(
+          parsed.price_calculator_management_overrides,
+        ),
+      };
     }
   } catch { /* ignore */ }
   return { ...DEFAULT_PREFERENCES };
@@ -102,7 +115,13 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
     agentApi.getPreferences().then((result) => {
       if (cancelled) return;
       if (result.success && result.data) {
-        const merged = { ...DEFAULT_PREFERENCES, ...result.data };
+        const merged = {
+          ...DEFAULT_PREFERENCES,
+          ...result.data,
+          price_calculator_management_overrides: normalizePriceCalculatorManagementOverrides(
+            result.data.price_calculator_management_overrides,
+          ),
+        };
         setPreferences(merged);
         saveToStorage(merged);
       }
@@ -125,7 +144,13 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
 
   const updatePreferences = useCallback(async (partial: Partial<UserPreferences>) => {
     setPreferences(prev => {
-      const updated = { ...prev, ...partial };
+      const updated = {
+        ...prev,
+        ...partial,
+        price_calculator_management_overrides: partial.price_calculator_management_overrides
+          ? normalizePriceCalculatorManagementOverrides(partial.price_calculator_management_overrides)
+          : prev.price_calculator_management_overrides,
+      };
       saveToStorage(updated);
       applyCSSVariables(updated);
       return updated;
@@ -133,9 +158,16 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
 
     // Sincroniza com o DB em background
     try {
-      await agentApi.updatePreferences(partial);
+      const result = await agentApi.updatePreferences({
+        ...partial,
+        price_calculator_management_overrides: partial.price_calculator_management_overrides
+          ? normalizePriceCalculatorManagementOverrides(partial.price_calculator_management_overrides)
+          : undefined,
+      });
+      return Boolean(result.success);
     } catch (err) {
       console.error('[Preferences] Sync error:', err);
+      return false;
     }
   }, []);
 
@@ -145,9 +177,11 @@ export function UserPreferencesProvider({ children }: { children: ReactNode }) {
     applyCSSVariables(DEFAULT_PREFERENCES);
 
     try {
-      await agentApi.updatePreferences(DEFAULT_PREFERENCES);
+      const result = await agentApi.updatePreferences(DEFAULT_PREFERENCES);
+      return Boolean(result.success);
     } catch (err) {
       console.error('[Preferences] Reset error:', err);
+      return false;
     }
   }, []);
 

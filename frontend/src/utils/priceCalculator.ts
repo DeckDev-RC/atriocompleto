@@ -16,6 +16,18 @@ export interface PriceCalculatorInputs {
   difalPercent: number;
 }
 
+export interface PriceCalculatorManagementOverride {
+  enabled: boolean;
+  commissionPercent: number | null;
+  promotionPercent: number | null;
+  shippingCost: number | null;
+}
+
+export type PriceCalculatorManagementOverrides = Record<
+  PriceCalculatorMarketplaceId,
+  PriceCalculatorManagementOverride
+>;
+
 export interface PriceCalculatorMarketplaceMeta {
   id: PriceCalculatorMarketplaceId;
   name: string;
@@ -47,6 +59,7 @@ export interface PriceCalculatorResult {
   ruleSummary: string;
   note?: string;
   warning?: string;
+  isOverrideActive?: boolean;
 }
 
 export interface PriceCalculatorManagementRow {
@@ -64,12 +77,14 @@ export interface PriceCalculatorManagementRow {
   ruleSummary: string;
   note?: string;
   warning?: string;
+  isOverrideActive?: boolean;
 }
 
 export interface PriceCalculatorRuleState {
   taxPercent: number;
   difalPercent: number;
   netshoesCommissionBasePrice: number | null;
+  overrideCount: number;
   managementRows: PriceCalculatorManagementRow[];
 }
 
@@ -105,6 +120,8 @@ interface ResultBuildArgs {
   ruleSummary: string;
   note?: string;
   warning?: string;
+  promotionPercent?: number;
+  isOverrideActive?: boolean;
 }
 
 export const PRICE_CALCULATOR_MARKETPLACE_ORDER: PriceCalculatorMarketplaceId[] = [
@@ -302,6 +319,44 @@ export function createDefaultPriceCalculatorInputs(): PriceCalculatorInputs {
   };
 }
 
+function createEmptyManagementOverride(): PriceCalculatorManagementOverride {
+  return {
+    enabled: false,
+    commissionPercent: null,
+    promotionPercent: null,
+    shippingCost: null,
+  };
+}
+
+export function createDefaultPriceCalculatorManagementOverrides(): PriceCalculatorManagementOverrides {
+  return {
+    amazon: createEmptyManagementOverride(),
+    magalu: createEmptyManagementOverride(),
+    mercadolivre: createEmptyManagementOverride(),
+    netshoes: createEmptyManagementOverride(),
+    shein: createEmptyManagementOverride(),
+    shopee: createEmptyManagementOverride(),
+  };
+}
+
+export function normalizePriceCalculatorManagementOverrides(
+  overrides?: Partial<PriceCalculatorManagementOverrides>,
+): PriceCalculatorManagementOverrides {
+  const defaults = createDefaultPriceCalculatorManagementOverrides();
+
+  if (!overrides) return defaults;
+
+  return PRICE_CALCULATOR_MARKETPLACE_ORDER.reduce((accumulator, marketplaceId) => {
+    const candidate = overrides[marketplaceId];
+    accumulator[marketplaceId] = {
+      ...defaults[marketplaceId],
+      ...candidate,
+      enabled: Boolean(candidate?.enabled),
+    };
+    return accumulator;
+  }, {} as PriceCalculatorManagementOverrides);
+}
+
 function roundCurrency(value: number) {
   return Math.round(value * 100) / 100;
 }
@@ -447,8 +502,11 @@ function buildResult(args: ResultBuildArgs): PriceCalculatorResult {
     ruleSummary,
     note,
     warning,
+    promotionPercent: customPromotionPercent,
+    isOverrideActive = false,
   } = args;
   const meta = PRICE_CALCULATOR_META[marketplaceId];
+  const promotionPercent = customPromotionPercent ?? meta.promotionPercent;
   const denominator = getDenominator(inputs, commissionPercent);
 
   if (warning && hasZeroDivisor(denominator)) {
@@ -457,7 +515,7 @@ function buildResult(args: ResultBuildArgs): PriceCalculatorResult {
       marketplaceName: meta.name,
       shortLabel: meta.shortLabel,
       accentColor: meta.accentColor,
-      promotionPercent: meta.promotionPercent,
+      promotionPercent,
       practicedPrice: 0,
       fullPrice: 0,
       profit: 0,
@@ -475,11 +533,12 @@ function buildResult(args: ResultBuildArgs): PriceCalculatorResult {
       ruleSummary,
       note,
       warning,
+      isOverrideActive,
     };
   }
 
   const practicedPrice = calculatePracticedPrice(inputs, commissionPercent, shippingCost);
-  const fullPrice = practicedPrice === null ? null : calculateFullPrice(practicedPrice, meta.promotionPercent);
+  const fullPrice = practicedPrice === null ? null : calculateFullPrice(practicedPrice, promotionPercent);
 
   if (practicedPrice === null || fullPrice === null) {
     return {
@@ -487,7 +546,7 @@ function buildResult(args: ResultBuildArgs): PriceCalculatorResult {
       marketplaceName: meta.name,
       shortLabel: meta.shortLabel,
       accentColor: meta.accentColor,
-      promotionPercent: meta.promotionPercent,
+      promotionPercent,
       practicedPrice: 0,
       fullPrice: 0,
       profit: 0,
@@ -505,6 +564,7 @@ function buildResult(args: ResultBuildArgs): PriceCalculatorResult {
       ruleSummary,
       note,
       warning: warning ?? 'Os parametros zeraram o divisor do calculo.',
+      isOverrideActive,
     };
   }
 
@@ -520,7 +580,7 @@ function buildResult(args: ResultBuildArgs): PriceCalculatorResult {
     marketplaceName: meta.name,
     shortLabel: meta.shortLabel,
     accentColor: meta.accentColor,
-    promotionPercent: meta.promotionPercent,
+    promotionPercent,
     practicedPrice,
     fullPrice,
     profit,
@@ -538,7 +598,36 @@ function buildResult(args: ResultBuildArgs): PriceCalculatorResult {
     ruleSummary,
     note,
     warning,
+    isOverrideActive,
   };
+}
+
+function applyManagementOverride(
+  inputs: PriceCalculatorInputs,
+  automaticResult: PriceCalculatorResult,
+  override: PriceCalculatorManagementOverride,
+): PriceCalculatorResult {
+  if (!override.enabled) return automaticResult;
+
+  const commissionPercent = override.commissionPercent ?? automaticResult.commissionPercent;
+  const promotionPercent = override.promotionPercent ?? automaticResult.promotionPercent;
+  const shippingCost = override.shippingCost ?? automaticResult.shippingCost;
+
+  return buildResult({
+    marketplaceId: automaticResult.marketplaceId,
+    inputs,
+    commissionPercent,
+    promotionPercent,
+    shippingCost,
+    iterations: 1,
+    calculationBaseLabel: 'Valores personalizados',
+    calculationBaseValue: null,
+    calculationBaseDisplay: 'Configuracao manual aplicada nesta conta',
+    resolvedBand: 'Manual',
+    ruleSummary: 'A calculadora esta usando comissao, promocao e frete personalizados salvos por voce.',
+    note: `Referencia automatica: comissao ${automaticResult.commissionPercent.toFixed(1)}%, promo ${automaticResult.promotionPercent.toFixed(1)}% e frete ${roundCurrency(automaticResult.shippingCost).toFixed(2)}.`,
+    isOverrideActive: true,
+  });
 }
 
 function calculateAmazonResult(inputs: PriceCalculatorInputs): PriceCalculatorResult {
@@ -769,8 +858,11 @@ function calculateShopeeResult(inputs: PriceCalculatorInputs): PriceCalculatorRe
   });
 }
 
-export function calculatePriceCalculatorResults(inputs: PriceCalculatorInputs) {
-  return [
+export function calculatePriceCalculatorResults(
+  inputs: PriceCalculatorInputs,
+  overrides?: Partial<PriceCalculatorManagementOverrides>,
+) {
+  const automaticResults = [
     calculateAmazonResult(inputs),
     calculateMagaluResult(inputs),
     calculateMercadoLivreResult(inputs),
@@ -778,15 +870,29 @@ export function calculatePriceCalculatorResults(inputs: PriceCalculatorInputs) {
     calculateSheinResult(inputs),
     calculateShopeeResult(inputs),
   ];
+
+  const normalizedOverrides = normalizePriceCalculatorManagementOverrides(overrides);
+
+  return automaticResults.map((result) =>
+    applyManagementOverride(inputs, result, normalizedOverrides[result.marketplaceId]),
+  );
 }
 
-export function calculatePriceCalculatorRuleState(inputs: PriceCalculatorInputs): PriceCalculatorRuleState {
-  const results = calculatePriceCalculatorResults(inputs);
+export function calculatePriceCalculatorRuleState(
+  inputs: PriceCalculatorInputs,
+  overrides?: Partial<PriceCalculatorManagementOverrides>,
+): PriceCalculatorRuleState {
+  const results = calculatePriceCalculatorResults(inputs, overrides);
+  const normalizedOverrides = normalizePriceCalculatorManagementOverrides(overrides);
+  const overrideCount = PRICE_CALCULATOR_MARKETPLACE_ORDER.filter(
+    (marketplaceId) => normalizedOverrides[marketplaceId].enabled,
+  ).length;
 
   return {
     taxPercent: inputs.taxPercent,
     difalPercent: inputs.difalPercent,
     netshoesCommissionBasePrice: calculateBasePrice(inputs, NETSHOES_LOW_COMMISSION_PERCENT),
+    overrideCount,
     managementRows: results.map((result) => ({
       marketplaceId: result.marketplaceId,
       marketplaceName: result.marketplaceName,
@@ -802,6 +908,7 @@ export function calculatePriceCalculatorRuleState(inputs: PriceCalculatorInputs)
       ruleSummary: result.ruleSummary,
       note: result.note,
       warning: result.warning,
+      isOverrideActive: result.isOverrideActive,
     })),
   };
 }

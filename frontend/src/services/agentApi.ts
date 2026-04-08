@@ -1,3 +1,5 @@
+import type { PriceCalculatorManagementOverrides } from '../utils/priceCalculator';
+
 const AGENT_API_URL = import.meta.env.VITE_AGENT_API_URL || '';
 const CLIENT_HOST_HEADER = 'X-Client-Host';
 
@@ -885,6 +887,7 @@ class AgentApiService {
       number_locale: string;
       number_decimals: number;
       currency_symbol: string;
+      price_calculator_management_overrides?: PriceCalculatorManagementOverrides;
     }>('/api/user/preferences');
   }
 
@@ -894,6 +897,7 @@ class AgentApiService {
     number_locale: string;
     number_decimals: number;
     currency_symbol: string;
+    price_calculator_management_overrides: PriceCalculatorManagementOverrides;
   }>) {
     return this.request('/api/user/preferences', {
       method: 'PUT',

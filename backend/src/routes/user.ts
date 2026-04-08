@@ -64,9 +64,38 @@ const preferencesSchema = z.object({
   number_locale: z.enum(["pt-BR", "en-US", "es-ES"]).optional(),
   number_decimals: z.number().int().min(0).max(4).optional(),
   currency_symbol: z.string().min(1).max(5).optional(),
+  price_calculator_management_overrides: z.record(z.string(), z.object({
+    enabled: z.boolean(),
+    commissionPercent: z.number().finite().nullable(),
+    promotionPercent: z.number().finite().nullable(),
+    shippingCost: z.number().finite().nullable(),
+  })).optional(),
 });
 
 // ── GET /api/user/preferences ────────────────────────────
+const DEFAULT_PRICE_CALCULATOR_MANAGEMENT_OVERRIDES = {
+  amazon: { enabled: false, commissionPercent: null, promotionPercent: null, shippingCost: null },
+  magalu: { enabled: false, commissionPercent: null, promotionPercent: null, shippingCost: null },
+  mercadolivre: { enabled: false, commissionPercent: null, promotionPercent: null, shippingCost: null },
+  netshoes: { enabled: false, commissionPercent: null, promotionPercent: null, shippingCost: null },
+  shein: { enabled: false, commissionPercent: null, promotionPercent: null, shippingCost: null },
+  shopee: { enabled: false, commissionPercent: null, promotionPercent: null, shippingCost: null },
+} as const;
+
+function normalizePriceCalculatorManagementOverrides(value: unknown) {
+  const candidate = value && typeof value === "object" ? value as Record<string, any> : {};
+  const defaults = DEFAULT_PRICE_CALCULATOR_MANAGEMENT_OVERRIDES;
+
+  return {
+    amazon: { ...defaults.amazon, ...(candidate.amazon || {}) },
+    magalu: { ...defaults.magalu, ...(candidate.magalu || {}) },
+    mercadolivre: { ...defaults.mercadolivre, ...(candidate.mercadolivre || {}) },
+    netshoes: { ...defaults.netshoes, ...(candidate.netshoes || {}) },
+    shein: { ...defaults.shein, ...(candidate.shein || {}) },
+    shopee: { ...defaults.shopee, ...(candidate.shopee || {}) },
+  };
+}
+
 router.get("/preferences", async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -91,6 +120,7 @@ router.get("/preferences", async (req: Request, res: Response) => {
       number_locale: "pt-BR",
       number_decimals: 2,
       currency_symbol: "R$",
+      price_calculator_management_overrides: DEFAULT_PRICE_CALCULATOR_MANAGEMENT_OVERRIDES,
     };
 
     res.json({
@@ -101,6 +131,9 @@ router.get("/preferences", async (req: Request, res: Response) => {
         number_locale: data.number_locale,
         number_decimals: data.number_decimals,
         currency_symbol: data.currency_symbol,
+        price_calculator_management_overrides: normalizePriceCalculatorManagementOverrides(
+          data.price_calculator_management_overrides,
+        ),
       } : defaults,
     });
   } catch (err) {
