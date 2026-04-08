@@ -1,4 +1,5 @@
 import { randomBytes } from "crypto";
+import { existsSync } from "fs";
 import ExcelJS from "exceljs";
 import { supabaseAdmin } from "../config/supabase";
 import { env } from "../config/env";
@@ -594,13 +595,39 @@ function repairDocumentText(document: ReportDocument): ReportDocument {
   };
 }
 
+function resolveChromiumExecutablePath(): string | undefined {
+  const configured = process.env.PUPPETEER_EXECUTABLE_PATH?.trim();
+  if (configured) {
+    return configured;
+  }
+
+  const candidates =
+    process.platform === "win32"
+      ? [
+          "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+          "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+          "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+          "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+        ]
+      : [
+          "/usr/bin/chromium-browser",
+          "/usr/bin/chromium",
+          "/usr/bin/google-chrome-stable",
+          "/usr/bin/google-chrome",
+        ];
+
+  return candidates.find((candidate) => existsSync(candidate));
+}
+
 async function buildPdfBuffer(document: ReportDocument, options: ReportExportOptions): Promise<GeneratedExportArtifact> {
   const repairedDocument = repairDocumentText(document);
   const html = buildHtmlDocument(repairedDocument, options);
-  const puppeteer = await import("puppeteer");
+  const puppeteer = await import("puppeteer-core");
+  const executablePath = resolveChromiumExecutablePath();
   const browser = await puppeteer.default.launch({
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--lang=pt-BR"],
+    executablePath,
     env: { ...process.env, LANG: "pt_BR.UTF-8", LC_ALL: "pt_BR.UTF-8" },
   });
 
@@ -719,11 +746,22 @@ async function getAuthorizedRecipients(tenantId: string) {
     throw new Error(`Erro ao carregar destinatários: ${error.message}`);
   }
 
+  const profiles = (data || []) as Array<{
+    id: string;
+    email: string;
+    full_name: string | null;
+    role: string;
+    permissions: Record<string, boolean> | null;
+  }>;
+  const permissionsByProfile = await AccessControlService.getUsersPermissionsMap(
+    profiles.map((profile) => String(profile.id)),
+  );
+
   const recipients: Array<{ id: string; email: string; full_name: string }> = [];
-  for (const profile of data || []) {
+  for (const profile of profiles) {
     const mergedPermissions = {
       ...(profile.permissions || {}),
-      ...(await AccessControlService.getUserPermissions(String(profile.id))),
+      ...(permissionsByProfile.get(String(profile.id)) || {}),
     };
 
     if (profile.role === "master" || mergedPermissions.visualizar_relatorios) {

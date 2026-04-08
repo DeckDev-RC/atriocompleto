@@ -123,12 +123,18 @@ function setCache(key: string, data: DashboardAggregated): void {
 }
 
 // Periodic cleanup of expired entries
-setInterval(() => {
+const cacheCleanupInterval = setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of cache.entries()) {
     if (now - entry.ts > CACHE_TTL) cache.delete(key);
   }
 }, 30_000);
+cacheCleanupInterval.unref?.();
+
+export function shutdownDashboardCache(): void {
+  clearInterval(cacheCleanupInterval);
+  cache.clear();
+}
 
 // ── Main ───────────────────────────────────────────
 

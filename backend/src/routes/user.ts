@@ -46,12 +46,18 @@ router.get("/events", (req: Request, res: Response) => {
 
   // Keep-alive every 30s to prevent proxy timeouts
   const keepAlive = setInterval(() => {
-    res.write(": heartbeat\n\n");
+    if (!res.writableEnded && !res.destroyed) {
+      res.write(": heartbeat\n\n");
+    }
   }, 30_000);
+  keepAlive.unref?.();
 
-  req.on("close", () => {
+  const cleanup = () => {
     clearInterval(keepAlive);
-  });
+  };
+
+  req.once("close", cleanup);
+  res.once("close", cleanup);
 });
 
 // ══════════════════════════════════════════════════════════

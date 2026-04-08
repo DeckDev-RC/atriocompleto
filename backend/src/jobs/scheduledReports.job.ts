@@ -98,3 +98,7 @@ export const ScheduledReportsQueueService = {
     }
   },
 };
+
+export async function shutdownScheduledReportsQueue(): Promise<void> {
+  await Promise.allSettled([worker.close(), scheduledReportsQueue.close()]);
+}

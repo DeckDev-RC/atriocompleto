@@ -56,3 +56,18 @@ export const queueRedis = createRedisClient("queue", {
 export const workerRedis = createRedisClient("worker", {
   maxRetriesPerRequest: null,
 });
+
+const redisClients = [redis, queueRedis, workerRedis];
+
+export async function closeRedisClients(): Promise<void> {
+  await Promise.allSettled(
+    redisClients.map(async (client) => {
+      if (client.status === "end") return;
+      try {
+        await client.quit();
+      } catch {
+        client.disconnect();
+      }
+    }),
+  );
+}

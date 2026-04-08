@@ -1,4 +1,4 @@
-import XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import type { ParsedFileResult, SpreadsheetValidationResult } from "./types";
 
 type RowObject = Record<string, unknown>;
@@ -28,15 +28,55 @@ function toNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function normalizeWorksheetRows(worksheet: ExcelJS.Worksheet): RowObject[] {
+  const matrix: unknown[][] = [];
+
+  worksheet.eachRow({ includeEmpty: false }, (row) => {
+    const values = (Array.isArray(row.values) ? row.values.slice(1) : []) as unknown[];
+    if (values.every((value) => value === null || value === undefined || value === "")) {
+      return;
+    }
+    matrix.push(values);
+  });
+
+  const headerRow = matrix[0] || [];
+  const normalizedHeaders = headerRow.map((value, index) => normalizeHeader(value) || `col_${index + 1}`);
+
+  return matrix
+    .slice(1)
+    .map((values) => {
+      const row = Object.fromEntries(
+        normalizedHeaders.map((header, index) => [header, values[index] ?? null]),
+      ) as RowObject;
+      return row;
+    })
+    .filter((row) => Object.values(row).some((value) => value !== null && value !== ""));
+}
+
+export async function readSpreadsheetRowsForValidation(buffer: Buffer, maxRows = 1000): Promise<RowObject[]> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as any);
+
+  const rows: RowObject[] = [];
+  for (const worksheet of workbook.worksheets) {
+    rows.push(...normalizeWorksheetRows(worksheet));
+    if (rows.length >= maxRows) {
+      break;
+    }
+  }
+
+  return rows.slice(0, maxRows);
+}
+
 function computeNumericStats(rows: RowObject[], headers: string[]) {
   const stats: Record<string, { count: number; sum: number; min: number; max: number; avg: number }> = {};
 
-  headers.forEach((header) => {
+  for (const header of headers) {
     const numericValues = rows
       .map((row) => toNumber(row[header]))
       .filter((value): value is number => value !== null);
 
-    if (numericValues.length === 0) return;
+    if (numericValues.length === 0) continue;
 
     const sum = numericValues.reduce((acc, value) => acc + value, 0);
     stats[header] = {
@@ -46,7 +86,7 @@ function computeNumericStats(rows: RowObject[], headers: string[]) {
       max: Math.max(...numericValues),
       avg: sum / numericValues.length,
     };
-  });
+  }
 
   return stats;
 }
@@ -69,26 +109,22 @@ function findRelevantColumns(headers: string[]) {
   return map;
 }
 
-export function parseSpreadsheetFile(buffer: Buffer, originalName: string): ParsedFileResult {
-  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
-  const sheets = workbook.SheetNames.map((sheetName) => {
-    const sheet = workbook.Sheets[sheetName];
-    const rawRows = XLSX.utils.sheet_to_json<(string | number | null)[]>(sheet, {
-      header: 1,
-      defval: null,
-      raw: false,
-      blankrows: false,
-    });
+export async function parseSpreadsheetFile(buffer: Buffer, originalName: string): Promise<ParsedFileResult> {
+  const workbook = new ExcelJS.Workbook();
 
-    const headerRow = rawRows[0] || [];
-    const normalizedHeaders = headerRow.map(normalizeHeader).map((header, index) => header || `col_${index + 1}`);
-    const rows = XLSX.utils
-      .sheet_to_json<RowObject>(sheet, { defval: null, raw: false })
-      .map((row) =>
-        Object.fromEntries(
-          Object.entries(row).map(([key, value]) => [normalizeHeader(key), value]),
-        ) as RowObject,
-      );
+  try {
+    await workbook.xlsx.load(buffer as any);
+  } catch (error) {
+    throw new Error(
+      error instanceof Error && /invalid|unsupported|corrupt/i.test(error.message)
+        ? "Planilhas XLS legadas ou corrompidas nao sao mais suportadas. Envie o arquivo em XLSX."
+        : "Nao foi possivel ler a planilha enviada.",
+    );
+  }
+
+  const sheets = workbook.worksheets.map((worksheet) => {
+    const rows = normalizeWorksheetRows(worksheet);
+    const headers = Object.keys(rows[0] || {});
     const sampleRows = rows.slice(0, 20);
     const duplicateRows = new Set<string>();
     let duplicateCount = 0;
@@ -100,17 +136,15 @@ export function parseSpreadsheetFile(buffer: Buffer, originalName: string): Pars
     });
 
     return {
-      name: sheetName,
+      name: worksheet.name,
       row_count: rows.length,
-      column_count: normalizedHeaders.length,
-      headers: normalizedHeaders,
+      column_count: headers.length,
+      headers,
       sample_rows: sampleRows,
-      numeric_stats: computeNumericStats(rows, normalizedHeaders),
-      empty_cells: rows.reduce((acc, row) => {
-        return acc + Object.values(row).filter((value) => value === null || value === "").length;
-      }, 0),
+      numeric_stats: computeNumericStats(rows, headers),
+      empty_cells: rows.reduce((acc, row) => acc + Object.values(row).filter((value) => value === null || value === "").length, 0),
       duplicate_rows: duplicateCount,
-      relevant_columns: findRelevantColumns(normalizedHeaders),
+      relevant_columns: findRelevantColumns(headers),
     };
   });
 
@@ -138,10 +172,8 @@ export function parseSpreadsheetFile(buffer: Buffer, originalName: string): Pars
     },
     summaryHint: `Planilha com ${sheets.length} aba(s) e ${totalRows} linhas.`,
     metadata: {
-      sheetNames: workbook.SheetNames,
-      validationRows: sheets.flatMap((sheet) => {
-        return (sheet.sample_rows as RowObject[]).slice(0, 50);
-      }),
+      sheetNames: workbook.worksheets.map((worksheet) => worksheet.name),
+      validationRows: sheets.flatMap((sheet) => (sheet.sample_rows as RowObject[]).slice(0, 50)),
     },
   };
 }

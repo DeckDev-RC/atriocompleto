@@ -2,12 +2,11 @@ import { randomUUID } from "crypto";
 import path from "path";
 import { createPartFromBase64 } from "@google/genai";
 import { fileTypeFromBuffer } from "file-type";
-import XLSX from "xlsx";
 import { env } from "../../config/env";
 import { genai, GEMINI_MODEL } from "../../config/gemini";
 import { supabaseAdmin } from "../../config/supabase";
 import { parseTxtFile } from "../parsers/txtParser";
-import { parseSpreadsheetFile, validateSpreadsheetRows } from "../parsers/spreadsheetParser";
+import { parseSpreadsheetFile, readSpreadsheetRowsForValidation, validateSpreadsheetRows } from "../parsers/spreadsheetParser";
 import { parsePdfFile } from "../parsers/pdfParser";
 import { parseImageWithGemini } from "../parsers/imageParser";
 import type { ParsedFileKind, ParsedFileResult } from "../parsers/types";
@@ -25,7 +24,6 @@ type AllowedFileConfig = {
 const ALLOWED_FILES: Record<string, AllowedFileConfig> = {
   png: { kind: "image", mimeTypes: ["image/png"], extensions: [".png"] },
   pdf: { kind: "pdf", mimeTypes: ["application/pdf"], extensions: [".pdf"] },
-  xls: { kind: "spreadsheet", mimeTypes: ["application/vnd.ms-excel", "application/octet-stream"], extensions: [".xls"] },
   xlsx: {
     kind: "spreadsheet",
     mimeTypes: [
@@ -558,7 +556,7 @@ ${params.message}`;
       if (file.file_kind === "text") {
         parsed = parseTxtFile(buffer, file.original_name);
       } else if (file.file_kind === "spreadsheet") {
-        parsed = parseSpreadsheetFile(buffer, file.original_name);
+        parsed = await parseSpreadsheetFile(buffer, file.original_name);
       } else if (file.file_kind === "pdf") {
         parsed = await parsePdfFile(buffer, file.original_name);
         if (parsed.needsMultimodalAnalysis) {
@@ -705,11 +703,7 @@ ${params.message}`;
     tenantId: string,
     buffer: Buffer,
   ): Promise<Record<string, unknown>> {
-    const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
-    const rows = workbook.SheetNames.flatMap((sheetName) => {
-      const sheet = workbook.Sheets[sheetName];
-      return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null, raw: false }).slice(0, 1000);
-    });
+    const rows = await readSpreadsheetRowsForValidation(buffer, 1000);
 
     if (rows.length === 0) {
       return { matchedProducts: 0, missingProducts: 0, priceMismatches: 0, stockMismatches: 0, examples: [] };
@@ -784,6 +778,9 @@ ${params.message}`;
     kind: ParsedFileKind;
   }> {
     const extension = normalizeExt(file.originalname);
+    if (extension === ".xls") {
+      throw new Error("Planilhas XLS legadas nao sao mais suportadas por seguranca. Converta o arquivo para XLSX.");
+    }
     const extConfig = mimeAllowedForExt(extension, file.mimetype);
     const detected = await fileTypeFromBuffer(file.buffer);
 

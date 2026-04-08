@@ -57,3 +57,7 @@ export const MemoryProcessingQueueService = {
     );
   },
 };
+
+export async function shutdownMemoryProcessingQueue(): Promise<void> {
+  await Promise.allSettled([worker.close(), memoryProcessingQueue.close()]);
+}

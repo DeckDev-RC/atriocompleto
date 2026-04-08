@@ -54,3 +54,7 @@ export const ReportExportsQueueService = {
     );
   },
 };
+
+export async function shutdownReportExportsQueue(): Promise<void> {
+  await Promise.allSettled([worker.close(), reportExportsQueue.close()]);
+}

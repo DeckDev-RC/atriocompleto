@@ -74,3 +74,7 @@ export const RateLimitQueueService = {
         return rateLimitQueue.add("BLOCK_IP", { type: "BLOCK_IP", ip });
     }
 };
+
+export async function shutdownRateLimitQueue(): Promise<void> {
+    await Promise.allSettled([worker.close(), rateLimitQueue.close()]);
+}

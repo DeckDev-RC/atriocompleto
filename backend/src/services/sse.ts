@@ -1,60 +1,89 @@
 import { Response } from "express";
 
-/**
- * Simple SSE (Server-Sent Events) manager for real-time permission updates.
- * Clients connect via GET /api/user/events and receive push notifications
- * when their permissions change.
- */
-
 type SSEClient = {
-    userId: string;
-    res: Response;
+  userId: string;
+  res: Response;
+  closed: boolean;
+  pendingTimers: Set<NodeJS.Timeout>;
 };
 
-const clients: SSEClient[] = [];
+const clients = new Set<SSEClient>();
 
-/** Register a new SSE client connection */
+function removeSSEClient(client: SSEClient) {
+  if (client.closed) return;
+  client.closed = true;
+
+  for (const timer of client.pendingTimers) {
+    clearTimeout(timer);
+  }
+  client.pendingTimers.clear();
+  clients.delete(client);
+}
+
+function canWrite(res: Response) {
+  return !res.writableEnded && !res.destroyed;
+}
+
+function flushResponse(res: Response) {
+  try {
+    (res as { flush?: () => void }).flush?.();
+  } catch {
+    // Ignore flush errors on already-closing sockets.
+  }
+}
+
+function writeEvent(client: SSEClient, eventName: string, payload: Record<string, unknown>) {
+  if (client.closed || !canWrite(client.res)) {
+    removeSSEClient(client);
+    return;
+  }
+
+  client.res.write(`event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`);
+  flushResponse(client.res);
+}
+
 export function addSSEClient(userId: string, res: Response) {
-    clients.push({ userId, res });
+  const client: SSEClient = {
+    userId,
+    res,
+    closed: false,
+    pendingTimers: new Set(),
+  };
 
-    // Explicitly flush the initial connection/heartbeat if any
-    try {
-        (res as any).flush?.();
-    } catch (err) { }
+  clients.add(client);
+  flushResponse(res);
 
-    // Remove client on disconnect
-    res.on("close", () => {
-        const idx = clients.findIndex((c) => c.res === res);
-        if (idx !== -1) clients.splice(idx, 1);
-    });
-
-
+  const cleanup = () => removeSSEClient(client);
+  res.once("close", cleanup);
+  res.once("finish", cleanup);
+  res.once("error", cleanup);
 }
 
-/** Notify all connected clients of a specific user that their permissions changed */
 export function notifyPermissionsChanged(userId: string) {
-    const userClients = clients.filter((c) => c.userId === userId);
-    for (const client of userClients) {
-        // Add a tiny delay (200ms) to ensure DB commit is finalized before client refreshes
-        setTimeout(() => {
-            client.res.write(`event: permissions:changed\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`);
-            try {
-                (client.res as any).flush?.();
-            } catch (err) {
-                // Ignore if flush fails
-            }
-        }, 200);
-    }
+  for (const client of clients) {
+    if (client.userId !== userId || client.closed) continue;
 
+    const timer = setTimeout(() => {
+      client.pendingTimers.delete(timer);
+      writeEvent(client, "permissions:changed", { timestamp: Date.now() });
+    }, 200);
+
+    timer.unref?.();
+    client.pendingTimers.add(timer);
+  }
 }
 
-/** Notify ALL connected clients that permissions changed (used when we can't target a specific user) */
 export function notifyAllPermissionsChanged() {
-    for (const client of clients) {
-        client.res.write(`event: permissions:changed\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`);
-        try {
-            (client.res as any).flush?.();
-        } catch (err) { }
-    }
-    console.log(`[SSE] Broadcast permissions:changed to ${clients.length} client(s)`);
+  for (const client of clients) {
+    writeEvent(client, "permissions:changed", { timestamp: Date.now() });
+  }
+  console.log(`[SSE] Broadcast permissions:changed to ${clients.size} client(s)`);
+}
+
+export async function shutdownSSEClients() {
+  for (const client of [...clients]) {
+    writeEvent(client, "server:shutdown", { timestamp: Date.now() });
+    client.res.end();
+    removeSSEClient(client);
+  }
 }

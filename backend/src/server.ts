@@ -2,10 +2,14 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
+import type { Socket } from "node:net";
 import { globalLimiter, checkIPBlock } from "./middleware/rate-limit";
 
 import { env } from "./config/env";
-import { setupDailyCrons } from "./services/cron.service";
+import { closeRedisClients } from "./config/redis";
+import { setShuttingDown } from "./config/runtime-state";
+import { setupDailyCrons, shutdownDailyCrons } from "./services/cron.service";
+import { shutdownDashboardCache } from "./services/dashboard";
 import { errorHandler } from "./middleware/error";
 import { auditMiddleware } from "./middleware/audit";
 
@@ -21,9 +25,12 @@ import simulationsRoutes from "./routes/simulations";
 import inventoryRoutes from "./routes/inventory";
 import optimusSuggestionsRoutes from "./routes/optimus_suggestions";
 import reportsRoutes from "./routes/reports";
-import "./services/file-processing-queue";
-import "./services/memory-processing-queue";
-import "./jobs/reportExports.job";
+import { shutdownFileProcessingQueue } from "./services/file-processing-queue";
+import { shutdownMemoryProcessingQueue } from "./services/memory-processing-queue";
+import { shutdownRateLimitQueue } from "./services/rate-limit-queue";
+import { shutdownSSEClients } from "./services/sse";
+import { shutdownReportExportsQueue } from "./jobs/reportExports.job";
+import { shutdownScheduledReportsQueue } from "./jobs/scheduledReports.job";
 
 const app = express();
 app.set("trust proxy", 1); // Trust Easypanel/Traefik reverse proxy headers.
@@ -56,7 +63,7 @@ const corsOptions: cors.CorsOptions = {
       callback(null, true);
     } else {
       console.warn(`CORS blocked origin: ${origin}`);
-      callback(null, true);
+      callback(null, false);
     }
   },
   credentials: true,
@@ -69,6 +76,25 @@ app.options("*", cors(corsOptions));
 
 // Health endpoints must stay lightweight and avoid Redis-backed middleware.
 app.use("/api/health", healthRoutes);
+
+let isShuttingDown = false;
+app.use((req, res, next) => {
+  if (!isShuttingDown) {
+    next();
+    return;
+  }
+
+  if ((req.originalUrl || req.url || "").startsWith("/api/health")) {
+    next();
+    return;
+  }
+
+  res.setHeader("Connection", "close");
+  res.status(503).json({
+    success: false,
+    error: "Servidor em desligamento controlado. Tente novamente em instantes.",
+  });
+});
 
 app.use(checkIPBlock);
 app.use(globalLimiter);
@@ -87,6 +113,7 @@ app.use(
 );
 
 app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
 app.use((_req, res, next) => {
   const originalJson = res.json.bind(res);
@@ -137,22 +164,58 @@ const server = app.listen(env.PORT, () => {
   setupDailyCrons();
 });
 
-let isShuttingDown = false;
+const sockets = new Set<Socket>();
+server.on("connection", (socket) => {
+  sockets.add(socket);
+  socket.on("close", () => sockets.delete(socket));
 
-function shutdown(signal: string) {
+  if (isShuttingDown) {
+    socket.destroy();
+  }
+});
+
+async function closeRuntimeDependencies() {
+  await Promise.allSettled([
+    shutdownDailyCrons(),
+    shutdownDashboardCache(),
+    shutdownSSEClients(),
+    shutdownFileProcessingQueue(),
+    shutdownMemoryProcessingQueue(),
+    shutdownRateLimitQueue(),
+    shutdownReportExportsQueue(),
+    shutdownScheduledReportsQueue(),
+    closeRedisClients(),
+  ]);
+}
+
+function shutdown(signal: string, reason?: unknown) {
   if (isShuttingDown) return;
   isShuttingDown = true;
+  setShuttingDown(true);
   console.log(`\n[${new Date().toISOString()}] ${signal} received - graceful shutdown...`);
+  if (reason) {
+    console.error(`[Shutdown] Trigger reason:`, reason);
+  }
 
-  server.close(() => {
+  for (const socket of sockets) {
+    socket.end();
+    setTimeout(() => socket.destroy(), 5_000).unref?.();
+  }
+
+  server.close(async () => {
     console.log("[Shutdown] HTTP server closed");
-    process.exit(0);
+    await closeRuntimeDependencies();
+    process.exit(signal === "uncaughtException" || signal === "unhandledRejection" ? 1 : 0);
   });
 
-  setTimeout(() => {
+  setTimeout(async () => {
     console.error("[Shutdown] Forcing exit after timeout");
+    await closeRuntimeDependencies();
+    for (const socket of sockets) {
+      socket.destroy();
+    }
     process.exit(1);
-  }, 10_000);
+  }, 15_000).unref?.();
 }
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
@@ -160,11 +223,12 @@ process.on("SIGINT", () => shutdown("SIGINT"));
 
 process.on("uncaughtException", (err) => {
   console.error(`[${new Date().toISOString()}] UNCAUGHT EXCEPTION:`, err);
-  process.exit(1);
+  shutdown("uncaughtException", err);
 });
 
 process.on("unhandledRejection", (reason) => {
   console.error(`[${new Date().toISOString()}] UNHANDLED REJECTION:`, reason);
+  shutdown("unhandledRejection", reason);
 });
 
 export default app;

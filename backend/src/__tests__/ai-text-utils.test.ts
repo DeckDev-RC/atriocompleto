@@ -35,7 +35,7 @@ test("buildChatExportTitle strips export filler from the user request", () => {
       "compareMarketplaces",
       "gere um pdf com a comparacao dos ultimos 90 dias por marketplace e depois me entregue o relatorio",
     ),
-    "comparacao dos ultimos 90 dias por marketplace",
+    "Comparativo por Marketplace - Ultimos 90 dias",
   );
 });
 

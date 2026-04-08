@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { redis } from "../config/redis";
 import { supabaseAdmin } from "../config/supabase";
+import { isShuttingDown } from "../config/runtime-state";
 
 const router = Router();
 
@@ -62,6 +63,19 @@ router.get("/live", (_req: Request, res: Response) => {
 });
 
 const readinessHandler = async (_req: Request, res: Response) => {
+  if (isShuttingDown()) {
+    res.status(503).json({
+      success: false,
+      data: {
+        api: "shutting_down",
+        redis: "shutting_down",
+        supabase: "shutting_down",
+        timestamp: new Date().toISOString(),
+      },
+    });
+    return;
+  }
+
   const [supabase, redisStatus] = await Promise.all([checkSupabase(), checkRedis()]);
 
   const checks: Record<string, string> = {

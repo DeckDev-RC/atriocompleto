@@ -1,4 +1,4 @@
-import cron from "node-cron";
+import cron, { type ScheduledTask } from "node-cron";
 import { AutoInsightsService } from "./autoInsights.service";
 import { StrategicReportService } from "./strategicReport.service";
 import { queryFunctions } from "./query-functions";
@@ -9,7 +9,10 @@ import { MemoryService } from "./optimus/memoryService";
 import { ReportSchedulerService } from "./reportScheduler.service";
 import { ReportExporterService } from "./reportExporter.service";
 
+const scheduledTasks: ScheduledTask[] = [];
+
 export function setupDailyCrons() {
+  shutdownDailyCrons();
   console.log("[Cron] Agendamentos desativados temporariamente ate segunda ordem.");
   return;
 
@@ -116,4 +119,10 @@ export function setupDailyCrons() {
   });
 
   console.log("[Cron] Agendamentos configurados (06:00 padroes, 06:30/seg estrategia, 07:00 insights, 07:15 sugestoes, hora em hora cleanup arquivos, 03:30 cleanup memoria, 04:00 cleanup relatorios, 04:30 cleanup exports).");
+}
+
+export function shutdownDailyCrons() {
+  while (scheduledTasks.length > 0) {
+    scheduledTasks.pop()?.stop();
+  }
 }

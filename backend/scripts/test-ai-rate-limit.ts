@@ -2,9 +2,7 @@ import dotenv from "dotenv";
 import path from "path";
 dotenv.config({ path: path.join(__dirname, "../.env") });
 
-import { supabaseAdmin } from "../src/config/supabase";
 import { redis } from "../src/config/redis";
-import fetch from "node-fetch";
 
 async function testRateLimit() {
     console.log("🚀 Iniciando teste de Rate Limit dinâmico...");

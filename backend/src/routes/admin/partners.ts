@@ -70,10 +70,12 @@ async function refreshPartnerUsers(partnerId: string) {
       .select("id")
       .eq("partner_id", partnerId);
 
-  for (const profile of profiles || []) {
-    await invalidateAuthCache(String(profile.id));
-    notifyPermissionsChanged(String(profile.id));
-  }
+  await Promise.all(
+    (profiles || []).map(async (profile) => {
+      await invalidateAuthCache(String(profile.id));
+      notifyPermissionsChanged(String(profile.id));
+    }),
+  );
 }
 
 router.get("/", async (req: Request, res: Response) => {

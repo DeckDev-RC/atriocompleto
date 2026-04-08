@@ -5,6 +5,7 @@ import { invalidateAuthCache } from "../../middleware/auth";
 import { AccessControlService } from "../../services/access-control";
 import { AuditService } from "../../services/audit";
 import { notifyPermissionsChanged, notifyAllPermissionsChanged } from "../../services/sse";
+import { collectRedisKeys } from "../../utils/redis-keys";
 
 const router = Router();
 
@@ -13,7 +14,7 @@ const router = Router();
 router.get("/rate-limit/blocked-ips", async (req: Request, res: Response) => {
   try {
     const { redis } = await import("../../config/redis");
-    const keys = await redis.keys("ratelimit:blocked:*");
+    const keys = await collectRedisKeys(redis, "ratelimit:blocked:*");
 
     const blockedIps = await Promise.all(keys.map(async (key) => {
       const ip = key.replace("ratelimit:blocked:", "");

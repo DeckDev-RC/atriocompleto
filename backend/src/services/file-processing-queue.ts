@@ -42,3 +42,7 @@ export const FileProcessingQueueService = {
     );
   },
 };
+
+export async function shutdownFileProcessingQueue(): Promise<void> {
+  await Promise.allSettled([worker.close(), fileProcessingQueue.close()]);
+}

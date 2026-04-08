@@ -16,6 +16,7 @@ import {
   type ResolvedBranding,
 } from "../services/partners";
 import { normalizeManageableTenantIds } from "../utils/tenant-access";
+import { deleteRedisKeysByPattern } from "../utils/redis-keys";
 
 /**
  * User info attached to req after auth middleware.
@@ -57,11 +58,10 @@ const SESSION_SET_PREFIX = "auth:sessions:";
 export async function invalidateAuthCache(identifier?: string) {
   try {
     if (!identifier) {
-      // Clear all auth cache entries
-      const keys = await redis.keys(`${AUTH_CACHE_PREFIX}*`);
-      if (keys.length > 0) await redis.del(...keys);
-      const sessionKeys = await redis.keys(`${SESSION_SET_PREFIX}*`);
-      if (sessionKeys.length > 0) await redis.del(...sessionKeys);
+      await Promise.all([
+        deleteRedisKeysByPattern(redis, `${AUTH_CACHE_PREFIX}*`),
+        deleteRedisKeysByPattern(redis, `${SESSION_SET_PREFIX}*`),
+      ]);
       return;
     }
 

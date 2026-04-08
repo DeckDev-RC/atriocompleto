@@ -26,7 +26,7 @@ const handleViolation = (req: Request, res: Response, options: any) => {
     endpoint: req.originalUrl,
     limit: options.limit,
     userAgent: req.headers["user-agent"],
-    userId: (req as any).user?.id,
+    userId: req.user?.id,
   }).catch((error) => {
     console.error("[RateLimit] Failed to enqueue violation log:", error);
   });
@@ -124,7 +124,7 @@ export const publicApiLimiter = rateLimit({
   limit: 20,
   standardHeaders: true,
   legacyHeaders: true,
-  skip: (req) => isWhitelisted(req) || isHealthCheckRequest(req) || !!(req as any).user,
+  skip: (req) => isWhitelisted(req) || isHealthCheckRequest(req) || !!req.user,
   passOnStoreError: true,
   store: redisStore("ratelimit:public:"),
   message: { success: false, error: "Limite de API publica excedido. Tente novamente daqui a pouco." },
@@ -138,7 +138,7 @@ export const aiReadLimiter = rateLimit({
   legacyHeaders: false,
   skip: isWhitelisted,
   passOnStoreError: true,
-  keyGenerator: (req: Request) => (req as any).user?.id || req.ip || "unknown",
+  keyGenerator: (req: Request) => req.user?.id || req.ip || "unknown",
   store: redisStore("ratelimit:ai-read:"),
   message: { success: false, error: "Muitas requisicoes de leitura. Tente novamente em breve." },
   handler: handleViolation,
@@ -147,7 +147,7 @@ export const aiReadLimiter = rateLimit({
 export const aiLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: async (req: Request) => {
-    const tenantId = (req as any).user?.tenant_id;
+    const tenantId = req.user?.tenant_id;
     if (!tenantId) return 20;
 
     const cacheKey = `config:tenant:${tenantId}:ai_limit`;
@@ -176,7 +176,7 @@ export const aiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   passOnStoreError: true,
-  keyGenerator: (req: Request) => (req as any).user?.id || req.ip || "unknown",
+  keyGenerator: (req: Request) => req.user?.id || req.ip || "unknown",
   store: redisStore("ratelimit:ai:"),
   message: {
     success: false,

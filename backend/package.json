@@ -7,7 +7,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "lint": "eslint src/",
+    "lint": "tsc --noEmit",
     "test": "tsx --test src/__tests__/**/*.test.ts",
     "test:rate-limit": "tsx scripts/test-rate-limit.ts",
     "test:unblock": "tsx scripts/unblock-dev.ts"
@@ -15,8 +15,6 @@
   "dependencies": {
     "@google/genai": "^1.0.0",
     "@supabase/supabase-js": "^2.49.0",
-    "@types/qrcode": "^1.5.6",
-    "@types/speakeasy": "^2.0.10",
     "bullmq": "^5.69.3",
     "compression": "^1.8.1",
     "cors": "^2.8.5",
@@ -27,15 +25,14 @@
     "file-type": "^21.3.3",
     "helmet": "^8.0.0",
     "ioredis": "^5.9.3",
-    "multer": "^2.0.2",
+    "multer": "^2.1.1",
     "node-cron": "^4.2.1",
-    "nodemailer": "^8.0.1",
+    "nodemailer": "^8.0.5",
     "pdf-parse": "^2.4.5",
-    "puppeteer": "^24.16.0",
+    "puppeteer-core": "^24.40.0",
     "qrcode": "^1.5.4",
     "rate-limit-redis": "^4.3.1",
     "speakeasy": "^2.0.0",
-    "xlsx": "^0.18.5",
     "zod": "^3.24.0"
   },
   "devDependencies": {
@@ -46,9 +43,22 @@
     "@types/node": "^22.0.0",
     "@types/node-cron": "^3.0.11",
     "@types/nodemailer": "^6.4.22",
-    "eslint": "^10.0.0",
+    "@types/qrcode": "^1.5.6",
+    "@types/speakeasy": "^2.0.10",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
+  },
+  "overrides": {
+    "archiver": "7.0.1",
+    "unzipper": "0.12.3",
+    "readdir-glob": "3.0.0",
+    "fast-csv": "5.0.5",
+    "@fast-csv/format": "5.0.5",
+    "@fast-csv/parse": "5.0.5",
+    "minimatch": "9.0.9",
+    "brace-expansion": "2.0.3",
+    "path-to-regexp": "0.1.13",
+    "basic-ftp": "5.2.1"
   },
   "engines": {
     "node": ">=22.0.0"

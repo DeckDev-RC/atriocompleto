@@ -56,10 +56,12 @@ async function refreshTenantUsers(tenantId: string) {
     .select("id")
     .eq("tenant_id", tenantId);
 
-  for (const profile of tenantUsers || []) {
-    await invalidateAuthCache(String(profile.id));
-    notifyPermissionsChanged(String(profile.id));
-  }
+  await Promise.all(
+    (tenantUsers || []).map(async (profile) => {
+      await invalidateAuthCache(String(profile.id));
+      notifyPermissionsChanged(String(profile.id));
+    }),
+  );
 }
 
 async function removeTenantFromDelegations(tenantId: string) {
@@ -68,20 +70,22 @@ async function removeTenantFromDelegations(tenantId: string) {
     .select("id, manageable_tenant_ids")
     .contains("manageable_tenant_ids", [tenantId]);
 
-  for (const profile of delegatedProfiles || []) {
-    const nextTenantIds = (profile.manageable_tenant_ids || []).filter((id: string) => id !== tenantId);
+  await Promise.all(
+    (delegatedProfiles || []).map(async (profile) => {
+      const nextTenantIds = (profile.manageable_tenant_ids || []).filter((id: string) => id !== tenantId);
 
-    await supabaseAdmin
-      .from("profiles")
-      .update({
-        manageable_tenant_ids: nextTenantIds,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", profile.id);
+      await supabaseAdmin
+        .from("profiles")
+        .update({
+          manageable_tenant_ids: nextTenantIds,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", profile.id);
 
-    await invalidateAuthCache(String(profile.id));
-    notifyPermissionsChanged(String(profile.id));
-  }
+      await invalidateAuthCache(String(profile.id));
+      notifyPermissionsChanged(String(profile.id));
+    }),
+  );
 }
 
 router.get("/", requirePermission("gerenciar_feature_flags"), async (req: Request, res: Response) => {

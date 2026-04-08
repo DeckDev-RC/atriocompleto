@@ -1,4 +1,4 @@
-import XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { supabaseAdmin } from "../config/supabase";
 import { fetchDashboardAggregated, type DashboardParams } from "./dashboard";
 import { ProductAnalyzer, type OptimusFilters } from "./optimus/productAnalyzer";
@@ -66,13 +66,42 @@ function buildCsv(rows: Array<Record<string, string | number | null>>): Buffer {
   return Buffer.from(`\uFEFF${content}`, "utf8");
 }
 
-function buildWorkbook(sheets: GeneratedSheet[]): Buffer {
-  const workbook = XLSX.utils.book_new();
-  sheets.forEach((sheet) => {
-    const worksheet = XLSX.utils.json_to_sheet(sheet.rows.length > 0 ? sheet.rows : [{ Mensagem: "Sem dados" }]);
-    XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name.slice(0, 31) || "Relatorio");
-  });
-  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+async function buildWorkbook(sheets: GeneratedSheet[]): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Atrio";
+  workbook.created = new Date();
+  workbook.modified = new Date();
+
+  for (const sheet of sheets) {
+    const rows = sheet.rows.length > 0 ? sheet.rows : [{ Mensagem: "Sem dados" }];
+    const headers = Object.keys(rows[0]);
+    const worksheet = workbook.addWorksheet(sheet.name.slice(0, 31) || "Relatorio", {
+      views: [{ state: "frozen", ySplit: 1 }],
+    });
+
+    const headerRow = worksheet.addRow(headers);
+    headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    headerRow.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF0F172A" },
+    };
+
+    for (const row of rows) {
+      worksheet.addRow(headers.map((header) => row[header] ?? ""));
+    }
+
+    worksheet.columns.forEach((column) => {
+      let maxWidth = 12;
+      column.eachCell?.({ includeEmpty: true }, (cell) => {
+        maxWidth = Math.max(maxWidth, Math.min(50, String(cell.value ?? "").length + 2));
+      });
+      column.width = maxWidth;
+    });
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return Buffer.from(buffer);
 }
 
 function buildHtmlTable(rows: Array<Record<string, string | number | null>>): string {
@@ -161,13 +190,13 @@ function buildHtmlReportDocument(title: string, periodLabel: string, sections: G
   return Buffer.from(html, "utf8");
 }
 
-function buildArtifact(params: {
+async function buildArtifact(params: {
   schedule: ScheduledReportRow;
   sheets: GeneratedSheet[];
   periodLabel: string;
   dashboardUrl: string;
   downloadUrl: string;
-}): GeneratedReportArtifact {
+}): Promise<GeneratedReportArtifact> {
   const reportName = `${params.schedule.name} (${REPORT_TYPE_LABELS[params.schedule.report_type]})`;
   const fileBase = sanitizeFilename(`${params.schedule.name}-${params.schedule.report_type}-${new Date().toISOString().slice(0, 10)}`);
   const subject = `[Átrio] Relatório de ${REPORT_TYPE_LABELS[params.schedule.report_type]} - ${params.periodLabel}`;
@@ -226,7 +255,7 @@ function buildArtifact(params: {
     }),
     fileName: `${fileBase}.xlsx`,
     contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    buffer: buildWorkbook(params.sheets),
+    buffer: await buildWorkbook(params.sheets),
     previewRows: params.sheets[0]?.rows || [],
   };
 }
@@ -243,11 +272,22 @@ async function fetchEligibleRecipients(tenantId: string): Promise<EligibleRecipi
     throw new Error(`Erro ao buscar destinatários: ${error.message}`);
   }
 
+  const profiles = (data || []) as Array<{
+    id: string;
+    email: string;
+    full_name: string | null;
+    role: string;
+    permissions: Record<string, boolean> | null;
+  }>;
+  const permissionsByProfile = await AccessControlService.getUsersPermissionsMap(
+    profiles.map((profile) => String(profile.id)),
+  );
+
   const recipients: EligibleRecipient[] = [];
-  for (const profile of data || []) {
+  for (const profile of profiles) {
     const mergedPermissions = {
       ...(profile.permissions || {}),
-      ...(await AccessControlService.getUserPermissions(String(profile.id))),
+      ...(permissionsByProfile.get(String(profile.id)) || {}),
     };
 
     if (profile.role === "master" || mergedPermissions.visualizar_relatorios) {
