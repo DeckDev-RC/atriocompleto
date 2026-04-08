@@ -199,6 +199,10 @@ export function ProfileSection() {
                 src={user.avatar_url}
                 alt={user.full_name}
                 className="h-full w-full object-cover"
+                width={80}
+                height={80}
+                loading="lazy"
+                decoding="async"
               />
             ) : (
               <span className="text-[22px] font-bold text-primary/60">

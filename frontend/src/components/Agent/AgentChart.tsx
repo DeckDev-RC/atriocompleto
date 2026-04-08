@@ -1,315 +1,346 @@
-import { useRef, useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarController,
-  LineController,
-  PieController,
-  DoughnutController,
-  BarElement,
-  LineElement,
-  PointElement,
-  ArcElement,
-  Title,
-  Tooltip,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
   Legend,
-  Filler,
-  type ChartConfiguration,
-} from 'chart.js';
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { useApp } from '../../contexts/AppContext';
 import { useBrandPrimaryColor } from '../../hooks/useBrandPrimaryColor';
 import { useFormatting } from '../../hooks/useFormatting';
 import { getMarketplaceColor } from '../../utils/marketplaceColors';
+import type { ChartData } from './chartUtils';
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarController,
-  LineController,
-  PieController,
-  DoughnutController,
-  BarElement,
-  LineElement,
-  PointElement,
-  ArcElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler,
-);
-
-// Cores fixas para gráficos de linha / quando não há label de marketplace
 const FIXED_COLORS = [
-  '#34C759', // success
-  '#FF9F0A', // warning
-  '#FF453A', // danger
-  '#3a81aa', // accent-deep
-  '#2DD4BF', // teal
-  '#FB923C', // orange
-  '#A78BFA', // violet
-  '#3e5d6f', // accent-muted
-  '#F472B6', // pink
+  '#34C759',
+  '#FF9F0A',
+  '#FF453A',
+  '#3a81aa',
+  '#2DD4BF',
+  '#FB923C',
+  '#A78BFA',
+  '#3e5d6f',
+  '#F472B6',
 ];
 
-export interface ChartData {
-  type: 'bar' | 'line' | 'pie' | 'doughnut' | 'horizontalBar';
-  title?: string;
-  labels: string[];
-  datasets: Array<{
-    label: string;
-    data: number[];
-    color?: string;
-  }>;
-  options?: {
-    currency?: boolean;
-    percentage?: boolean;
-    stacked?: boolean;
-    showLegend?: boolean;
-  };
+interface RechartsPayloadRow {
+  label: string;
+  index: number;
+  [key: string]: string | number;
 }
 
-export function extractCharts(content: string): { text: string; charts: ChartData[] } {
-  const charts: ChartData[] = [];
-  const chartRegex = /```chart\n([\s\S]*?)```/g;
+interface PieRow {
+  name: string;
+  value: number;
+  fill: string;
+  index: number;
+}
 
-  const text = content.replace(chartRegex, (_match, jsonStr: string) => {
-    try {
-      const parsed = JSON.parse(jsonStr.trim());
-      charts.push(parsed);
-      return `%%CHART_${charts.length - 1}%%`;
-    } catch (e) {
-      console.warn('Failed to parse chart JSON:', e);
-      return _match;
-    }
+interface ClickableDotProps {
+  cx?: number;
+  cy?: number;
+  payload?: RechartsPayloadRow;
+  stroke?: string;
+  dataKey?: string;
+  onPointClick?: (payload: RechartsPayloadRow, dataKey: string) => void;
+}
+
+function ClickableDot({ cx, cy, payload, stroke, dataKey, onPointClick }: ClickableDotProps) {
+  if (cx === undefined || cy === undefined || !payload || !dataKey) return null;
+
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={4}
+      fill={stroke || '#09CAFF'}
+      stroke="var(--color-card)"
+      strokeWidth={2}
+      style={{ cursor: onPointClick ? 'pointer' : 'default' }}
+      onClick={() => onPointClick?.(payload, dataKey)}
+    />
+  );
+}
+
+function formatCompactValue(val: number): string {
+  if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`;
+  if (val >= 1_000) return `${(val / 1_000).toFixed(1)}k`;
+  return val.toFixed(2);
+}
+
+function buildCartesianRows(data: ChartData): RechartsPayloadRow[] {
+  return data.labels.map((label, index) => {
+    const row: RechartsPayloadRow = { label, index };
+    data.datasets.forEach((dataset) => {
+      row[dataset.label] = dataset.data[index] ?? 0;
+    });
+    return row;
   });
-
-  return { text, charts };
 }
 
-export function AgentChart({ data, onElementClick }: { data: ChartData, onElementClick?: (label: string, value: number, chartTitle?: string) => void }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const chartRef = useRef<ChartJS | null>(null);
+function buildPieRows(data: ChartData, colors: string[]): PieRow[] {
+  const dataset = data.datasets[0];
+  if (!dataset) return [];
+
+  return data.labels.map((label, index) => ({
+    name: label,
+    value: dataset.data[index] ?? 0,
+    fill: getMarketplaceColor(label) || colors[index % colors.length],
+    index,
+  }));
+}
+
+function extractNumber(value: unknown) {
+  return typeof value === 'number' ? value : Number(value || 0);
+}
+
+function resolveSeriesColor(color: string | undefined, fallback: string) {
+  return color || fallback;
+}
+
+function AgentChartTooltip({
+  active,
+  payload,
+  label,
+  formatter,
+  isPie,
+}: {
+  active?: boolean;
+  payload?: Array<{ name?: string; value?: number; payload?: PieRow | RechartsPayloadRow }>;
+  label?: string;
+  formatter: (value: number) => string;
+  isPie: boolean;
+}) {
+  if (!active || !payload?.length) return null;
+
+  return (
+    <div className="rounded-xl border border-border bg-card px-4 py-3 text-[12px] shadow-soft dark:shadow-dark-card">
+      <p className="font-semibold text-primary">{isPie ? payload[0]?.name : label}</p>
+      <div className="mt-1 space-y-1">
+        {payload.map((item, index) => (
+          <p key={`${item.name}-${index}`} className="text-secondary">
+            {item.name}: {formatter(extractNumber(item.value))}
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function AgentChart({
+  data,
+  onElementClick,
+}: {
+  data: ChartData;
+  onElementClick?: (label: string, value: number, chartTitle?: string) => void;
+}) {
   const { theme } = useApp();
-  const isDark = theme === 'dark';
   const brandPrimaryColor = useBrandPrimaryColor();
   const { formatCurrency, formatPercent, formatInteger } = useFormatting();
+  const isDark = theme === 'dark';
+  const isPie = data.type === 'pie' || data.type === 'doughnut';
+  const isHorizontal = data.type === 'horizontalBar';
+  const textColor = isDark ? '#eaebf0' : '#1a1c24';
+  const legendAndAxisColor = isDark ? '#b4b6c4' : '#9498a8';
+  const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
 
-  // Array de cores dinâmico: primeira cor vem da variável global, resto são fixas
-  const COLORS = useMemo(() => {
-    const primary = brandPrimaryColor || '#38b6ff'; // Fallback para a cor original
-    return [primary, ...FIXED_COLORS];
-  }, [brandPrimaryColor]);
+  const colors = useMemo(
+    () => [brandPrimaryColor || '#38b6ff', ...FIXED_COLORS],
+    [brandPrimaryColor],
+  );
 
-  const COLORS_ALPHA = useMemo(() => {
-    return COLORS.map((c) => {
-      // Se a cor já tem formato rgba, ajustar alpha
-      if (c.startsWith('rgba')) {
-        return c.replace(/,\s*[\d.]+\)$/, ', 0.25)');
-      }
-      // Para variáveis CSS, usar color-mix (Chart.js não suporta diretamente, então vamos ler o valor)
-      if (c.startsWith('var(')) {
-        // Ler o valor computado da variável CSS
-        if (typeof window !== 'undefined') {
-          const computed = getComputedStyle(document.documentElement)
-            .getPropertyValue(c.replace('var(', '').replace(')', '').trim())
-            .trim();
-          if (computed) {
-            // Se for hex, adicionar alpha
-            if (computed.startsWith('#')) {
-              return computed + '40';
-            }
-            // Se for rgba, ajustar alpha
-            if (computed.startsWith('rgba')) {
-              return computed.replace(/,\s*[\d.]+\)$/, ', 0.25)');
-            }
-          }
-        }
-        // Fallback: usar color-mix (pode não funcionar em todos os browsers)
-        return `color-mix(in srgb, ${c} 25%, transparent)`;
-      }
-      // Para hex, adicionar alpha
-      return c + '40';
-    });
-  }, [COLORS]);
+  const chartRows = useMemo(() => buildCartesianRows(data), [data]);
+  const pieRows = useMemo(() => buildPieRows(data, colors), [data, colors]);
 
-  useEffect(() => {
-    if (!canvasRef.current) return;
-
-    if (chartRef.current) {
-      chartRef.current.destroy();
-      chartRef.current = null;
-    }
-
-    const existingChart = ChartJS.getChart(canvasRef.current);
-    if (existingChart) existingChart.destroy();
-
-    const ctx = canvasRef.current.getContext('2d');
-    if (!ctx) return;
-
-    const isCurrency = data.options?.currency;
-    const isPercentage = data.options?.percentage;
-    const isHorizontal = data.type === 'horizontalBar';
-    const isPie = data.type === 'pie' || data.type === 'doughnut';
-
-    const textColor = isDark ? '#eaebf0' : '#1a1c24';
-    const mutedColor = isDark ? '#484a5c' : '#9498a8';
-    const legendAndAxisColor = isDark ? '#b4b6c4' : '#9498a8';
-    const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
-    const tooltipBg = isDark ? '#181a22' : '#ffffff';
-    const tooltipBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
-
-    const formatValue = (value: number) => {
-      if (isCurrency) return formatCurrency(value);
-      if (isPercentage) return formatPercent(value);
+  const formatter = useMemo(() => {
+    return (value: number) => {
+      if (data.options?.currency) return formatCurrency(value);
+      if (data.options?.percentage) return formatPercent(value);
       return formatInteger(value);
     };
+  }, [data.options?.currency, data.options?.percentage, formatCurrency, formatInteger, formatPercent]);
 
-    /** Cor por índice: mesmas cores do dashboard (marketplaces/canais) */
-    const getBarColorForLabelIndex = (labelIndex: number): string => {
-      const label = data.labels[labelIndex];
-      return getMarketplaceColor(typeof label === 'string' ? label : String(label ?? ''));
-    };
+  const handleCartesianClick = (payload: RechartsPayloadRow, dataKey: string) => {
+    if (!onElementClick) return;
+    onElementClick(payload.label, extractNumber(payload[dataKey]), data.title);
+  };
 
-    const datasets = data.datasets.map((ds, i) => {
-      const color = ds.color || COLORS[i % COLORS.length];
-      const alphaColor = COLORS_ALPHA[i % COLORS_ALPHA.length];
+  const handlePieClick = (payload: PieRow) => {
+    if (!onElementClick) return;
+    onElementClick(payload.name, payload.value, data.title);
+  };
 
-      if (isPie) {
-        return {
-          label: ds.label,
-          data: ds.data,
-          backgroundColor: ds.data.map((_, j) => getBarColorForLabelIndex(j)),
-          borderColor: ds.data.map((_, j) => getBarColorForLabelIndex(j)),
-          borderWidth: 2,
-          hoverOffset: 8,
-        };
-      }
+  const renderBarChart = () => (
+    <BarChart
+      data={chartRows}
+      layout={isHorizontal ? 'vertical' : 'horizontal'}
+      margin={{ top: 16, right: 16, left: 4, bottom: 8 }}
+      barCategoryGap={isHorizontal ? 14 : 18}
+    >
+      <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={!isHorizontal} />
+      <XAxis
+        type={isHorizontal ? 'number' : 'category'}
+        dataKey={isHorizontal ? undefined : 'label'}
+        stroke={legendAndAxisColor}
+        tick={{ fill: legendAndAxisColor, fontSize: 11 }}
+        axisLine={false}
+        tickLine={false}
+      />
+      <YAxis
+        type={isHorizontal ? 'category' : 'number'}
+        dataKey={isHorizontal ? 'label' : undefined}
+        stroke={legendAndAxisColor}
+        tick={{ fill: legendAndAxisColor, fontSize: 11 }}
+        axisLine={false}
+        tickLine={false}
+        width={isHorizontal ? 96 : 48}
+      />
+      <RechartsTooltip content={<AgentChartTooltip formatter={formatter} isPie={false} />} />
+      {data.options?.showLegend !== false && data.datasets.length > 1 ? (
+        <Legend wrapperStyle={{ color: textColor, fontSize: 12 }} />
+      ) : null}
+      {data.datasets.map((dataset, datasetIndex) => {
+        const seriesColor = resolveSeriesColor(dataset.color, colors[datasetIndex % colors.length]);
+        const singleSeries = data.datasets.length === 1;
 
-      const isBarOrHorizontal = data.type === 'bar' || isHorizontal;
-      const barBackgroundColor = isBarOrHorizontal
-        ? ds.data.map((_, j) => getBarColorForLabelIndex(j))
-        : (data.type === 'line' ? alphaColor : color);
+        return (
+          <Bar
+            key={dataset.label}
+            dataKey={dataset.label}
+            name={dataset.label}
+            fill={seriesColor}
+            stackId={data.options?.stacked ? 'stack' : undefined}
+            radius={isHorizontal ? [0, 8, 8, 0] : [8, 8, 2, 2]}
+            onClick={(entry) => {
+              const payload = (entry as { payload?: RechartsPayloadRow })?.payload;
+              if (payload) {
+                handleCartesianClick(payload, dataset.label);
+              }
+            }}
+          >
+            {singleSeries
+              ? chartRows.map((row, index) => (
+                  <Cell
+                    key={`${dataset.label}-${row.label}`}
+                    fill={getMarketplaceColor(row.label) || colors[index % colors.length]}
+                  />
+                ))
+              : null}
+          </Bar>
+        );
+      })}
+    </BarChart>
+  );
 
-      return {
-        label: ds.label,
-        data: ds.data,
-        backgroundColor: barBackgroundColor,
-        borderColor: color,
-        borderWidth: data.type === 'line' ? 3 : 0,
-        borderRadius: isBarOrHorizontal ? 8 : 0,
-        fill: data.type === 'line',
-        tension: 0.4,
-        pointRadius: data.type === 'line' ? 4 : 0,
-        pointHoverRadius: data.type === 'line' ? 7 : 0,
-        pointBackgroundColor: color,
-        pointBorderColor: isDark ? '#111318' : '#ffffff',
-        pointBorderWidth: 2,
-      };
-    });
+  const renderLineChart = () => (
+    <LineChart data={chartRows} margin={{ top: 16, right: 16, left: 4, bottom: 8 }}>
+      <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+      <XAxis
+        dataKey="label"
+        stroke={legendAndAxisColor}
+        tick={{ fill: legendAndAxisColor, fontSize: 11 }}
+        axisLine={false}
+        tickLine={false}
+      />
+      <YAxis
+        stroke={legendAndAxisColor}
+        tick={{ fill: legendAndAxisColor, fontSize: 11 }}
+        axisLine={false}
+        tickLine={false}
+      />
+      <RechartsTooltip content={<AgentChartTooltip formatter={formatter} isPie={false} />} />
+      {data.options?.showLegend !== false && data.datasets.length > 1 ? (
+        <Legend wrapperStyle={{ color: textColor, fontSize: 12 }} />
+      ) : null}
+      {data.datasets.map((dataset, datasetIndex) => {
+        const seriesColor = resolveSeriesColor(dataset.color, colors[datasetIndex % colors.length]);
 
-    const config: ChartConfiguration = {
-      type: isHorizontal ? 'bar' : (isPie ? data.type : data.type) as ChartConfiguration['type'],
-      data: {
-        labels: data.labels,
-        datasets: datasets as ChartConfiguration['data']['datasets'],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        indexAxis: isHorizontal ? 'y' : 'x',
-        onClick: (_event, elements, chart) => {
-          if (elements.length > 0 && onElementClick) {
-            const firstElement = elements[0];
-            const dataIndex = firstElement.index;
-            const label = chart.data.labels ? chart.data.labels[dataIndex] as string : '';
-            const value = chart.data.datasets[firstElement.datasetIndex].data[dataIndex] as number;
-            onElementClick(label, value, data.title);
-          }
-        },
-        plugins: {
-          legend: {
-            display: data.options?.showLegend !== false && (data.datasets.length > 1 || isPie),
-            position: isPie ? 'bottom' : 'top',
-            labels: {
-              color: legendAndAxisColor,
-              font: { family: "'SF Pro Display', -apple-system, sans-serif", size: 12 },
-              padding: 16,
-              usePointStyle: true,
-              pointStyle: 'circle',
-            },
-          },
-          title: {
-            display: !!data.title,
-            text: data.title || '',
-            color: textColor,
-            font: { family: "'SF Pro Display', -apple-system, sans-serif", size: 15, weight: 'bold' as const },
-            padding: { bottom: 16 },
-          },
-          tooltip: {
-            backgroundColor: tooltipBg,
-            titleColor: textColor,
-            bodyColor: mutedColor,
-            borderColor: tooltipBorder,
-            borderWidth: 1,
-            cornerRadius: 12,
-            padding: 14,
-            titleFont: { family: "'SF Pro Display', -apple-system, sans-serif", weight: 'bold' as const },
-            bodyFont: { family: "'SF Pro Display', -apple-system, sans-serif" },
-            callbacks: {
-              label: (ctx) => {
-                const label = ctx.dataset.label || '';
-                const value = ctx.parsed?.y ?? ctx.parsed ?? 0;
-                return label + ': ' + formatValue(typeof value === 'number' ? value : 0);
-              },
-            },
-          },
-        },
-        scales: isPie ? {} : {
-          x: {
-            grid: { color: gridColor, lineWidth: 0.5 },
-            ticks: {
-              color: legendAndAxisColor,
-              font: { family: "'SF Pro Display', -apple-system, sans-serif", size: 11 },
-              maxRotation: 45,
-            },
-            stacked: data.options?.stacked,
-          },
-          y: {
-            grid: { color: gridColor, lineWidth: 0.5 },
-            ticks: {
-              color: legendAndAxisColor,
-              font: { family: "'SF Pro Display', -apple-system, sans-serif", size: 11 },
-              callback: (value) => formatValue(Number(value)),
-            },
-            stacked: data.options?.stacked,
-          },
-        },
-        animation: {
-          duration: 800,
-          easing: 'easeOutQuart',
-        },
-      },
-    };
+        return (
+          <Line
+            key={dataset.label}
+            type="monotone"
+            dataKey={dataset.label}
+            name={dataset.label}
+            stroke={seriesColor}
+            strokeWidth={3}
+            dot={(dotProps) => (
+              <ClickableDot
+                {...dotProps}
+                dataKey={dataset.label}
+                stroke={seriesColor}
+                onPointClick={handleCartesianClick}
+              />
+            )}
+            activeDot={{ r: 6 }}
+          />
+        );
+      })}
+    </LineChart>
+  );
 
-    chartRef.current = new ChartJS(ctx, config);
+  const renderPieChart = () => (
+    <PieChart>
+      <RechartsTooltip content={<AgentChartTooltip formatter={formatter} isPie />} />
+      {data.options?.showLegend !== false ? (
+        <Legend wrapperStyle={{ color: textColor, fontSize: 12 }} />
+      ) : null}
+      <Pie
+        data={pieRows}
+        dataKey="value"
+        nameKey="name"
+        cx="50%"
+        cy="50%"
+        innerRadius={data.type === 'doughnut' ? '42%' : 0}
+        outerRadius="78%"
+        paddingAngle={2}
+        onClick={(payload) => handlePieClick(payload as PieRow)}
+      >
+        {pieRows.map((entry) => (
+          <Cell key={entry.name} fill={entry.fill} />
+        ))}
+      </Pie>
+    </PieChart>
+  );
 
-    return () => {
-      if (chartRef.current) {
-        chartRef.current.destroy();
-        chartRef.current = null;
-      }
-    };
-  }, [data, isDark, COLORS, COLORS_ALPHA, formatCurrency, formatPercent, formatInteger]);
-
-  const height = (data.type === 'pie' || data.type === 'doughnut') ? 260 : 280;
+  const height = isPie ? 280 : 300;
 
   return (
     <div
-      className="rounded-2xl bg-body/50 dark:bg-[rgba(255,255,255,0.02)] border border-border p-5 my-3"
-      style={{ height: height + 'px', position: 'relative' }}
+      className="my-3 rounded-2xl border border-border bg-body/50 p-5 dark:bg-[rgba(255,255,255,0.02)]"
+      style={{ height: `${height}px`, position: 'relative' }}
     >
-      <canvas ref={canvasRef} />
+      <ResponsiveContainer width="100%" height="100%">
+        {data.type === 'line' ? renderLineChart() : isPie ? renderPieChart() : renderBarChart()}
+      </ResponsiveContainer>
+      {data.title ? (
+        <div className="pointer-events-none absolute left-5 top-4 text-[12px] font-semibold text-primary">
+          {data.title}
+        </div>
+      ) : null}
+      {!isPie ? (
+        <div className="pointer-events-none absolute right-5 top-4 text-[10px] font-medium text-muted">
+          {data.options?.stacked ? 'Modo empilhado' : 'Comparativo'}
+        </div>
+      ) : null}
+      {isPie && pieRows.length > 0 ? (
+        <div className="pointer-events-none absolute bottom-3 left-0 w-full text-center text-[10px] font-medium text-muted">
+          Clique em um setor para detalhar no chat
+        </div>
+      ) : null}
+      {!isPie && data.datasets.length > 0 ? (
+        <div className="pointer-events-none absolute bottom-3 left-0 w-full text-center text-[10px] font-medium text-muted">
+          Valores: {chartRows.length > 0 ? formatCompactValue(extractNumber(chartRows[0][data.datasets[0].label])) : '0'}
+        </div>
+      ) : null}
     </div>
   );
 }

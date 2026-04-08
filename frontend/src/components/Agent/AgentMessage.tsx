@@ -1,15 +1,20 @@
 import { User, Zap } from 'lucide-react';
 import optimusSidebarIcon from '../../assets/channels/optimus-sidebar.png';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { useMemo } from 'react';
-import { extractCharts, AgentChart } from './AgentChart';
-import type { ChartData } from './AgentChart';
+import DOMPurify from 'dompurify';
+import { marked } from 'marked';
+import { AgentChart } from './AgentChart';
+import { extractCharts, type ChartData } from './chartUtils';
 import { useBrandPrimaryColor } from '../../hooks/useBrandPrimaryColor';
 import { useFormatting } from '../../hooks/useFormatting';
 import { InsightCard } from './InsightCard';
 import type { AIAction } from './InsightCard';
 import { ErrorBoundary } from '../ErrorBoundary';
+
+marked.setOptions({
+  gfm: true,
+  breaks: true,
+});
 
 interface TokenUsage {
   inputTokens: number;
@@ -199,61 +204,23 @@ function repairTextArtifacts(text: string) {
 function MarkdownBlock({ text }: { text: string }) {
   const brandPrimaryColor = useBrandPrimaryColor();
 
+  const html = useMemo(() => {
+    const raw = marked.parse(text) as string;
+    const sanitized = DOMPurify.sanitize(raw, {
+      USE_PROFILES: { html: true },
+    });
+
+    return sanitized
+      .replace(/<a /g, '<a target="_blank" rel="noopener noreferrer" ')
+      .replace(/<table>/g, '<div class="agent-table-wrap"><table>')
+      .replace(/<\/table>/g, '</table></div>');
+  }, [text]);
+
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={{
-        p: ({ children }) => <p>{children}</p>,
-        strong: ({ children }) => (
-          <strong
-            className="font-semibold"
-            style={{ color: brandPrimaryColor || 'var(--color-brand-primary)' }}
-          >
-            {children}
-          </strong>
-        ),
-        code: ({ children }) => (
-          <code className="bg-border/40 dark:bg-[rgba(255,255,255,0.06)] px-1.5 py-0.5 rounded-[5px] text-[13px] font-mono text-success wrap-break-word">
-            {children}
-          </code>
-        ),
-        pre: ({ children }) => (
-          <pre className="bg-body/80 dark:bg-[rgba(0,0,0,0.3)] p-4 rounded-xl overflow-x-auto my-3 text-[13px] font-mono border border-border">
-            {children}
-          </pre>
-        ),
-        ul: ({ children }) => <ul>{children}</ul>,
-        ol: ({ children }) => <ol>{children}</ol>,
-        li: ({ children }) => <li>{children}</li>,
-        h1: ({ children }) => <h1 className="text-primary border-b border-border pb-1.5">{children}</h1>,
-        h2: ({ children }) => <h2 className="text-primary">{children}</h2>,
-        h3: ({ children }) => <h3>{children}</h3>,
-        hr: () => <hr />,
-        blockquote: ({ children }) => <blockquote className="text-secondary">{children}</blockquote>,
-        a: ({ href, children }) => (
-          <a
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-medium underline underline-offset-2"
-            style={{ color: brandPrimaryColor || 'var(--color-brand-primary)' }}
-          >
-            {children}
-          </a>
-        ),
-        table: ({ children }) => (
-          <div className="overflow-x-auto my-3 rounded-xl border border-border">
-            <table>{children}</table>
-          </div>
-        ),
-        thead: ({ children }) => <thead className="bg-body/60 dark:bg-[rgba(255,255,255,0.03)]">{children}</thead>,
-        tbody: ({ children }) => <tbody>{children}</tbody>,
-        tr: ({ children }) => <tr>{children}</tr>,
-        th: ({ children }) => <th>{children}</th>,
-        td: ({ children }) => <td className="text-primary">{children}</td>,
-      }}
-    >
-      {text}
-    </ReactMarkdown>
+    <div
+      className="agent-markdown"
+      style={{ ['--agent-brand-color' as string]: brandPrimaryColor || 'var(--color-brand-primary)' }}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
   );
 }

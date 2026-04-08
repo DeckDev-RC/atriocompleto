@@ -3,9 +3,12 @@ import { Link } from 'react-router-dom';
 import { Eye, EyeOff, ShieldCheck, Send, Loader2, CheckCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { agentApi } from '../services/agentApi';
+import { OptimizedImage } from '../components/OptimizedImage';
 import logoLight from '../assets/logo-whitemode.png';
+import logoLightWebp from '../assets/logo-whitemode.webp';
 import logotipoAtrio from '../assets/logotipo-atrio.png';
-import loginBackground from '../assets/loginpage-background.jpg';
+import logotipoAtrioWebp from '../assets/logotipo-atrio.webp';
+import loginBackground from '../assets/loginpage-background.webp';
 
 const MERGE_ANIMATION_MS = 800;
 const DEFAULT_LOGIN_BRAND_PRIMARY = '#09CAFF';
@@ -115,7 +118,7 @@ export function LoginPage() {
         setResendStatus('error');
         setError(result.error || 'Erro ao reenviar link.');
       }
-    } catch (err) {
+    } catch {
       setResendStatus('error');
       setError('Erro ao processar solicitação.');
     } finally {
@@ -132,16 +135,22 @@ export function LoginPage() {
   return (
     <div
       className="relative flex min-h-screen items-center justify-center overflow-hidden px-5 py-8"
-      style={{
-        backgroundImage: `url(${loginBackground})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-        backgroundAttachment: 'fixed',
-      }}
     >
+      <div className="absolute inset-0">
+        <OptimizedImage
+          fallbackSrc={loginBackground}
+          alt=""
+          className="h-full w-full object-cover"
+          width={6000}
+          height={4000}
+          loading="eager"
+          fetchPriority="high"
+          decoding="async"
+          aria-hidden="true"
+        />
+      </div>
       <div
-        className="w-full max-w-4xl mx-auto flex justify-center"
+        className="relative z-10 w-full max-w-4xl mx-auto flex justify-center"
         style={{ animation: 'fade-in 0.5s cubic-bezier(0.16,1,0.3,1) both' }}
       >
         <div className="login-card rounded-3xl bg-card border-2 border-border/50 shadow-2xl overflow-hidden backdrop-blur-xl">
@@ -175,10 +184,16 @@ export function LoginPage() {
               <div className="absolute inset-0 bg-black/5 z-10" />
 
               <div className="absolute top-4 left-4 md:top-6 md:left-8 z-20">
-                <img
-                  src={topLogoSrc}
+                <OptimizedImage
+                  fallbackSrc={topLogoSrc}
+                  webpSrc={topLogoSrc === logotipoAtrio ? logotipoAtrioWebp : undefined}
                   alt={brandName}
                   className="h-15 w-auto object-contain brightness-0 invert"
+                  width={384}
+                  height={410}
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
                 />
               </div>
 
@@ -189,10 +204,15 @@ export function LoginPage() {
                   <div className="h-px flex-1 bg-white/20" />
                 </div>
                 <div className="flex justify-center">
-                  <img
-                    src={footerLogoSrc}
+                  <OptimizedImage
+                    fallbackSrc={footerLogoSrc}
+                    webpSrc={footerLogoSrc === logoLight ? logoLightWebp : undefined}
                     alt={footerBrandName}
                     className="h-5.5 w-auto object-contain brightness-0 invert"
+                    width={960}
+                    height={260}
+                    loading="lazy"
+                    decoding="async"
                   />
                 </div>
               </div>

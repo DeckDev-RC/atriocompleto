@@ -46,6 +46,7 @@ const EXAMPLE_INPUTS: PriceCalculatorInputs = {
   difalPercent: 0,
 };
 
+const CALCULATOR_ONBOARDING_STORAGE_KEY = 'atrio-price-calculator-calculator-onboarding-v1';
 const MANAGEMENT_ONBOARDING_STORAGE_KEY = 'atrio-price-calculator-management-onboarding-v1';
 
 type TabId = 'calculator' | 'management' | 'base-products';
@@ -58,6 +59,50 @@ interface ManagementOnboardingState {
   completed: boolean;
   dismissed: boolean;
 }
+
+const CALCULATOR_ONBOARDING_STEPS: Array<{
+  targetId: string;
+  title: string;
+  description: string;
+  helper: string;
+}> = [
+  {
+    targetId: 'calculator-intro',
+    title: 'Comece entendendo o objetivo da calculadora',
+    description: 'Esta area transforma custo, peso, impostos e margem desejada em precos sugeridos por marketplace, sem voce precisar montar a conta manualmente.',
+    helper: 'Pense nela como um passo a passo: voce preenche os dados do produto, confere os resultados e depois, se precisar, ajusta regras especificas na aba Gestao.',
+  },
+  {
+    targetId: 'calculator-inputs',
+    title: 'Preencha os dados basicos do produto',
+    description: 'Produto, peso, custo e custo operacional formam a base do calculo. Quanto mais fiel estiverem, mais confiavel fica o preco sugerido.',
+    helper: 'Se estiver na duvida, comece pelo custo real do item e pelo peso com embalagem. Isso costuma ser o que mais muda o resultado.',
+  },
+  {
+    targetId: 'calculator-formula',
+    title: 'Entenda o que entra na conta final',
+    description: 'A margem alvo, o imposto, o difal e a comissao do canal entram no divisor do calculo. O frete entra como custo da operacao.',
+    helper: 'Voce nao precisa decorar a formula. O importante e saber que margem maior ou custos maiores empurram o preco sugerido para cima.',
+  },
+  {
+    targetId: 'calculator-actions',
+    title: 'Use os atalhos para aprender sem medo',
+    description: 'O exemplo preenchido ajuda a enxergar a dinamica da calculadora, o limpar zera tudo e o salvar manda o produto para a BaseProdutos.',
+    helper: 'Para um usuario leigo, o melhor caminho e: usar exemplo, observar o resultado, depois trocar pelos numeros reais do seu produto.',
+  },
+  {
+    targetId: 'calculator-summary',
+    title: 'Leia primeiro os destaques principais',
+    description: 'Esses cards resumem o melhor lucro, o menor preco praticado e a faixa de preco cheio para voce nao precisar comparar tudo no olho.',
+    helper: 'Eles servem como leitura rapida. Depois disso, role para baixo e compare canal por canal com mais calma.',
+  },
+  {
+    targetId: 'calculator-results',
+    title: 'Compare os marketplaces e decida o proximo passo',
+    description: 'Aqui voce ve o preco praticado, preco cheio, lucro, comissao, frete e impostos de cada canal. E a parte que apoia a decisao comercial.',
+    helper: 'Se algum canal estiver usando uma regra diferente da sua realidade, o proximo passo natural e abrir a aba Gestao para personalizar esse marketplace.',
+  },
+];
 
 const MANAGEMENT_ONBOARDING_STEPS: Array<{
   targetId: string;
@@ -103,13 +148,13 @@ const TAB_ITEMS: Array<{ id: TabId; label: string; icon: LucideIcon }> = [
   { id: 'base-products', label: 'BaseProdutos', icon: Database },
 ];
 
-function loadManagementOnboardingState(): ManagementOnboardingState {
+function loadOnboardingState(storageKey: string): ManagementOnboardingState {
   if (typeof window === 'undefined') {
     return { completed: false, dismissed: false };
   }
 
   try {
-    const stored = window.localStorage.getItem(MANAGEMENT_ONBOARDING_STORAGE_KEY);
+    const stored = window.localStorage.getItem(storageKey);
     if (!stored) return { completed: false, dismissed: false };
     const parsed = JSON.parse(stored) as Partial<ManagementOnboardingState>;
     return {
@@ -121,9 +166,9 @@ function loadManagementOnboardingState(): ManagementOnboardingState {
   }
 }
 
-function saveManagementOnboardingState(state: ManagementOnboardingState) {
+function saveOnboardingState(storageKey: string, state: ManagementOnboardingState) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(MANAGEMENT_ONBOARDING_STORAGE_KEY, JSON.stringify(state));
+  window.localStorage.setItem(storageKey, JSON.stringify(state));
 }
 
 function parseNullableNumber(value: string) {
@@ -276,9 +321,12 @@ export default function PriceCalculatorPage() {
   const [snapshotName, setSnapshotName] = useState('');
   const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [managementSaving, setManagementSaving] = useState(false);
-  const [onboardingOpen, setOnboardingOpen] = useState(false);
-  const [onboardingStepIndex, setOnboardingStepIndex] = useState(0);
-  const [onboardingState, setOnboardingState] = useState<ManagementOnboardingState>(() => loadManagementOnboardingState());
+  const [calculatorOnboardingOpen, setCalculatorOnboardingOpen] = useState(false);
+  const [calculatorOnboardingStepIndex, setCalculatorOnboardingStepIndex] = useState(0);
+  const [calculatorOnboardingState, setCalculatorOnboardingState] = useState<ManagementOnboardingState>(() => loadOnboardingState(CALCULATOR_ONBOARDING_STORAGE_KEY));
+  const [managementOnboardingOpen, setManagementOnboardingOpen] = useState(false);
+  const [managementOnboardingStepIndex, setManagementOnboardingStepIndex] = useState(0);
+  const [managementOnboardingState, setManagementOnboardingState] = useState<ManagementOnboardingState>(() => loadOnboardingState(MANAGEMENT_ONBOARDING_STORAGE_KEY));
 
   useEffect(() => {
     setManagementOverrides(savedManagementOverrides);
@@ -359,37 +407,68 @@ export default function PriceCalculatorPage() {
   }, [baseRows]);
 
   useEffect(() => {
+    if (activeTab !== 'calculator') {
+      setCalculatorOnboardingOpen(false);
+    }
+
     if (activeTab !== 'management') {
-      setOnboardingOpen(false);
+      setManagementOnboardingOpen(false);
     }
   }, [activeTab]);
 
   useEffect(() => {
     if (
-      activeTab !== 'management' ||
-      onboardingOpen ||
-      onboardingState.completed ||
-      onboardingState.dismissed
+      activeTab !== 'calculator' ||
+      calculatorOnboardingOpen ||
+      calculatorOnboardingState.completed ||
+      calculatorOnboardingState.dismissed
     ) {
       return;
     }
 
     const timer = window.setTimeout(() => {
-      setOnboardingStepIndex(0);
-      setOnboardingOpen(true);
+      setCalculatorOnboardingStepIndex(0);
+      setCalculatorOnboardingOpen(true);
     }, 250);
 
     return () => window.clearTimeout(timer);
-  }, [activeTab, onboardingOpen, onboardingState]);
+  }, [activeTab, calculatorOnboardingOpen, calculatorOnboardingState]);
 
   useEffect(() => {
-    if (!onboardingOpen || activeTab !== 'management') return;
-    const step = MANAGEMENT_ONBOARDING_STEPS[onboardingStepIndex];
+    if (
+      activeTab !== 'management' ||
+      managementOnboardingOpen ||
+      managementOnboardingState.completed ||
+      managementOnboardingState.dismissed
+    ) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setManagementOnboardingStepIndex(0);
+      setManagementOnboardingOpen(true);
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [activeTab, managementOnboardingOpen, managementOnboardingState]);
+
+  useEffect(() => {
+    if (!calculatorOnboardingOpen || activeTab !== 'calculator') return;
+    const step = CALCULATOR_ONBOARDING_STEPS[calculatorOnboardingStepIndex];
     const node = document.querySelector<HTMLElement>(`[data-guide-id="${step.targetId}"]`);
     if (node) {
       node.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  }, [activeTab, onboardingOpen, onboardingStepIndex]);
+  }, [activeTab, calculatorOnboardingOpen, calculatorOnboardingStepIndex]);
+
+  useEffect(() => {
+    if (!managementOnboardingOpen || activeTab !== 'management') return;
+    const step = MANAGEMENT_ONBOARDING_STEPS[managementOnboardingStepIndex];
+    const node = document.querySelector<HTMLElement>(`[data-guide-id="${step.targetId}"]`);
+    if (node) {
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [activeTab, managementOnboardingOpen, managementOnboardingStepIndex]);
 
   const selectedBaseRow = useMemo(
     () => baseRows.find((row) => row.snapshot.id === selectedBaseProductId) ?? null,
@@ -553,30 +632,54 @@ export default function PriceCalculatorPage() {
     );
   };
 
+  const openCalculatorGuide = () => {
+    setActiveTab('calculator');
+    setCalculatorOnboardingStepIndex(0);
+    setCalculatorOnboardingOpen(true);
+  };
+
   const openManagementGuide = () => {
     setActiveTab('management');
-    setOnboardingStepIndex(0);
-    setOnboardingOpen(true);
+    setManagementOnboardingStepIndex(0);
+    setManagementOnboardingOpen(true);
+  };
+
+  const closeCalculatorGuide = (mode: 'dismissed' | 'completed') => {
+    const nextState =
+      mode === 'completed'
+        ? { completed: true, dismissed: true }
+        : { ...calculatorOnboardingState, dismissed: true };
+
+    setCalculatorOnboardingState(nextState);
+    saveOnboardingState(CALCULATOR_ONBOARDING_STORAGE_KEY, nextState);
+    setCalculatorOnboardingOpen(false);
+
+    if (mode === 'completed') {
+      showToast('Tutorial da Calculadora concluido.', 'success');
+    }
   };
 
   const closeManagementGuide = (mode: 'dismissed' | 'completed') => {
     const nextState =
       mode === 'completed'
         ? { completed: true, dismissed: true }
-        : { ...onboardingState, dismissed: true };
+        : { ...managementOnboardingState, dismissed: true };
 
-    setOnboardingState(nextState);
-    saveManagementOnboardingState(nextState);
-    setOnboardingOpen(false);
+    setManagementOnboardingState(nextState);
+    saveOnboardingState(MANAGEMENT_ONBOARDING_STORAGE_KEY, nextState);
+    setManagementOnboardingOpen(false);
 
     if (mode === 'completed') {
       showToast('Tutorial da Gestao concluido.', 'success');
     }
   };
 
-  const highlightTargetId = onboardingOpen
-    ? MANAGEMENT_ONBOARDING_STEPS[onboardingStepIndex]?.targetId
-    : null;
+  const highlightTargetId =
+    activeTab === 'calculator' && calculatorOnboardingOpen
+      ? CALCULATOR_ONBOARDING_STEPS[calculatorOnboardingStepIndex]?.targetId
+      : activeTab === 'management' && managementOnboardingOpen
+        ? MANAGEMENT_ONBOARDING_STEPS[managementOnboardingStepIndex]?.targetId
+        : null;
 
   const highlightedSectionClass = (targetId: string) =>
     highlightTargetId === targetId
@@ -620,13 +723,52 @@ export default function PriceCalculatorPage() {
 
         {activeTab === 'calculator' ? (
           <>
+            <div
+              data-guide-id="calculator-intro"
+              className={`rounded-2xl border border-border bg-card p-4 shadow-sm transition-shadow ${highlightedSectionClass('calculator-intro')}`}
+            >
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="max-w-3xl">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-[var(--color-brand-primary)]/20 bg-[var(--color-brand-primary)]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--color-brand-primary)]">
+                    <Sparkles size={12} />
+                    Guia para quem quer aprender rapido
+                  </span>
+                  <h3 className="mt-3 text-[22px] font-extrabold tracking-tight text-primary">
+                    Preencha uma vez e compare seus canais com clareza
+                  </h3>
+                  <p className="mt-2 text-[13px] leading-6 text-secondary">
+                    Se voce nunca usou a calculadora, siga o tutorial passo a passo. Ele mostra o que preencher, como interpretar os numeros e
+                    quando vale ir para a aba Gestao para ajustar regras especiais.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={openCalculatorGuide}
+                    className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-[12px] font-bold text-primary transition-colors hover:bg-body"
+                  >
+                    <Wand2 size={14} />
+                    Abrir tutorial da Calculadora
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openManagementGuide}
+                    className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-[12px] font-bold text-primary transition-colors hover:bg-body"
+                  >
+                    <Settings2 size={14} />
+                    Ver tutorial da Gestao
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <SectionCard
               title="Entradas do produto"
               subtitle="A margem alvo entra no divisor junto com imposto, difal e comissao."
               icon={Calculator}
             >
               <div className="price-calculator-input-layout grid gap-4">
-                <div className="space-y-3">
+                <div data-guide-id="calculator-inputs" className={`space-y-3 ${highlightedSectionClass('calculator-inputs')}`}>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="space-y-1 sm:col-span-2">
                       <span className="text-[11px] font-semibold text-muted">Produto</span>
@@ -704,7 +846,7 @@ export default function PriceCalculatorPage() {
                       />
                     </label>
                   </div>
-                  <div className="rounded-2xl border border-border bg-body px-4 py-3.5">
+                  <div data-guide-id="calculator-formula" className={`rounded-2xl border border-border bg-body px-4 py-3.5 ${highlightedSectionClass('calculator-formula')}`}>
                     <p className="text-[11px] font-semibold text-primary">Formula base</p>
                     <p className="mt-1 text-[11px] text-muted">
                       Preco praticado = (custo + custo operacional + frete) / (1 - imposto - difal - comissao - margem)
@@ -713,7 +855,7 @@ export default function PriceCalculatorPage() {
                       Cada canal resolve o proprio frete pela regra comercial configurada na calculadora.
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div data-guide-id="calculator-actions" className={`flex flex-wrap gap-2 ${highlightedSectionClass('calculator-actions')}`}>
                     <button
                       type="button"
                       onClick={handleUseExample}
@@ -740,7 +882,7 @@ export default function PriceCalculatorPage() {
                     </button>
                   </div>
                 </div>
-                <div className="grid gap-3">
+                <div data-guide-id="calculator-summary" className={`grid gap-3 ${highlightedSectionClass('calculator-summary')}`}>
                   <StatCard
                     label="Melhor lucro"
                     value={formatCurrencyBRL(bestProfit.profit)}
@@ -766,7 +908,7 @@ export default function PriceCalculatorPage() {
               subtitle="Os precos cheios ja consideram o desconto promocional de cada canal."
               icon={TrendingUp}
             >
-              <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+              <div data-guide-id="calculator-results" className={`grid gap-4 lg:grid-cols-2 xl:grid-cols-3 ${highlightedSectionClass('calculator-results')}`}>
                 {results.map((result) => (
                   <ResultCard key={result.marketplaceId} result={result} />
                 ))}
@@ -1248,7 +1390,93 @@ export default function PriceCalculatorPage() {
         onConfirm={() => void handleSaveSnapshot()}
       />
 
-      {activeTab === 'management' && onboardingOpen ? (
+      {activeTab === 'calculator' && calculatorOnboardingOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 px-4 py-6 sm:items-center">
+          <button
+            type="button"
+            aria-label="Fechar tutorial"
+            className="absolute inset-0"
+            onClick={() => closeCalculatorGuide('dismissed')}
+          />
+          <div className="relative w-full max-w-xl rounded-[28px] border border-border bg-card shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-5">
+              <div>
+                <span className="inline-flex rounded-full bg-[var(--color-brand-primary)]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--color-brand-primary)]">
+                  Guia interativo · Passo {calculatorOnboardingStepIndex + 1} de {CALCULATOR_ONBOARDING_STEPS.length}
+                </span>
+                <h3 className="mt-3 text-[22px] font-extrabold tracking-tight text-primary">
+                  {CALCULATOR_ONBOARDING_STEPS[calculatorOnboardingStepIndex].title}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => closeCalculatorGuide('dismissed')}
+                className="rounded-full border border-border p-2 text-muted transition-colors hover:text-primary"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-4 px-5 py-5">
+              <p className="text-[14px] leading-6 text-secondary">
+                {CALCULATOR_ONBOARDING_STEPS[calculatorOnboardingStepIndex].description}
+              </p>
+
+              <div className="rounded-2xl border border-dashed border-[var(--color-brand-primary)]/30 bg-[var(--color-brand-primary)]/5 px-4 py-3">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-brand-primary)]">Onde olhar agora</p>
+                <p className="mt-2 text-[12px] leading-5 text-secondary">
+                  {CALCULATOR_ONBOARDING_STEPS[calculatorOnboardingStepIndex].helper}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {CALCULATOR_ONBOARDING_STEPS.map((step, index) => (
+                  <span
+                    key={step.title}
+                    className={`h-2 flex-1 rounded-full ${index <= calculatorOnboardingStepIndex ? 'bg-[var(--color-brand-primary)]' : 'bg-border'}`}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-4">
+              <button
+                type="button"
+                onClick={() => closeCalculatorGuide('dismissed')}
+                className="rounded-xl border border-border px-4 py-2 text-[12px] font-bold text-primary transition-colors hover:bg-body"
+              >
+                Pular por agora
+              </button>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCalculatorOnboardingStepIndex((current) => Math.max(0, current - 1))}
+                  disabled={calculatorOnboardingStepIndex === 0}
+                  className="rounded-xl border border-border px-4 py-2 text-[12px] font-bold text-primary transition-colors hover:bg-body disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Voltar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (calculatorOnboardingStepIndex === CALCULATOR_ONBOARDING_STEPS.length - 1) {
+                      closeCalculatorGuide('completed');
+                      return;
+                    }
+                    setCalculatorOnboardingStepIndex((current) => current + 1);
+                  }}
+                  className="rounded-xl bg-[var(--color-brand-primary)] px-4 py-2 text-[12px] font-bold text-white shadow-sm"
+                >
+                  {calculatorOnboardingStepIndex === CALCULATOR_ONBOARDING_STEPS.length - 1 ? 'Concluir tutorial' : 'Proximo passo'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {activeTab === 'management' && managementOnboardingOpen ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 px-4 py-6 sm:items-center">
           <button
             type="button"
@@ -1260,10 +1488,10 @@ export default function PriceCalculatorPage() {
             <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-5">
               <div>
                 <span className="inline-flex rounded-full bg-[var(--color-brand-primary)]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--color-brand-primary)]">
-                  Guia interativo · Passo {onboardingStepIndex + 1} de {MANAGEMENT_ONBOARDING_STEPS.length}
+                  Guia interativo · Passo {managementOnboardingStepIndex + 1} de {MANAGEMENT_ONBOARDING_STEPS.length}
                 </span>
                 <h3 className="mt-3 text-[22px] font-extrabold tracking-tight text-primary">
-                  {MANAGEMENT_ONBOARDING_STEPS[onboardingStepIndex].title}
+                  {MANAGEMENT_ONBOARDING_STEPS[managementOnboardingStepIndex].title}
                 </h3>
               </div>
               <button
@@ -1277,13 +1505,13 @@ export default function PriceCalculatorPage() {
 
             <div className="space-y-4 px-5 py-5">
               <p className="text-[14px] leading-6 text-secondary">
-                {MANAGEMENT_ONBOARDING_STEPS[onboardingStepIndex].description}
+                {MANAGEMENT_ONBOARDING_STEPS[managementOnboardingStepIndex].description}
               </p>
 
               <div className="rounded-2xl border border-dashed border-[var(--color-brand-primary)]/30 bg-[var(--color-brand-primary)]/5 px-4 py-3">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-brand-primary)]">Onde olhar agora</p>
                 <p className="mt-2 text-[12px] leading-5 text-secondary">
-                  {MANAGEMENT_ONBOARDING_STEPS[onboardingStepIndex].helper}
+                  {MANAGEMENT_ONBOARDING_STEPS[managementOnboardingStepIndex].helper}
                 </p>
               </div>
 
@@ -1291,7 +1519,7 @@ export default function PriceCalculatorPage() {
                 {MANAGEMENT_ONBOARDING_STEPS.map((step, index) => (
                   <span
                     key={step.title}
-                    className={`h-2 flex-1 rounded-full ${index <= onboardingStepIndex ? 'bg-[var(--color-brand-primary)]' : 'bg-border'}`}
+                    className={`h-2 flex-1 rounded-full ${index <= managementOnboardingStepIndex ? 'bg-[var(--color-brand-primary)]' : 'bg-border'}`}
                   />
                 ))}
               </div>
@@ -1309,8 +1537,8 @@ export default function PriceCalculatorPage() {
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() => setOnboardingStepIndex((current) => Math.max(0, current - 1))}
-                  disabled={onboardingStepIndex === 0}
+                  onClick={() => setManagementOnboardingStepIndex((current) => Math.max(0, current - 1))}
+                  disabled={managementOnboardingStepIndex === 0}
                   className="rounded-xl border border-border px-4 py-2 text-[12px] font-bold text-primary transition-colors hover:bg-body disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Voltar
@@ -1318,15 +1546,15 @@ export default function PriceCalculatorPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (onboardingStepIndex === MANAGEMENT_ONBOARDING_STEPS.length - 1) {
+                    if (managementOnboardingStepIndex === MANAGEMENT_ONBOARDING_STEPS.length - 1) {
                       closeManagementGuide('completed');
                       return;
                     }
-                    setOnboardingStepIndex((current) => current + 1);
+                    setManagementOnboardingStepIndex((current) => current + 1);
                   }}
                   className="rounded-xl bg-[var(--color-brand-primary)] px-4 py-2 text-[12px] font-bold text-white shadow-sm"
                 >
-                  {onboardingStepIndex === MANAGEMENT_ONBOARDING_STEPS.length - 1 ? 'Concluir tutorial' : 'Proximo passo'}
+                  {managementOnboardingStepIndex === MANAGEMENT_ONBOARDING_STEPS.length - 1 ? 'Concluir tutorial' : 'Proximo passo'}
                 </button>
               </div>
             </div>

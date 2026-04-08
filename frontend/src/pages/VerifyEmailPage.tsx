@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, CheckCircle } from 'lucide-react';
 import { agentApi } from '../services/agentApi';
+import { OptimizedImage } from '../components/OptimizedImage';
 import logotipoAtrio from '../assets/logotipo-atrio.png';
+import logotipoAtrioWebp from '../assets/logotipo-atrio.webp';
 
 export function VerifyEmailPage() {
   const navigate = useNavigate();
@@ -39,10 +41,15 @@ export function VerifyEmailPage() {
       <div className="w-full max-w-[440px] animate-in fade-in slide-in-from-bottom-4 duration-700">
         <div className="card-glass relative overflow-hidden p-8 text-center shadow-2xl">
           <div className="relative z-10 mb-6 flex justify-center">
-            <img
-              src={publicBranding?.login_logo_url || logotipoAtrio}
+            <OptimizedImage
+              fallbackSrc={publicBranding?.login_logo_url || logotipoAtrio}
+              webpSrc={publicBranding?.login_logo_url ? undefined : logotipoAtrioWebp}
               alt={publicBranding?.partner_name || 'Átrio'}
               className="h-12 w-auto object-contain"
+              width={384}
+              height={410}
+              loading="eager"
+              decoding="async"
             />
           </div>
 

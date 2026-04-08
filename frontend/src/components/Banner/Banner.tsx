@@ -1,9 +1,10 @@
 import { MarketplaceIcon } from './MarketplaceIcon';
 import type { DashboardChannel } from '../../hooks/useDashboard';
 import { useApp } from '../../contexts/AppContext';
+import { OptimizedImage } from '../OptimizedImage';
 import { useBrandPrimaryColor, getBrandPrimaryWithOpacity } from '../../hooks/useBrandPrimaryColor';
 import { useFormatting } from '../../hooks/useFormatting';
-import aguaImg from '../../assets/img-agua.jpg';
+import aguaImg from '../../assets/img-agua.webp';
 
 // ── Props ──────────────────────────────────────────
 
@@ -21,16 +22,19 @@ export function Banner({ totalRevenue, channels }: BannerProps) {
   return (
     <div className="group relative mb-16 w-full overflow-visible rounded-2xl max-md:mb-20 max-sm:mb-4 transition-all duration-300">
       {/* Image background */}
-      <div
-        className="absolute inset-0 rounded-[22px] transition-all duration-300"
-        style={{
-          backgroundImage: `url(${aguaImg})`,
-          backgroundSize: 'cover',
-          backgroundPosition: '100% 10%',
-          backgroundRepeat: 'no-repeat',
-          backgroundColor: isDark ? 'transparent' : 'lightgray',
-        }}
-      />
+      <div className="absolute inset-0 rounded-[22px] transition-all duration-300 overflow-hidden">
+        <OptimizedImage
+          fallbackSrc={aguaImg}
+          alt=""
+          className="h-full w-full object-cover object-[100%_10%]"
+          width={2835}
+          height={1877}
+          loading="eager"
+          fetchPriority="high"
+          decoding="async"
+          aria-hidden="true"
+        />
+      </div>
       {/* Dark overlay - mais escuro no hover */}
       <div className="absolute inset-0 rounded-[22px] bg-black/30 dark:bg-black/20 group-hover:bg-black/50 dark:group-hover:bg-black/40 transition-all duration-300" />
       {/* Glow accents */}

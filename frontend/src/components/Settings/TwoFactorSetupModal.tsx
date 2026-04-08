@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { X, ShieldCheck, Loader2, AlertCircle, Copy, Check, Download, AlertTriangle } from 'lucide-react';
 import { agentApi } from '../../services/agentApi';
 import { useToast } from '../Toast';
@@ -18,18 +18,7 @@ export function TwoFactorSetupModal({ isOpen, onClose, onSuccess }: TwoFactorSet
     const [error, setError] = useState('');
     const [copied, setCopied] = useState(false);
 
-    useEffect(() => {
-        if (isOpen) {
-            loadSetupData();
-        } else {
-            setStep('loading');
-            setData(null);
-            setCode('');
-            setError('');
-        }
-    }, [isOpen]);
-
-    const loadSetupData = async () => {
+    const loadSetupData = useCallback(async () => {
         try {
             setStep('loading');
             const result = await agentApi.enable2FA();
@@ -40,10 +29,21 @@ export function TwoFactorSetupModal({ isOpen, onClose, onSuccess }: TwoFactorSet
                 setError(result.error || 'Erro ao carregar configuração 2FA');
                 showToast(result.error || 'Erro ao carregar configuração 2FA', 'error');
             }
-        } catch (err) {
+        } catch {
             setError('Erro de conexão');
         }
-    };
+    }, [showToast]);
+
+    useEffect(() => {
+        if (isOpen) {
+            loadSetupData();
+        } else {
+            setStep('loading');
+            setData(null);
+            setCode('');
+            setError('');
+        }
+    }, [isOpen, loadSetupData]);
 
     const handleVerifyToken = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -60,7 +60,7 @@ export function TwoFactorSetupModal({ isOpen, onClose, onSuccess }: TwoFactorSet
             } else {
                 setError(result.error || 'Código inválido. Tente novamente.');
             }
-        } catch (err) {
+        } catch {
             setError('Erro de conexão');
         } finally {
             setLoading(false);
@@ -116,6 +116,10 @@ export function TwoFactorSetupModal({ isOpen, onClose, onSuccess }: TwoFactorSet
                                                 src={data.qrCode}
                                                 alt="2FA QR Code"
                                                 className="w-48 h-48 rounded-xl relative z-10 brightness-[1.1] contrast-[1.1]"
+                                                width={192}
+                                                height={192}
+                                                loading="eager"
+                                                decoding="async"
                                             />
                                         </div>
                                     ) : (

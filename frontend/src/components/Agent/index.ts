@@ -1,6 +1,7 @@
 export { AgentMessage } from './AgentMessage';
 export { AgentInput } from './AgentInput';
 export { AgentHistory } from './AgentHistory';
-export { AgentChart, extractCharts } from './AgentChart';
-export type { ChartData } from './AgentChart';
+export { AgentChart } from './AgentChart';
+export { extractCharts } from './chartUtils';
+export type { ChartData } from './chartUtils';
 export type { UploadedAgentFile } from './AgentInput';

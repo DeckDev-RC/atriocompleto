@@ -1,7 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { agentApi } from '../services/agentApi';
+import { OptimizedImage } from '../components/OptimizedImage';
 import logotipoAtrio from '../assets/logotipo-atrio.png';
+import logotipoAtrioWebp from '../assets/logotipo-atrio.webp';
 
 export function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -55,10 +57,15 @@ export function ForgotPasswordPage() {
     <div className="min-h-screen bg-body flex items-center justify-center p-5">
       <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-soft">
         <div className="mb-6 flex justify-center">
-          <img
-            src={publicBranding?.login_logo_url || logotipoAtrio}
+          <OptimizedImage
+            fallbackSrc={publicBranding?.login_logo_url || logotipoAtrio}
+            webpSrc={publicBranding?.login_logo_url ? undefined : logotipoAtrioWebp}
             alt={publicBranding?.partner_name || 'Átrio'}
             className="h-12 w-auto object-contain"
+            width={384}
+            height={410}
+            loading="eager"
+            decoding="async"
           />
         </div>
         <h1 className="text-2xl font-bold text-primary mb-2">Esqueci minha senha</h1>

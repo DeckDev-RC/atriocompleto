@@ -111,7 +111,7 @@ export function AccessRequestPage() {
         </form>
 
         <div className="mt-6 text-center">
-          <Link to="/" className="text-sm text-(--color-brand-primary) hover:underline">
+          <Link to="/login" className="text-sm text-(--color-brand-primary) hover:underline">
             Voltar para login
           </Link>
         </div>

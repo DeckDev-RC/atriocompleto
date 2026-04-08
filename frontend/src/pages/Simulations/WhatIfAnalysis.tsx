@@ -274,7 +274,7 @@ function MarketplaceBadge({ marketplaceId, size = 'md' }: { marketplaceId: Marke
 
   const logo = logoMap[marketplaceId];
   if (logo) {
-    return <img src={logo.src} alt={logo.alt} className={`${cls} ${logo.bg} object-contain ${logo.padCls ?? pad} shadow-sm`} />;
+    return <img src={logo.src} alt={logo.alt} className={`${cls} ${logo.bg} object-contain ${logo.padCls ?? pad} shadow-sm`} width={size === 'sm' ? 24 : 36} height={size === 'sm' ? 24 : 36} loading="lazy" decoding="async" />;
   }
 
   const meta = MARKETPLACE_META[marketplaceId];

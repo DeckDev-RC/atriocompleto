@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap");
 @import "tailwindcss";
 @import "react-day-picker/style.css";
 
@@ -524,6 +525,50 @@
   }
 }
 
+@keyframes landing-rise {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 24px, 0) scale(0.985);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes landing-float {
+
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  50% {
+    transform: translate3d(0, -14px, 0);
+  }
+}
+
+@keyframes landing-marquee {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+@keyframes landing-beam-sweep {
+  0% {
+    transform: translate3d(-140%, 0, 0);
+  }
+
+  100% {
+    transform: translate3d(220%, 0, 0);
+  }
+}
+
 /* ===== TOAST ANIMATIONS ===== */
 @keyframes toast-enter {
   from {
@@ -561,6 +606,117 @@
 .no-transitions *::before,
 .no-transitions *::after {
   transition-duration: 0s !important;
+}
+
+.landing-shell {
+  position: relative;
+  background:
+    radial-gradient(circle at 14% 16%, rgba(9, 202, 255, 0.12), transparent 24%),
+    radial-gradient(circle at 85% 10%, rgba(9, 202, 255, 0.08), transparent 20%),
+    linear-gradient(180deg, #020612 0%, #030916 44%, #020612 100%);
+}
+
+.landing-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 0.75px, transparent 0.75px);
+  background-size: 28px 28px;
+  opacity: 0.05;
+}
+
+.landing-rise {
+  opacity: 1;
+  animation: none;
+}
+
+.landing-float {
+  animation: none;
+}
+
+.landing-glass {
+  background: rgba(8, 17, 29, 0.82);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.landing-surface {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045) 0%, rgba(255, 255, 255, 0.02) 100%),
+    rgba(7, 17, 29, 0.78);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 10px 24px rgba(0, 0, 0, 0.12);
+}
+
+.landing-card {
+  background: rgba(8, 17, 29, 0.78);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.landing-chip {
+  background: rgba(8, 17, 29, 0.72);
+}
+
+.landing-cta-shell {
+  background:
+    radial-gradient(circle at 92% 18%, rgba(9, 202, 255, 0.16) 0%, rgba(9, 202, 255, 0.05) 18%, transparent 40%),
+    linear-gradient(135deg, #07111d 0%, #020612 58%, #04101c 100%);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.16);
+}
+
+.landing-section {
+  position: relative;
+}
+
+.landing-hero {
+  contain: layout paint;
+}
+
+.landing-hero-backdrop {
+  contain: paint;
+  transform: translateZ(0);
+}
+
+.landing-card,
+.landing-chip,
+.landing-cta-shell {
+  contain: paint;
+}
+
+@supports (content-visibility: auto) {
+  .landing-section {
+    content-visibility: auto;
+    contain-intrinsic-size: 1px 900px;
+  }
+}
+
+.landing-grid {
+  display: none;
+}
+
+.landing-marquee-track {
+  will-change: auto;
+  animation: none;
+}
+
+@media (max-width: 1024px) {
+  .landing-glass {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-rise,
+  .landing-float,
+  .landing-marquee-track {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
 }
 
 /* ===== BASE ===== */
@@ -735,6 +891,14 @@
 
 .agent-message-content strong {
   font-weight: 600;
+  color: var(--agent-brand-color, var(--color-brand-primary));
+}
+
+.agent-message-content a {
+  color: var(--agent-brand-color, var(--color-brand-primary));
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .agent-message-content ul {
@@ -786,13 +950,17 @@
 }
 
 .agent-message-content code {
+  background: color-mix(in srgb, var(--color-border) 40%, transparent);
   padding: 1px 5px;
   border-radius: 5px;
   font-size: 13px;
   font-family: var(--font-mono);
+  color: var(--color-success);
 }
 
 .agent-message-content pre {
+  background: color-mix(in srgb, var(--color-body) 80%, transparent);
+  border: 1px solid var(--color-border);
   padding: 14px;
   border-radius: 10px;
   overflow: auto;
@@ -802,6 +970,13 @@
 }
 
 /* Table styling in agent messages */
+.agent-message-content .agent-table-wrap {
+  overflow-x: auto;
+  margin: 10px 0;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+
 .agent-message-content table {
   width: 100%;
   border-collapse: collapse;
@@ -870,15 +1045,15 @@
 }
 
 /* Table scroll container */
-.agent-message-content div:has(> table)::-webkit-scrollbar {
+.agent-message-content .agent-table-wrap::-webkit-scrollbar {
   height: 4px;
 }
 
-.agent-message-content div:has(> table)::-webkit-scrollbar-track {
+.agent-message-content .agent-table-wrap::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.agent-message-content div:has(> table)::-webkit-scrollbar-thumb {
+.agent-message-content .agent-table-wrap::-webkit-scrollbar-thumb {
   background: var(--color-border-strong);
   border-radius: 4px;
 }

@@ -20,13 +20,21 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../../contexts/AppContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBrandPrimaryColor, getBrandPrimaryWithOpacity } from '../../hooks/useBrandPrimaryColor';
+import { OptimizedImage } from '../OptimizedImage';
 import logoLight from '../../assets/logo-whitemode.png';
+import logoLightWebp from '../../assets/logo-whitemode.webp';
 import logoDark from '../../assets/logo-darkmode.png';
+import logoDarkWebp from '../../assets/logo-darkmode.webp';
 import logoAtrio from '../../assets/logo-atrio-azul.png';
+import logoAtrioWebp from '../../assets/logo-atrio-azul.webp';
 import logoAtrioBranca from '../../assets/logo-atrio-branca.png';
+import logoAtrioBrancaWebp from '../../assets/logo-atrio-branca.webp';
 import logotipoAtrioPng from '../../assets/logotipo-atrio.png';
+import logotipoAtrioWebp from '../../assets/logotipo-atrio.webp';
 import sidebarLogoWhite from '../../assets/sidebar-negativa-white.png';
+import sidebarLogoWhiteWebp from '../../assets/sidebar-negativa-white.webp';
 import sidebarLogoDark from '../../assets/sidebar-negativa-dark.png';
+import sidebarLogoDarkWebp from '../../assets/sidebar-negativa-dark.webp';
 import optimusSidebarIcon from '../../assets/channels/optimus-sidebar.png';
 
 /** Item do menu: ícone Lucide ou imagem (imageSrc) */
@@ -170,10 +178,21 @@ export function Sidebar() {
               </div>
             ) : (
               <div className="flex w-full flex-col items-center justify-center min-w-0 py-4">
-                <img
-                  src={mainLogoSrc}
+                <OptimizedImage
+                  fallbackSrc={mainLogoSrc}
+                  webpSrc={
+                    mainLogoSrc === logoAtrio
+                      ? logoAtrioWebp
+                      : mainLogoSrc === logoAtrioBranca
+                        ? logoAtrioBrancaWebp
+                        : undefined
+                  }
                   alt={brandName}
                   className="h-14 max-sm:h-10 w-auto object-contain"
+                  width={480}
+                  height={289}
+                  loading="eager"
+                  decoding="async"
                 />
                 {/* Logo da Agregar movida para a área inferior, abaixo do botão Sair */}
               </div>
@@ -276,7 +295,7 @@ export function Sidebar() {
               <div className="flex justify-center pb-2">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full overflow-hidden bg-primary/5 text-[12px] font-bold text-primary border border-border/60">
                   {user?.avatar_url ? (
-                    <img src={user.avatar_url} alt={user.full_name} className="h-full w-full object-cover" />
+                    <img src={user.avatar_url} alt={user.full_name} className="h-full w-full object-cover" width={40} height={40} loading="lazy" decoding="async" />
                   ) : (
                     initials
                   )}
@@ -303,10 +322,21 @@ export function Sidebar() {
                 </button>
               </div>
               <div className="mt-4 flex justify-center px-1">
-                <img
-                  src={collapsedFooterLogoSrc}
+                <OptimizedImage
+                  fallbackSrc={collapsedFooterLogoSrc}
+                  webpSrc={
+                    collapsedFooterLogoSrc === sidebarLogoDark
+                      ? sidebarLogoDarkWebp
+                      : collapsedFooterLogoSrc === sidebarLogoWhite
+                        ? sidebarLogoWhiteWebp
+                        : undefined
+                  }
                   alt={footerBrandName}
                   className="w-full max-h-12 object-contain"
+                  width={420}
+                  height={336}
+                  loading="lazy"
+                  decoding="async"
                 />
               </div>
             </div>
@@ -315,7 +345,7 @@ export function Sidebar() {
               <div className="mx-auto flex max-w-[176px] items-center gap-3 px-2 py-2 rounded-2xl transition-colors duration-150">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden bg-primary/5 text-[11px] font-bold text-primary border border-border/60">
                   {user?.avatar_url ? (
-                    <img src={user.avatar_url} alt={user.full_name} className="h-full w-full object-cover" />
+                    <img src={user.avatar_url} alt={user.full_name} className="h-full w-full object-cover" width={40} height={40} loading="lazy" decoding="async" />
                   ) : (
                     initials
                   )}
@@ -352,10 +382,21 @@ export function Sidebar() {
               </div>
               {/* Logo da Agregar abaixo da caixa com o botão Sair */}
               <div className="mt-4 flex justify-center">
-                <img
-                  src={footerLogoSrc}
+                <OptimizedImage
+                  fallbackSrc={footerLogoSrc}
+                  webpSrc={
+                    footerLogoSrc === logoLight
+                      ? logoLightWebp
+                      : footerLogoSrc === logoDark
+                        ? logoDarkWebp
+                        : undefined
+                  }
                   alt={footerBrandName}
                   className="h-6 w-auto object-contain"
+                  width={960}
+                  height={260}
+                  loading="lazy"
+                  decoding="async"
                 />
               </div>
             </div>
@@ -379,7 +420,16 @@ function BrandIcon() {
         backgroundColor: brandPrimaryColor ? getBrandPrimaryWithOpacity(brandPrimaryColor, 0.1) : 'color-mix(in srgb, var(--color-brand-primary) 10%, transparent)',
       }}
     >
-      <img src={iconLogoSrc} alt={brandName} className="w-full h-full object-contain p-1.5" />
+      <OptimizedImage
+        fallbackSrc={iconLogoSrc}
+        webpSrc={iconLogoSrc === logotipoAtrioPng ? logotipoAtrioWebp : undefined}
+        alt={brandName}
+        className="w-full h-full object-contain p-1.5"
+        width={384}
+        height={410}
+        loading="lazy"
+        decoding="async"
+      />
     </div>
   );
 }
